@@ -1,6 +1,7 @@
 'use client';
 
 import { Search, SlidersHorizontal, TrendingUp } from 'lucide-react';
+import { SITE_NAME } from '@/lib/site';
 
 export function AppHeader({
   query,
@@ -23,7 +24,7 @@ export function AppHeader({
             <TrendingUp className="size-4.5" strokeWidth={2.5} />
           </span>
           <span className="hidden text-base font-semibold tracking-tight text-zinc-900 sm:inline dark:text-zinc-50">
-            EzySaham
+            {SITE_NAME}
           </span>
         </div>
 

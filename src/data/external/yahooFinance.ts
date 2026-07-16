@@ -1,15 +1,5 @@
 import { HistoryResponse, OHLCVBar } from '@/domain/models/History';
 
-interface YahooChartPayload {
-  chart?: {
-    result?: Array<{
-      timestamp?: number[];
-      indicators?: { quote?: Array<{ open?: number[]; high?: number[]; low?: number[]; close?: number[]; volume?: number[] }> };
-      meta?: { gmtoffset?: number };
-    }>;
-  };
-}
-
 function toDateString(unixSeconds: number, gmtOffsetSeconds: number): string {
   const shifted = new Date((unixSeconds + gmtOffsetSeconds) * 1000);
   return shifted.toISOString().slice(0, 10);
@@ -35,7 +25,7 @@ export async function fetchYahooDailyBars(code: string, range: string): Promise<
     };
   }
 
-  let payload: YahooChartPayload;
+  let payload: any;
   try {
     payload = await response.json();
   } catch {
