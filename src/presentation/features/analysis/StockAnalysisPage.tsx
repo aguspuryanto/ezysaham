@@ -26,7 +26,6 @@ import {
   ExternalLink,
   Loader2,
   RefreshCw,
-  Star,
   Target,
   TrendingDown,
   TrendingUp,
@@ -40,6 +39,7 @@ import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
+import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtRp(n: number): string {
@@ -624,6 +624,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             ⚠️ Analisis ini bersifat edukatif berbasis data EOD. Bukan rekomendasi beli/jual. Selalu lakukan riset mandiri dan terapkan manajemen risiko yang ketat.
           </p>
         </SectionCard>
+
+        {/* ── Filosofi & Disclaimer ──────────────────────────────────── */}
+        <PhilosophyBanner />
 
         {/* External link footer */}
         <div className="flex items-center justify-center gap-3 pt-2 text-xs text-zinc-400 dark:text-zinc-600">
