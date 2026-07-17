@@ -4,11 +4,14 @@ import { ema, lastValid, sma } from '@/domain/indicators/movingAverages';
 import { macd } from '@/domain/indicators/macd';
 import { rsi } from '@/domain/indicators/rsi';
 import { relativeVolume, volumeMA } from '@/domain/indicators/volume';
+import { adx } from '@/domain/indicators/adx';
 
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout';
+export type ScreenerPresetId =
+  | 'ara' | 'bpjs' | 'momentum' | 'breakout'
+  | 'early_breakout' | 'smart_money' | 'swing' | 'hrrr';
 
 // ── Breakout Hunter scoring (7 dimensions) ────────────────────────────────────
 export interface BreakoutScores {
@@ -111,18 +114,25 @@ const bpjsPreset: ScreenerPreset = {
 
 const momentumPreset: ScreenerPreset = {
   id: 'momentum',
-  label: 'Momentum',
-  description: 'Trend naik yang sudah terkonfirmasi EMA, MACD, RSI, dan lonjakan volume relatif.',
+  label: 'Momentum Hunter',
+  description: 'Saham yang sedang mengalami percepatan momentum — return 5-20% hari ini dengan konfirmasi EMA, MACD, RSI, volume, dan posisi close dekat high.',
   criteria: [
-    'EMA20 > EMA50',
-    'Close > EMA20',
-    'MACD bullish',
-    'RSI antara 55-70',
-    'RVOL > 2',
+    'Return 1 hari antara 5% – 20%',
     'Nilai transaksi > Rp 20 miliar',
+    'RVOL > 1,8 (volume di atas rata-rata)',
+    'Close di 70%+ range candle harian',
+    'EMA20 > EMA50 (struktur uptrend)',
+    'Close > EMA20',
+    'MACD bullish (MACD > Signal)',
+    'RSI antara 60 – 75',
   ],
-  coarseFilter: (s) => s.value > 20_000_000_000,
+  // Cheap summary-only pre-filter: return 5-20% + value > 20B
+  coarseFilter: (s) =>
+    s.value > 20_000_000_000 &&
+    s.percentChange1D >= 5 &&
+    s.percentChange1D <= 20,
   evaluate: (s, bars) => {
+    const lastBar = bars[bars.length - 1];
     const closes = bars.map((b) => b.close);
     const ema20 = lastValid(ema(closes, 20));
     const ema50 = lastValid(ema(closes, 50));
@@ -132,13 +142,21 @@ const momentumPreset: ScreenerPreset = {
     const rsiLast = lastValid(rsi(bars, 14));
     const rvol = relativeVolume(bars, 20);
 
+    // Close position in today's candle range (0–1)
+    const dayRange = lastBar ? lastBar.high - lastBar.low : 0;
+    const closePos = dayRange > 0 && lastBar
+      ? (s.lastClose - lastBar.low) / dayRange
+      : 0;
+
     return verdict([
+      [s.percentChange1D >= 5 && s.percentChange1D <= 20,  'Return 1 hari antara 5% – 20%'],
+      [s.value > 20_000_000_000,                            'Nilai transaksi > Rp 20 miliar'],
+      [!Number.isNaN(rvol) && rvol > 1.8,                  'RVOL > 1,8'],
+      [closePos >= 0.70,                                    'Close di 70%+ range candle'],
       [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
-      [!Number.isNaN(ema20) && s.lastClose > ema20, 'Close > EMA20'],
+      [!Number.isNaN(ema20) && s.lastClose > ema20,         'Close > EMA20'],
       [!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast, 'MACD bullish'],
-      [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, 'RSI antara 55-70'],
-      [!Number.isNaN(rvol) && rvol > 2, 'RVOL > 2'],
-      [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
+      [!Number.isNaN(rsiLast) && rsiLast >= 60 && rsiLast <= 75, 'RSI antara 60 – 75'],
     ]);
   },
 };
@@ -414,13 +432,246 @@ const breakoutPreset: ScreenerPreset = {
   },
 };
 
+// ── ⭐ Early Breakout Hunter ──────────────────────────────────────────────────
+
+const earlyBreakoutPreset: ScreenerPreset = {
+  id: 'early_breakout',
+  label: 'Early Breakout Hunter',
+  description: 'Mencari saham yang belum naik signifikan, tetapi memiliki struktur yang sering mendahului breakout besar — kandidat 1-3 hari sebelum ramai.',
+  criteria: [
+    'Nilai transaksi > Rp 10 miliar',
+    'Harga > EMA20',
+    'EMA20 baru melewati EMA50 (crossover dalam 5 bar terakhir atau rasio ≤ 1.5%)',
+    'RSI antara 50 – 60 (belum overbought)',
+    'MACD baru bullish crossover',
+    'RVOL > 1,3',
+    'Close di 80%+ range candle harian',
+    'Jarak ke 20-hari high > 8% (masih ada ruang naik)',
+    'ADX 18–28 dan meningkat (tren mulai terbentuk)',
+  ],
+  coarseFilter: (s) =>
+    s.value > 10_000_000_000 &&
+    s.percentChange1D > -1 &&
+    s.percentChange1D < 8,
+  evaluate: (s, bars) => {
+    const n = bars.length;
+    const lastBar = bars[n - 1];
+    const closes = bars.map((b) => b.close);
+    const ema20Arr = ema(closes, 20);
+    const ema50Arr = ema(closes, 50);
+    const ema20 = lastValid(ema20Arr);
+    const ema50 = lastValid(ema50Arr);
+    const { macdLine, signalLine } = macd(bars);
+    const macdLast = lastValid(macdLine);
+    const signalLast = lastValid(signalLine);
+    const macdPrev = n >= 2 ? macdLine[n - 2] : NaN;
+    const signalPrev = n >= 2 ? signalLine[n - 2] : NaN;
+    const rsiLast = lastValid(rsi(bars, 14));
+    const rvol = relativeVolume(bars, 20);
+    const adxSeries = adx(bars, 14);
+    const adxLast = adxSeries[n - 1];
+    const adxPrev = n >= 2 ? adxSeries[n - 2] : NaN;
+
+    // Candle range position
+    const dayRange = lastBar ? lastBar.high - lastBar.low : 0;
+    const closePos = dayRange > 0 && lastBar ? (s.lastClose - lastBar.low) / dayRange : 0;
+
+    // 20-day high resistance distance
+    const high20 = Math.max(...bars.slice(-20).map((b) => b.high));
+    const upsideToHigh20 = high20 > 0 ? ((high20 - s.lastClose) / s.lastClose) * 100 : 0;
+
+    // EMA20 freshly crossed EMA50 (within last 5 bars or ratio very tight)
+    const ema20OverEma50 = !Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50;
+    const freshCross = ema20OverEma50 && (ema20 / ema50 - 1) < 0.015;
+
+    // MACD fresh bullish crossover
+    const macdCrossover =
+      !Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast &&
+      !Number.isNaN(macdPrev) && !Number.isNaN(signalPrev) && macdPrev <= signalPrev;
+
+    // ADX 18-28 and rising
+    const adxInZone = !Number.isNaN(adxLast) && adxLast >= 18 && adxLast <= 28;
+    const adxRising = !Number.isNaN(adxLast) && !Number.isNaN(adxPrev) && adxLast > adxPrev;
+
+    return verdict([
+      [s.value > 10_000_000_000,                        'Nilai transaksi > Rp 10 miliar'],
+      [!Number.isNaN(ema20) && s.lastClose > ema20,     'Harga > EMA20'],
+      [freshCross,                                       'EMA20 baru melewati EMA50'],
+      [!Number.isNaN(rsiLast) && rsiLast >= 50 && rsiLast <= 60, 'RSI antara 50 – 60'],
+      [macdCrossover,                                    'MACD baru bullish crossover'],
+      [!Number.isNaN(rvol) && rvol > 1.3,               'RVOL > 1,3'],
+      [closePos >= 0.80,                                 'Close di 80%+ range candle'],
+      [upsideToHigh20 > 8,                               'Jarak ke 20H high > 8%'],
+      [adxInZone && adxRising,                           'ADX 18-28 dan meningkat'],
+    ]);
+  },
+};
+
+// ── 💎 Smart Money Hunter ─────────────────────────────────────────────────────
+
+const smartMoneyPreset: ScreenerPreset = {
+  id: 'smart_money',
+  label: 'Smart Money Hunter',
+  description: 'Mencari tanda akumulasi bandar — volume tinggi tetapi harga belum naik signifikan. Kandidat sebelum pergerakan besar.',
+  criteria: [
+    'Return 1 hari < 3% (harga belum naik banyak)',
+    'RVOL > 2 (volume sudah tinggi)',
+    'Nilai transaksi > Rp 10 miliar',
+    'Close di 65%+ range candle (tutup dekat high)',
+    'MACD baru golden cross (bullish crossover)',
+    'RSI antara 45 – 60',
+    'ADX mulai naik',
+  ],
+  coarseFilter: (s) =>
+    s.value > 10_000_000_000 &&
+    s.percentChange1D >= -1 &&
+    s.percentChange1D < 4,
+  evaluate: (s, bars) => {
+    const n = bars.length;
+    const lastBar = bars[n - 1];
+    const { macdLine, signalLine } = macd(bars);
+    const macdLast = lastValid(macdLine);
+    const signalLast = lastValid(signalLine);
+    const macdPrev = n >= 2 ? macdLine[n - 2] : NaN;
+    const signalPrev = n >= 2 ? signalLine[n - 2] : NaN;
+    const rsiLast = lastValid(rsi(bars, 14));
+    const rvol = relativeVolume(bars, 20);
+    const adxSeries = adx(bars, 14);
+    const adxLast = adxSeries[n - 1];
+    const adxPrev = n >= 2 ? adxSeries[n - 2] : NaN;
+
+    const dayRange = lastBar ? lastBar.high - lastBar.low : 0;
+    const closePos = dayRange > 0 && lastBar ? (s.lastClose - lastBar.low) / dayRange : 0;
+
+    const macdGoldenCross =
+      !Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast &&
+      !Number.isNaN(macdPrev) && !Number.isNaN(signalPrev) && macdPrev <= signalPrev;
+
+    const adxRising = !Number.isNaN(adxLast) && !Number.isNaN(adxPrev) && adxLast > adxPrev;
+
+    return verdict([
+      [s.percentChange1D >= -1 && s.percentChange1D < 3,  'Return 1 hari < 3%'],
+      [!Number.isNaN(rvol) && rvol > 2,                   'RVOL > 2'],
+      [s.value > 10_000_000_000,                           'Nilai transaksi > Rp 10 miliar'],
+      [closePos >= 0.65,                                   'Close di 65%+ range candle'],
+      [macdGoldenCross,                                    'MACD baru golden cross'],
+      [!Number.isNaN(rsiLast) && rsiLast >= 45 && rsiLast <= 60, 'RSI antara 45 – 60'],
+      [adxRising,                                          'ADX mulai naik'],
+    ]);
+  },
+};
+
+// ── 📈 Swing Hunter ───────────────────────────────────────────────────────────
+
+const swingPreset: ScreenerPreset = {
+  id: 'swing',
+  label: 'Swing Hunter',
+  description: 'Uptrend terkonfirmasi oleh tiga EMA, ADX kuat, RSI sehat — kandidat holding 1-4 minggu dengan target 10-20%.',
+  criteria: [
+    'EMA20 > EMA50 > EMA200 (struktur uptrend sempurna)',
+    'ADX > 25 (tren kuat)',
+    'RSI antara 55 – 70',
+    'MACD bullish',
+    'Volume di atas MA20',
+    'Higher High (high hari ini > high kemarin)',
+    'Higher Low (low hari ini > low kemarin)',
+    'Nilai transaksi > Rp 20 miliar',
+  ],
+  coarseFilter: (s) => s.value > 20_000_000_000 && s.percentChange1D > 0,
+  evaluate: (s, bars) => {
+    const n = bars.length;
+    const lastBar = bars[n - 1];
+    const prevBar = n >= 2 ? bars[n - 2] : null;
+    const closes = bars.map((b) => b.close);
+    const ema20 = lastValid(ema(closes, 20));
+    const ema50 = lastValid(ema(closes, 50));
+    const ema200 = lastValid(ema(closes, 200));
+    const { macdLine, signalLine } = macd(bars);
+    const macdLast = lastValid(macdLine);
+    const signalLast = lastValid(signalLine);
+    const rsiLast = lastValid(rsi(bars, 14));
+    const adxSeries = adx(bars, 14);
+    const adxLast = adxSeries[n - 1];
+    const volMa20 = volumeMA(bars, 20);
+
+    const higherHigh = !!lastBar && !!prevBar && lastBar.high > prevBar.high;
+    const higherLow  = !!lastBar && !!prevBar && lastBar.low  > prevBar.low;
+    const volAboveMa = !Number.isNaN(volMa20) && volMa20 > 0 && lastBar && lastBar.volume > volMa20;
+
+    return verdict([
+      [!Number.isNaN(ema20) && !Number.isNaN(ema50) && !Number.isNaN(ema200) && ema20 > ema50 && ema50 > ema200, 'EMA20 > EMA50 > EMA200'],
+      [!Number.isNaN(adxLast) && adxLast > 25,              'ADX > 25'],
+      [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, 'RSI antara 55 – 70'],
+      [!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast, 'MACD bullish'],
+      [!!volAboveMa,                                         'Volume di atas MA20'],
+      [higherHigh,                                           'Higher High'],
+      [higherLow,                                            'Higher Low'],
+      [s.value > 20_000_000_000,                             'Nilai transaksi > Rp 20 miliar'],
+    ]);
+  },
+};
+
+// ── 🔥 High Risk High Reward ──────────────────────────────────────────────────
+
+const hrrrPreset: ScreenerPreset = {
+  id: 'hrrr',
+  label: 'High Risk High Reward',
+  description: 'Saham dengan probabilitas pergerakan ekstrem tinggi — bukan prediksi ARA, tetapi kandidat volatilitas tinggi yang layak dipantau dengan manajemen risiko ketat.',
+  criteria: [
+    'Return 1 hari > 5%',
+    'Nilai transaksi > Rp 15 miliar',
+    'RVOL > 2,5 (volume sangat tinggi)',
+    'Close di 75%+ range candle harian',
+    'RSI antara 60 – 85',
+    'MACD bullish',
+    'Volume MA5 > Volume MA20 (akselerasi volume)',
+  ],
+  coarseFilter: (s) =>
+    s.value > 15_000_000_000 &&
+    s.percentChange1D > 5,
+  evaluate: (s, bars) => {
+    const n = bars.length;
+    const lastBar = bars[n - 1];
+    const volumes = bars.map((b) => b.volume);
+    const volMa5  = lastValid(sma(volumes, 5));
+    const volMa20 = lastValid(sma(volumes, 20));
+    const { macdLine, signalLine } = macd(bars);
+    const macdLast = lastValid(macdLine);
+    const signalLast = lastValid(signalLine);
+    const rsiLast = lastValid(rsi(bars, 14));
+    const rvol = relativeVolume(bars, 20);
+
+    const dayRange = lastBar ? lastBar.high - lastBar.low : 0;
+    const closePos = dayRange > 0 && lastBar ? (s.lastClose - lastBar.low) / dayRange : 0;
+
+    const volAccelerating = !Number.isNaN(volMa5) && !Number.isNaN(volMa20) && volMa5 > volMa20;
+
+    return verdict([
+      [s.percentChange1D > 5,                              'Return 1 hari > 5%'],
+      [s.value > 15_000_000_000,                           'Nilai transaksi > Rp 15 miliar'],
+      [!Number.isNaN(rvol) && rvol > 2.5,                 'RVOL > 2,5'],
+      [closePos >= 0.75,                                   'Close di 75%+ range candle'],
+      [!Number.isNaN(rsiLast) && rsiLast >= 60 && rsiLast <= 85, 'RSI antara 60 – 85'],
+      [!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast, 'MACD bullish'],
+      [volAccelerating,                                    'Volume MA5 > Volume MA20'],
+    ]);
+  },
+};
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
-  ara: araPreset,
-  bpjs: bpjsPreset,
-  momentum: momentumPreset,
-  breakout: breakoutPreset,
+  ara:           araPreset,
+  bpjs:          bpjsPreset,
+  momentum:      momentumPreset,
+  breakout:      breakoutPreset,
+  early_breakout: earlyBreakoutPreset,
+  smart_money:   smartMoneyPreset,
+  swing:         swingPreset,
+  hrrr:          hrrrPreset,
 };
 
-export const SCREENER_PRESET_LIST: ScreenerPreset[] = [araPreset, bpjsPreset, momentumPreset, breakoutPreset];
+export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
+  araPreset, bpjsPreset, momentumPreset, breakoutPreset,
+  earlyBreakoutPreset, smartMoneyPreset, swingPreset, hrrrPreset,
+];
