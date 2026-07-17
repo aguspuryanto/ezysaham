@@ -24,6 +24,7 @@ import { ResultsTable, ResultsView, ScreenerResult } from './components/ResultsT
 import { FilterInfoCard, WatchlistCard } from './components/ScreenerSidebar';
 import { TickerTape } from './components/TickerTape';
 import { useWatchlist } from './hooks/useWatchlist';
+import { PhilosophyBanner } from './components/PhilosophyBanner';
 
 const HISTORY_CONCURRENCY = 6;
 const RESULTS_LIMIT = 50;
@@ -247,6 +248,11 @@ export function ScreenerPage() {
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col gap-1">
+          {/* ── UI — disclaimer banner (hide on mobile) ────────────────────── */}
+          <div className="hidden lg:mt-4 lg:block">
+            <PhilosophyBanner />
+          </div>
+
           <div className="hidden lg:block">
             <PresetTabs items={FILTER_ITEMS} selected={filterId} onSelect={handleSelectFilter} />
           </div>
