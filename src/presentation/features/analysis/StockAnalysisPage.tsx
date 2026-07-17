@@ -221,6 +221,94 @@ function ScenarioCard({ type, entry, tp1, tp2, sl, rr, notes }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// "Layak Dibeli?" helper
+// ─────────────────────────────────────────────────────────────────────────────
+type CheckTone = 'green' | 'amber' | 'red';
+interface CheckPoint { icon: string; tone: CheckTone; label: string; detail: string; }
+
+function buildLayakBeli(
+  summary: StockSummary,
+  analysis: StockAnalysis
+): { points: CheckPoint[]; verdict: string; verdictTone: CheckTone } {
+  const { trendEma, supportResistance, volume, indicators } = analysis;
+  const points: CheckPoint[] = [];
+
+  // 1. Likuiditas
+  const val = summary.value;
+  if (val >= 10_000_000_000) {
+    points.push({ icon: '✅', tone: 'green', label: 'Likuiditas sangat baik', detail: `Nilai transaksi ${new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 1 }).format(val)} — mudah masuk & keluar` });
+  } else if (val >= 1_000_000_000) {
+    points.push({ icon: '⚠️', tone: 'amber', label: 'Likuiditas cukup', detail: `Nilai transaksi ${new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 1 }).format(val)} — perhatikan spread` });
+  } else {
+    points.push({ icon: '❌', tone: 'red', label: 'Likuiditas rendah', detail: `Nilai transaksi ${new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 1 }).format(val)} — risiko illiquid tinggi` });
+  }
+
+  // 2. Trend
+  if (trendEma.trend === 'bullish') {
+    points.push({ icon: '✅', tone: 'green', label: 'Tren naik terkonfirmasi', detail: `EMA20 (${fmtRp(trendEma.ema20)}) > EMA50 (${fmtRp(trendEma.ema50)})` });
+  } else if (trendEma.trend === 'sideways') {
+    points.push({ icon: '⚠️', tone: 'amber', label: 'Tren sideways / konsolidasi', detail: 'EMA belum memberikan sinyal arah yang jelas' });
+  } else {
+    points.push({ icon: '❌', tone: 'red', label: 'Tren turun', detail: `Harga di bawah EMA20 & EMA50 — hindari beli kecuali ada reversal` });
+  }
+
+  // 3. Momentum (MACD + RSI)
+  const macdBull = indicators.macdSignalType === 'bullish' || indicators.macdSignalType === 'bullish_crossover';
+  const rsiBull = indicators.rsiZone === 'bullish_zone';
+  const rsiOB = indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk';
+  if (macdBull && rsiBull) {
+    points.push({ icon: '✅', tone: 'green', label: 'Momentum kuat', detail: `MACD bullish, RSI ${fmtN(indicators.rsi14, 1)} (zona bullish)` });
+  } else if (rsiOB) {
+    points.push({ icon: '⚠️', tone: 'amber', label: 'Momentum overbought', detail: `RSI ${fmtN(indicators.rsi14, 1)} — potensi profit taking / konsolidasi jangka pendek` });
+  } else if (macdBull) {
+    points.push({ icon: '⚠️', tone: 'amber', label: 'Momentum mulai membaik', detail: `MACD bullish, RSI ${fmtN(indicators.rsi14, 1)} — belum optimal` });
+  } else {
+    points.push({ icon: '❌', tone: 'red', label: 'Momentum lemah / bearish', detail: `MACD bearish, RSI ${fmtN(indicators.rsi14, 1)}` });
+  }
+
+  // 4. Volume
+  if (volume.isHighVolume) {
+    points.push({ icon: '✅', tone: 'green', label: 'Volume mengkonfirmasi', detail: `RVOL ${fmtN(volume.relativeVolume, 2)}× — di atas rata-rata, pergerakan valid` });
+  } else {
+    points.push({ icon: '⚠️', tone: 'amber', label: 'Volume masih kurang', detail: `RVOL ${Number.isNaN(volume.relativeVolume) ? '–' : fmtN(volume.relativeVolume, 2)}× — butuh konfirmasi volume lebih tinggi` });
+  }
+
+  // 5. Jarak ke resistance terdekat
+  const r1 = supportResistance.resistances[0];
+  if (r1) {
+    const upside = ((r1.price - summary.lastClose) / summary.lastClose) * 100;
+    if (upside > 5) {
+      points.push({ icon: '✅', tone: 'green', label: 'Ruang naik masih luas', detail: `Resistance terdekat ${fmtRp(r1.price)} — potensi upside ~${upside.toFixed(1)}%` });
+    } else if (upside > 1.5) {
+      points.push({ icon: '⚠️', tone: 'amber', label: 'Sudah dekat resistance', detail: `${r1.label} di ${fmtRp(r1.price)} — potensi upside tinggal ~${upside.toFixed(1)}%` });
+    } else {
+      points.push({ icon: '❌', tone: 'red', label: 'Hampir di resistance', detail: `${r1.label} ${fmtRp(r1.price)} — upside sangat terbatas (${upside.toFixed(1)}%), risiko reversal` });
+    }
+  }
+
+  // Verdict
+  const greens = points.filter((p) => p.tone === 'green').length;
+  const reds = points.filter((p) => p.tone === 'red').length;
+  let verdict: string;
+  let verdictTone: CheckTone;
+  if (greens >= 4 && reds === 0) {
+    verdict = 'Sangat layak dipertimbangkan untuk swing trading. Konfirmasi selalu dengan volume breakout.';
+    verdictTone = 'green';
+  } else if (greens >= 3 && reds <= 1) {
+    verdict = 'Cukup layak untuk swing, kurang ideal untuk scalping. Pantau volume dan level kunci.';
+    verdictTone = 'green';
+  } else if (reds >= 3) {
+    verdict = 'Kurang layak saat ini. Tunggu konfirmasi reversal atau tren yang lebih jelas.';
+    verdictTone = 'red';
+  } else {
+    verdict = 'Sinyal campuran — netral. Tunggu konfirmasi lebih lanjut sebelum entry.';
+    verdictTone = 'amber';
+  }
+
+  return { points, verdict, verdictTone };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main Page Component
 // ─────────────────────────────────────────────────────────────────────────────
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -598,8 +686,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
         {/* ── 7. Kesimpulan ───────────────────────────────────────────────── */}
         <SectionCard number={7} title="Kesimpulan" icon={<BookOpen className="size-4" />} accentClass="bg-zinc-600">
+          {/* Ringkasan singkat */}
           <div className={cn(
-            'rounded-xl border px-4 py-4 mb-4',
+            'rounded-xl border px-4 py-4 mb-5',
             conclusion.overallBias === 'bullish'
               ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5'
               : conclusion.overallBias === 'bearish'
@@ -608,6 +697,59 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           )}>
             <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">{conclusion.summary}</p>
           </div>
+
+          {/* ── "Apakah layak dibeli hari ini?" ───────────────────────── */}
+          {(() => {
+            const { points, verdict, verdictTone } = buildLayakBeli(summary, analysis);
+            const verdictBg = {
+              green: 'border-emerald-300 bg-emerald-600 dark:bg-emerald-600',
+              amber: 'border-amber-300 bg-amber-500 dark:bg-amber-600',
+              red: 'border-rose-300 bg-rose-600 dark:bg-rose-600',
+            };
+            const pointBg: Record<CheckTone, string> = {
+              green: 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5',
+              amber: 'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5',
+              red: 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5',
+            };
+            const labelColor: Record<CheckTone, string> = {
+              green: 'text-emerald-700 dark:text-emerald-300',
+              amber: 'text-amber-700 dark:text-amber-300',
+              red: 'text-rose-700 dark:text-rose-300',
+            };
+            const detailColor: Record<CheckTone, string> = {
+              green: 'text-emerald-600/80 dark:text-emerald-400/70',
+              amber: 'text-amber-600/80 dark:text-amber-400/70',
+              red: 'text-rose-600/80 dark:text-rose-400/70',
+            };
+            return (
+              <div className="mb-5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+                  Apakah {summary.ticker} layak dibeli hari ini?
+                </p>
+                <div className="space-y-2 mb-4">
+                  {points.map((pt) => (
+                    <div key={pt.label} className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', pointBg[pt.tone])}>
+                      <span className="shrink-0 text-base leading-none mt-0.5">{pt.icon}</span>
+                      <div>
+                        <span className={cn('text-sm font-semibold', labelColor[pt.tone])}>{pt.label}</span>
+                        <p className={cn('text-xs mt-0.5 leading-relaxed', detailColor[pt.tone])}>{pt.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* Verdict chip */}
+                <div className={cn('flex items-start gap-3 rounded-xl px-4 py-3 text-white', verdictBg[verdictTone])}>
+                  <span className="shrink-0 text-base leading-none mt-0.5">💬</span>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide opacity-80 mb-0.5">Kesimpulan</p>
+                    <p className="text-sm font-medium leading-relaxed">{verdict}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Level kunci & Waspadai */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-blue-200 dark:border-blue-400/20 bg-blue-50 dark:bg-blue-400/5 px-4 py-3">
               <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">🔑 Level Kunci</p>
