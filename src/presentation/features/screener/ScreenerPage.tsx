@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   Loader2,
   RefreshCw,
+  Rocket,
   Table2,
   TrendingUp,
   X,
@@ -38,6 +39,7 @@ const FILTER_ITEMS: FilterChipItem[] = [
   { id: 'ara', label: 'ARA', icon: Flame },
   { id: 'bpjs', label: 'BPJS', icon: Zap },
   { id: 'momentum', label: 'Momentum', icon: TrendingUp },
+  { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
 ];
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [

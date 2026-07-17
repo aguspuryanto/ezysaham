@@ -1,7 +1,7 @@
-import { Star, TrendingDown, TrendingUp, SearchX, ChevronRight } from 'lucide-react';
+import { Star, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket } from 'lucide-react';
 import Link from 'next/link';
 import { StockSummary } from '@/domain/models/Stock';
-import { PresetEvaluation } from '@/domain/screener/presets';
+import { BreakoutScores, PresetEvaluation } from '@/domain/screener/presets';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 
 export interface ScreenerResult {
@@ -90,6 +90,61 @@ function ChangeBadge({ value }: { value: number }) {
   );
 }
 
+// ── Breakout Score badge ──────────────────────────────────────────────────────
+const STATUS_STYLES: Record<BreakoutScores['status'], string> = {
+  BUY_WATCH: 'bg-emerald-500 text-white dark:bg-emerald-600',
+  WATCH:     'bg-amber-400 text-white dark:bg-amber-500',
+  SKIP:      'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+};
+
+function BreakoutBadge({ scores }: { scores: BreakoutScores }) {
+  return (
+    <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+      {/* Status pill + composite */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide', STATUS_STYLES[scores.status])}>
+          <Rocket className="size-3" />
+          {scores.status === 'BUY_WATCH' ? 'BUY WATCH' : scores.status}
+        </span>
+        <span className="font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+          Score <span className="font-bold text-zinc-700 dark:text-zinc-200">{scores.composite}</span>/100
+        </span>
+      </div>
+
+      {/* Mini score bars */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {([
+          { label: '🔥 Momentum', value: scores.momentum },
+          { label: '💰 Likuiditas', value: scores.likuiditas },
+          { label: '🏦 Smart Money', value: scores.smartMoney },
+          { label: '📈 Prob Naik', value: scores.probUp },
+        ] as const).map(({ label, value }) => (
+          <div key={label}>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
+              <span className="text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300">{value}</span>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+              <div
+                className={cn('h-full rounded-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
+                style={{ width: `${value}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Risk indicator */}
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="text-zinc-400 dark:text-zinc-500">⚠️ Distribution Risk</span>
+        <span className={cn('font-mono font-semibold', scores.distributionRisk >= 50 ? 'text-rose-500' : scores.distributionRisk >= 30 ? 'text-amber-500' : 'text-emerald-500')}>
+          {scores.distributionRisk}/100
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ── Empty state ────────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
@@ -115,18 +170,27 @@ function StockCard({
   isWatchlisted: boolean;
   onToggleWatchlist: () => void;
 }) {
-  const { summary } = result;
+  const { summary, evaluation } = result;
   const positive = summary.percentChange1D >= 0;
+  const bScores = evaluation.breakoutScores;
 
   return (
     <Link
       href={`/screener/${summary.ticker}`}
       className={cn(
-        'group relative flex flex-col rounded-2xl border border-zinc-200 bg-white p-4 transition-all duration-200',
+        'group relative flex flex-col rounded-2xl border bg-white p-4 transition-all duration-200',
+        bScores?.status === 'BUY_WATCH'
+          ? 'border-emerald-300 dark:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/15'
+          : 'border-zinc-200 dark:border-zinc-800',
         'hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-500/10 hover:-translate-y-0.5',
-        'dark:border-zinc-800 dark:bg-zinc-900/30 dark:hover:border-emerald-500/40 dark:hover:shadow-emerald-400/10'
+        'dark:bg-zinc-900/30 dark:hover:border-emerald-500/40 dark:hover:shadow-emerald-400/10'
       )}
     >
+      {/* BUY_WATCH glow border */}
+      {bScores?.status === 'BUY_WATCH' && (
+        <div className="absolute inset-0 rounded-2xl ring-2 ring-emerald-400/30 dark:ring-emerald-500/20 pointer-events-none" />
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -149,16 +213,21 @@ function StockCard({
         </div>
       </div>
 
-      {/* Footer meta */}
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
-        <span>Nilai {formatCompact(summary.value)}</span>
-        {summary.per > 0 && <span>P/E {summary.per.toFixed(1)}</span>}
-        <span className="ml-auto flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-          Analisis <ChevronRight className="size-3.5" />
-        </span>
-      </div>
+      {/* Breakout scores (only for breakout preset) */}
+      {bScores ? (
+        <BreakoutBadge scores={bScores} />
+      ) : (
+        /* Footer meta — standard */
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+          <span>Nilai {formatCompact(summary.value)}</span>
+          {summary.per > 0 && <span>P/E {summary.per.toFixed(1)}</span>}
+          <span className="ml-auto flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+            Analisis <ChevronRight className="size-3.5" />
+          </span>
+        </div>
+      )}
 
-      {/* Accent bar — change indicator */}
+      {/* Accent bar */}
       <div
         className={cn(
           'absolute bottom-0 left-4 right-4 h-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity',
@@ -181,10 +250,14 @@ function StockTableRow({
   isWatchlisted: boolean;
   onToggleWatchlist: () => void;
 }) {
-  const { summary } = result;
+  const { summary, evaluation } = result;
+  const bScores = evaluation.breakoutScores;
 
   return (
-    <tr className="group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/40">
+    <tr className={cn(
+      'group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/40',
+      bScores?.status === 'BUY_WATCH' && 'bg-emerald-50/50 dark:bg-emerald-400/5'
+    )}>
       <td className="px-4 py-3">
         <WatchlistStar
           active={isWatchlisted}
@@ -214,9 +287,31 @@ function StockTableRow({
       <td className="px-4 py-3 font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
         {formatCompact(summary.value)}
       </td>
-      <td className="px-4 py-3 font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
-        {summary.per > 0 ? summary.per.toFixed(1) : '—'}
-      </td>
+
+      {/* Breakout score column (shows composite + status) or P/E */}
+      {bScores ? (
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide', STATUS_STYLES[bScores.status])}>
+              <Rocket className="size-2.5" />
+              {bScores.status}
+            </span>
+            <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{bScores.composite}/100</span>
+          </div>
+          <div className="flex gap-2 mt-1 text-[10px] text-zinc-400">
+            <span>🔥{bScores.momentum}</span>
+            <span>🏦{bScores.smartMoney}</span>
+            <span className={bScores.distributionRisk >= 50 ? 'text-rose-500' : 'text-emerald-500'}>
+              ⚠️{bScores.distributionRisk}
+            </span>
+          </div>
+        </td>
+      ) : (
+        <td className="px-4 py-3 font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
+          {summary.per > 0 ? summary.per.toFixed(1) : '—'}
+        </td>
+      )}
+
       <td className="px-4 py-3">
         <Link
           href={`/screener/${summary.ticker}`}
@@ -235,6 +330,8 @@ function StockTableRow({
 // ─────────────────────────────────────────────────────────────────────────────
 export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }: ResultsTableProps) {
   if (results.length === 0) return <EmptyState />;
+
+  const hasBreakoutScores = results.some((r) => r.evaluation.breakoutScores);
 
   if (view === 'grid') {
     return (
@@ -264,7 +361,7 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
               <th className="px-4 py-3">Harga</th>
               <th className="px-4 py-3">1D</th>
               <th className="px-4 py-3">Nilai Transaksi</th>
-              <th className="px-4 py-3">P/E</th>
+              <th className="px-4 py-3">{hasBreakoutScores ? 'Score & Status' : 'P/E'}</th>
               <th className="px-4 py-3">Detail</th>
             </tr>
           </thead>
