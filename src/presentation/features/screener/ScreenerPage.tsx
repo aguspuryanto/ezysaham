@@ -1,15 +1,12 @@
 'use client';
 
 import {
-  Activity,
   AlertCircle,
   Flame,
   LayoutGrid,
   Loader2,
   RefreshCw,
   Rocket,
-  Shield,
-  Star,
   Table2,
   TrendingUp,
   X,
@@ -38,13 +35,12 @@ type ScanStatus = 'idle' | 'loading-summary' | 'scanning' | 'done' | 'error';
 type SortKey = 'change_desc' | 'change_asc' | 'value_desc' | 'ticker_asc';
 
 const FILTER_ITEMS: FilterChipItem[] = [
-  { id: 'all',           label: 'Semua',               icon: LayoutGrid },
-  // ── EzySaham V2 Watchlist ────────────────────────────────────────
-  { id: 'momentum',      label: '🚀 Momentum Hunter',    icon: TrendingUp },
-  { id: 'early_breakout',label: '⭐ Early Breakout',      icon: Star },
-  { id: 'smart_money',   label: '💎 Smart Money',          icon: Shield },
-  { id: 'swing',         label: '📈 Swing Hunter',         icon: Activity },
-  { id: 'hrrr',          label: '🔥 High Risk / Reward',   icon: Flame },
+  { id: 'all',      label: 'Semua',          icon: LayoutGrid },
+  { id: 'momentum', label: 'Momentum Hunter', icon: TrendingUp },
+  // ── Coming soon ─────────────────────────────────────────────────────────
+  { id: 'breakout', label: 'Breakout Hunter',  icon: Rocket,    disabled: true },
+  { id: 'ara',      label: 'High Risk / Reward', icon: Flame,   disabled: true },
+  { id: 'bpjs',     label: 'Smart Money',     icon: Zap,        disabled: true },
 ];
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
