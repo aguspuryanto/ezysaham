@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
+import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
@@ -40,6 +41,7 @@ import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRep
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
+import { OHLCVChart } from './OHLCVChart';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtRp(n: number): string {
@@ -317,6 +319,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const [status, setStatus] = useState<PageStatus>('loading');
   const [summary, setSummary] = useState<StockSummary | null>(null);
   const [analysis, setAnalysis] = useState<StockAnalysis | null>(null);
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
@@ -330,6 +333,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       const found = summaries.find((s) => s.ticker === ticker.toUpperCase());
       if (!found) throw new Error('Ticker tidak ditemukan');
       setSummary(found);
+      setBars(bars);
       const result = computeStockAnalysis(found, bars);
       setAnalysis(result);
       setGeneratedAt(new Date());
@@ -460,6 +464,11 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             )}
           </div>
         </div>
+
+        {/* ── Price Chart ─────────────────────────────────────────────────── */}
+        {bars.length > 0 && (
+          <OHLCVChart bars={bars} currentClose={summary.lastClose} />
+        )}
 
         {/* ── 1. Trend & EMA ──────────────────────────────────────────────── */}
         <SectionCard number={1} title="Trend & EMA" icon={<TrendingUp className="size-4" />} accentClass="bg-blue-500">
