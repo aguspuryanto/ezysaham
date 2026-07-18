@@ -1,4 +1,5 @@
 import { ScreenerPage } from "@/presentation/features/screener/ScreenerPage";
+import { Analytics } from '@vercel/analytics/next';
 
 export default function Home() {
   return (
@@ -21,6 +22,7 @@ export default function Home() {
           </div>
         </div>
       </footer>
+      <Analytics />
     </div>
   );
 }
