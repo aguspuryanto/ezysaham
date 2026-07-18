@@ -111,25 +111,18 @@ const bpjsPreset: ScreenerPreset = {
 
 const momentumPreset: ScreenerPreset = {
   id: 'momentum',
-  label: 'Momentum Hunter',
-  description: 'Saham yang sedang mengalami percepatan momentum — return 5-20% hari ini dengan konfirmasi EMA, MACD, RSI, volume, dan posisi close dekat high.',
+  label: 'Momentum',
+  description: 'Trend naik yang sudah terkonfirmasi EMA, MACD, RSI, dan lonjakan volume relatif.',
   criteria: [
-    'Return 1 hari antara 5% – 20%',
-    'Nilai transaksi > Rp 20 miliar',
-    'RVOL > 1,8 (volume di atas rata-rata)',
-    'Close di 70%+ range candle harian',
-    'EMA20 > EMA50 (struktur uptrend)',
+    'EMA20 > EMA50',
     'Close > EMA20',
-    'MACD bullish (MACD > Signal)',
-    'RSI antara 60 – 75',
+    'MACD bullish',
+    'RSI antara 55-70',
+    'RVOL > 2',
+    'Nilai transaksi > Rp 20 miliar',
   ],
-  // Cheap summary-only pre-filter: return 5-20% + value > 20B
-  coarseFilter: (s) =>
-    s.value > 20_000_000_000 &&
-    s.percentChange1D >= 5 &&
-    s.percentChange1D <= 20,
+  coarseFilter: (s) => s.value > 20_000_000_000,
   evaluate: (s, bars) => {
-    const lastBar = bars[bars.length - 1];
     const closes = bars.map((b) => b.close);
     const ema20 = lastValid(ema(closes, 20));
     const ema50 = lastValid(ema(closes, 50));
@@ -139,21 +132,13 @@ const momentumPreset: ScreenerPreset = {
     const rsiLast = lastValid(rsi(bars, 14));
     const rvol = relativeVolume(bars, 20);
 
-    // Close position in today's candle range (0–1)
-    const dayRange = lastBar ? lastBar.high - lastBar.low : 0;
-    const closePos = dayRange > 0 && lastBar
-      ? (s.lastClose - lastBar.low) / dayRange
-      : 0;
-
     return verdict([
-      [s.percentChange1D >= 5 && s.percentChange1D <= 20,  'Return 1 hari antara 5% – 20%'],
-      [s.value > 20_000_000_000,                            'Nilai transaksi > Rp 20 miliar'],
-      [!Number.isNaN(rvol) && rvol > 1.8,                  'RVOL > 1,8'],
-      [closePos >= 0.70,                                    'Close di 70%+ range candle'],
       [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
-      [!Number.isNaN(ema20) && s.lastClose > ema20,         'Close > EMA20'],
+      [!Number.isNaN(ema20) && s.lastClose > ema20, 'Close > EMA20'],
       [!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast, 'MACD bullish'],
-      [!Number.isNaN(rsiLast) && rsiLast >= 60 && rsiLast <= 75, 'RSI antara 60 – 75'],
+      [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, 'RSI antara 55-70'],
+      [!Number.isNaN(rvol) && rvol > 2, 'RVOL > 2'],
+      [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
     ]);
   },
 };

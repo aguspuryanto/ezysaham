@@ -62,7 +62,7 @@ export function PhilosophyBanner() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="mb-1 overflow-hidden rounded-2xl border border-blue-200/70 bg-gradient-to-br from-blue-50 to-indigo-50/60 dark:border-blue-400/15 dark:from-blue-950/40 dark:to-indigo-950/30">
+    <div className="mb-4 overflow-hidden rounded-2xl border border-blue-200/70 bg-gradient-to-br from-blue-50 to-indigo-50/60 dark:border-blue-400/15 dark:from-blue-950/40 dark:to-indigo-950/30">
       {/* ── Collapsed header (always visible) ───────────────────────── */}
       <button
         type="button"
@@ -144,7 +144,7 @@ export function PhilosophyBanner() {
           </div>
 
           {/* Disclaimer */}
-          <div className="flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
+          {/* <div className="flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" strokeWidth={2} />
             <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
               <strong>Disclaimer:</strong> Seluruh analisis di EzySaham bersifat
@@ -153,7 +153,7 @@ export function PhilosophyBanner() {
               konsultasikan dengan penasihat keuangan terdaftar, dan terapkan manajemen risiko yang
               ketat sebelum mengambil keputusan investasi.
             </p>
-          </div>
+          </div> */}
         </div>
       )}
     </div>

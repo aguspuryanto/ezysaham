@@ -35,12 +35,11 @@ type ScanStatus = 'idle' | 'loading-summary' | 'scanning' | 'done' | 'error';
 type SortKey = 'change_desc' | 'change_asc' | 'value_desc' | 'ticker_asc';
 
 const FILTER_ITEMS: FilterChipItem[] = [
-  { id: 'all',      label: 'Semua',          icon: LayoutGrid },
-  { id: 'momentum', label: 'Momentum Hunter', icon: TrendingUp },
-  // ── Coming soon ─────────────────────────────────────────────────────────
-  { id: 'breakout', label: 'Breakout Hunter',  icon: Rocket,    disabled: true },
-  { id: 'ara',      label: 'High Risk / Reward', icon: Flame,   disabled: true },
-  { id: 'bpjs',     label: 'Smart Money',     icon: Zap,        disabled: true },
+  { id: 'all', label: 'Semua', icon: LayoutGrid },
+  { id: 'ara', label: 'ARA', icon: Flame },
+  { id: 'bpjs', label: 'BPJS', icon: Zap },
+  { id: 'momentum', label: 'Momentum', icon: TrendingUp },
+  { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
 ];
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [

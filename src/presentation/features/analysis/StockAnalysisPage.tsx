@@ -21,14 +21,19 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart2,
+  Bookmark,
+  BookmarkCheck,
   BookOpen,
   Crosshair,
   ExternalLink,
+  HelpCircle,
   Loader2,
   RefreshCw,
+  Share2,
   Target,
   TrendingDown,
   TrendingUp,
+  TriangleAlert,
   Zap,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -40,6 +45,7 @@ import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
+import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
 import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
 import { OHLCVChart } from './OHLCVChart';
 
@@ -161,9 +167,9 @@ function RsiBar({ value }: { value: number }) {
   const pct = Math.min(100, Math.max(0, value));
   const color =
     value < 30 ? 'bg-rose-500' :
-    value > 80 ? 'bg-red-600' :
-    value > 70 ? 'bg-amber-500' :
-    value >= 55 ? 'bg-emerald-500' : 'bg-blue-400';
+      value > 80 ? 'bg-red-600' :
+        value > 70 ? 'bg-amber-500' :
+          value >= 55 ? 'bg-emerald-500' : 'bg-blue-400';
   return (
     <div className="space-y-1.5">
       <div className="h-3 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800 relative">
@@ -321,6 +327,23 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const [analysis, setAnalysis] = useState<StockAnalysis | null>(null);
   const [bars, setBars] = useState<OHLCVBar[]>([]);
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
+  const [justCopied, setJustCopied] = useState(false);
+  const watchlist = useWatchlist();
+
+  const handleShare = useCallback(async () => {
+    if (!summary) return;
+    const url = window.location.href;
+    const shareData = { title: `${summary.ticker} — ${summary.name}`, text: 'Analisis teknikal saham', url };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch { /* user cancelled */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setJustCopied(true);
+      setTimeout(() => setJustCopied(false), 2000);
+    } catch { /* clipboard unavailable */ }
+  }, [summary]);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -380,6 +403,13 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const isBullish = trendEma.trend === 'bullish';
   const isBearish = trendEma.trend === 'bearish';
   const positiveDay = summary.percentChange1D >= 0;
+  const isWatched = watchlist.has(summary.ticker);
+  const prevDateLabel = generatedAt
+    ? new Date(generatedAt.getTime() - 86_400_000).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '–';
+  const todayDateLabel = generatedAt
+    ? generatedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '–';
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -432,36 +462,95 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
         {/* Hero summary card */}
         <div className={cn(
-          'rounded-2xl border p-5 flex flex-wrap gap-4 items-center justify-between',
+          'rounded-2xl border p-5 space-y-4',
           isBullish
             ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5'
             : isBearish
-            ? 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5'
-            : 'border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900/40'
+              ? 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5'
+              : 'border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900/40'
         )}>
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Pill tone={isBullish ? 'green' : isBearish ? 'red' : 'amber'}>
-                {isBullish ? '🟢 Bullish' : isBearish ? '🔴 Bearish' : '🟡 Sideways'}
-              </Pill>
-              <Pill tone="zinc">Sektor: {summary.sector || '–'}</Pill>
-              {summary.per > 0 && <Pill tone="zinc">P/E {summary.per.toFixed(1)}</Pill>}
-              {summary.pbv > 0 && <Pill tone="zinc">P/BV {summary.pbv.toFixed(2)}</Pill>}
-            </div>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-xl">
-              {conclusion.summary}
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <div className="flex flex-wrap gap-3 text-sm text-zinc-500 dark:text-zinc-400">
-              <span>Nilai {formatCompact(summary.value)}</span>
-              <span>Market Cap {formatCompact(summary.capitalization)}</span>
-            </div>
-            {generatedAt && (
-              <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                Dianalisis {generatedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-              </span>
+          {/* Action row */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={load}
+              title="Muat ulang analisis"
+              className="flex size-8 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+            >
+              <RefreshCw className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleShare}
+              title="Bagikan"
+              className="flex size-8 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+            >
+              <Share2 className="size-3.5" />
+            </button>
+            {justCopied && (
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">Tautan disalin</span>
             )}
+            <button
+              type="button"
+              onClick={() => watchlist.toggle(summary.ticker)}
+              className={cn(
+                'flex items-center gap-1.5 text-sm font-medium transition-colors',
+                isWatched ? 'text-amber-500' : 'text-zinc-400 dark:text-zinc-500 hover:text-amber-500'
+              )}
+            >
+              {isWatched ? <BookmarkCheck className="size-4" /> : <Bookmark className="size-4" />}
+              {isWatched ? 'Watching' : 'Watch'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+            {/* Left: identity */}
+            <div className="space-y-2 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+                  {summary.name} ({summary.ticker})
+                </h1>
+                <Pill tone="zinc">{summary.sector || '–'}</Pill>
+              </div>
+              <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400">
+                <span><span className="font-semibold text-zinc-600 dark:text-zinc-300">Market Cap:</span> {formatCompact(summary.capitalization)}</span>
+                <span>
+                  <span className="font-semibold text-zinc-600 dark:text-zinc-300">Avg Daily Volume:</span>{' '}
+                  {Number.isNaN(volume.volumeMa20) ? '–' : `${formatCompact(volume.volumeMa20)} lembar`}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Pill tone={isBullish ? 'green' : isBearish ? 'red' : 'amber'}>
+                  {isBullish ? '🟢 Bullish' : isBearish ? '🔴 Bearish' : '🟡 Sideways'}
+                </Pill>
+                {summary.per > 0 && <Pill tone="zinc">P/E {summary.per.toFixed(1)}</Pill>}
+                {summary.pbv > 0 && <Pill tone="zinc">P/BV {summary.pbv.toFixed(2)}</Pill>}
+              </div>
+              <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-xl">
+                {conclusion.summary}
+              </p>
+            </div>
+
+            {/* Right: price */}
+            <div className="hidden sm:block text-right space-y-1">
+              <div className="flex items-center justify-end gap-2">
+                <span className="font-mono text-2xl sm:text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {formatRupiah(summary.lastClose)}
+                </span>
+                <span className={cn(
+                  'rounded-full px-3 py-1 text-sm font-semibold text-white',
+                  positiveDay ? 'bg-emerald-600' : 'bg-rose-600'
+                )}>
+                  {formatPercent(summary.percentChange1D)}
+                </span>
+              </div>
+              {generatedAt && (
+                <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                  Last close: {todayDateLabel}, {generatedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} GMT+7
+                  {' · '}Vol: {new Intl.NumberFormat('id-ID').format(summary.volume)}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -513,8 +602,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               </p>
               {supportResistance.resistances.length > 0
                 ? supportResistance.resistances.map((r) => (
-                    <LevelRow key={r.label} label={r.label} price={r.price} description={r.description} tone="red" />
-                  ))
+                  <LevelRow key={r.label} label={r.label} price={r.price} description={r.description} tone="red" />
+                ))
                 : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
             </div>
             <div className="space-y-2">
@@ -523,8 +612,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               </p>
               {supportResistance.supports.length > 0
                 ? supportResistance.supports.map((s) => (
-                    <LevelRow key={s.label} label={s.label} price={s.price} description={s.description} tone="green" />
-                  ))
+                  <LevelRow key={s.label} label={s.label} price={s.price} description={s.description} tone="green" />
+                ))
                 : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
             </div>
           </div>
@@ -539,7 +628,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             {priceAction.pattern !== 'none' && (
               <Pill tone={
                 ['bullish_engulfing', 'hammer', 'marubozu_bullish'].includes(priceAction.pattern) ? 'green' :
-                ['bearish_engulfing', 'shooting_star', 'marubozu_bearish'].includes(priceAction.pattern) ? 'red' : 'zinc'
+                  ['bearish_engulfing', 'shooting_star', 'marubozu_bearish'].includes(priceAction.pattern) ? 'red' : 'zinc'
               }>
                 {priceAction.patternLabel}
               </Pill>
@@ -600,8 +689,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">RSI (14)</h3>
                 <Pill tone={
                   indicators.rsiZone === 'oversold' ? 'green' :
-                  indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'red' :
-                  indicators.rsiZone === 'bullish_zone' ? 'green' : 'zinc'
+                    indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'red' :
+                      indicators.rsiZone === 'bullish_zone' ? 'green' : 'zinc'
                 }>
                   {fmtN(indicators.rsi14, 1)}
                 </Pill>
@@ -618,7 +707,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">MACD (12, 26, 9)</h3>
                 <Pill tone={
                   indicators.macdSignalType === 'bullish_crossover' || indicators.macdSignalType === 'bullish' ? 'green' :
-                  indicators.macdSignalType === 'bearish_crossover' || indicators.macdSignalType === 'bearish' ? 'red' : 'zinc'
+                    indicators.macdSignalType === 'bearish_crossover' || indicators.macdSignalType === 'bearish' ? 'red' : 'zinc'
                 }>
                   {indicators.macdSignalType.replace(/_/g, ' ')}
                 </Pill>
@@ -701,8 +790,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             conclusion.overallBias === 'bullish'
               ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5'
               : conclusion.overallBias === 'bearish'
-              ? 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5'
-              : 'border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/40'
+                ? 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5'
+                : 'border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/40'
           )}>
             <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">{conclusion.summary}</p>
           </div>
@@ -771,13 +860,51 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               <p className="text-sm text-amber-600 dark:text-amber-300 leading-relaxed">{conclusion.watchOut}</p>
             </div>
           </div>
-          <p className="mt-4 text-xs text-zinc-400 dark:text-zinc-600 italic leading-relaxed">
-            ⚠️ Analisis ini bersifat edukatif berbasis data EOD. Bukan rekomendasi beli/jual. Selalu lakukan riset mandiri dan terapkan manajemen risiko yang ketat.
-          </p>
         </SectionCard>
 
-        {/* ── Filosofi & Disclaimer ──────────────────────────────────── */}
+        {/* ── Cara Membaca Analisis Ini ────────────────────────────────── */}
+        <section className="rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-white dark:bg-zinc-900/40">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-indigo-500 text-white text-sm">
+              <HelpCircle className="size-4" />
+            </span>
+            <h2 className="font-semibold text-zinc-800 dark:text-zinc-100">Cara Membaca Analisis Ini</h2>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              Setiap bagian di atas menjawab satu sudut pandang berbeda. Baca dari atas ke bawah, lalu bandingkan
+              apakah sinyalnya searah (semua bullish/bearish) atau saling bertentangan — itulah yang menentukan
+              seberapa yakin sebuah sinyal layak ditindaklanjuti.
+            </p>
+            <ul className="space-y-1.5">
+              <Note text="Trend & EMA — arah tren utama. Harga di atas EMA20 & EMA50 menandakan tren naik yang lebih sehat untuk swing." />
+              <Note text="Level Penting — batas resistance (atap) dan support (lantai) sebagai acuan area beli/jual dan penentu stop loss." />
+              <Note text="Price Action — candle & pola terakhir, menunjukkan siapa yang sedang menguasai: pembeli atau penjual." />
+              <Note text="Volume — validasi gerakan harga. Kenaikan harga tanpa volume tinggi lebih rawan gagal (fake breakout)." />
+              <Note text="Indikator Teknikal — RSI/MACD/Stochastic mengukur momentum dan potensi jenuh beli (overbought) atau jenuh jual (oversold)." />
+              <Note text="Rencana Trading — contoh skenario entry, target profit, dan stop loss lengkap dengan rasio risk/reward." />
+              <Note text="Kesimpulan — rangkuman semua faktor di atas jadi satu jawaban sederhana: layak dibeli atau belum." />
+            </ul>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              Gunakan semua ini sebagai satu alat bantu, bukan satu-satunya dasar keputusan. Tetap kombinasikan
+              dengan manajemen risiko (ukuran posisi & stop loss) dan kondisi pasar secara keseluruhan.
+            </p>
+          </div>
+        </section>
+
+        {/* ── Filosofi ─────────────────────────────────────────────────── */}
         <PhilosophyBanner />
+
+        {/* ── Disclaimer ───────────────────────────────────────────────── */}
+        <div className="flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" strokeWidth={2} />
+          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+            <strong>Disclaimer:</strong> Analisis ini bersifat <strong>edukatif</strong> dan dihasilkan dari data
+            historis EOD (End-of-Day). <strong>Bukan merupakan rekomendasi beli/jual.</strong> Selalu lakukan riset
+            mandiri, konsultasikan dengan penasihat keuangan terdaftar, dan terapkan manajemen risiko yang ketat
+            sebelum mengambil keputusan investasi.
+          </p>
+        </div>
 
         {/* External link footer */}
         <div className="flex items-center justify-center gap-3 pt-2 text-xs text-zinc-400 dark:text-zinc-600">
