@@ -410,6 +410,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const todayDateLabel = generatedAt
     ? generatedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
     : '–';
+  const lastBarDateLabel = bars.length > 0
+    ? new Date(bars[bars.length - 1].date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+    : todayDateLabel;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -546,8 +549,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               </div>
               {generatedAt && (
                 <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  Last close: {todayDateLabel}, {generatedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} GMT+7
-                  {' · '}Vol: {new Intl.NumberFormat('id-ID').format(summary.volume)}
+                  Last close: {lastBarDateLabel} • Vol: {new Intl.NumberFormat('id-ID').format(summary.volume)}
                 </p>
               )}
             </div>
