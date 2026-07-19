@@ -54,13 +54,6 @@ import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
 import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
-import { Alert, AlertDescription, AlertTitle } from '@/presentation/components/ui/alert';
-import { Badge } from '@/presentation/components/ui/badge';
-import { Button } from '@/presentation/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/presentation/components/ui/card';
-import { Separator } from '@/presentation/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/presentation/components/ui/tabs';
-import { TONE_DETAIL_TEXT, TONE_SOLID, TONE_SURFACE, TONE_TEXT, Tone, toneBadgeVariants } from '@/presentation/components/ui/tone';
 import { OHLCVChart } from './OHLCVChart';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,11 +67,24 @@ function fmtN(n: number, dec = 2): string {
 }
 
 // ─── Pill ─────────────────────────────────────────────────────────────────────
-function Pill({ children, tone }: { children: React.ReactNode; tone: Tone }) {
+function Pill({
+  children,
+  tone,
+}: {
+  children: React.ReactNode;
+  tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc';
+}) {
+  const map = {
+    green: 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/20',
+    red: 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-400/10 dark:text-rose-300 dark:border-rose-400/20',
+    amber: 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-400/10 dark:text-amber-300 dark:border-amber-400/20',
+    blue: 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-400/10 dark:text-blue-300 dark:border-blue-400/20',
+    zinc: 'bg-zinc-100 text-zinc-600 border border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700',
+  };
   return (
-    <Badge className={cn('px-2.5 py-0.5 text-xs font-medium', toneBadgeVariants({ tone }))}>
+    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', map[tone])}>
       {children}
-    </Badge>
+    </span>
   );
 }
 
@@ -97,18 +103,18 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="gap-0 rounded-2xl border border-border bg-white py-0 shadow-none ring-0 dark:bg-zinc-900/40">
-      <CardHeader className="flex items-center gap-3 border-b border-border px-5 py-4">
+    <section className="rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-white dark:bg-zinc-900/40">
+      <div className={cn('flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800')}>
         <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl text-white text-sm', accentClass)}>
           {icon}
         </span>
-        <CardTitle className="text-base font-semibold text-foreground">
-          <span className="mr-1.5 text-muted-foreground/70">{number}.</span>
+        <h2 className="font-semibold text-zinc-800 dark:text-zinc-100">
+          <span className="text-zinc-400 dark:text-zinc-600 mr-1.5">{number}.</span>
           {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="px-5 py-4">{children}</CardContent>
-    </Card>
+        </h2>
+      </div>
+      <div className="px-5 py-4">{children}</div>
+    </section>
   );
 }
 
@@ -116,8 +122,8 @@ function SectionCard({
 function KV({ label, value, valueClass }: { label: string; value: React.ReactNode; valueClass?: string }) {
   return (
     <div className="flex items-center justify-between gap-2 text-sm py-1">
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className={cn('font-mono tabular-nums text-right text-foreground', valueClass)}>
+      <span className="text-zinc-500 dark:text-zinc-400 shrink-0">{label}</span>
+      <span className={cn('font-mono tabular-nums text-zinc-800 dark:text-zinc-200 text-right', valueClass)}>
         {value}
       </span>
     </div>
@@ -129,7 +135,7 @@ function Note({ text, tone = 'zinc' }: { text: string; tone?: 'green' | 'red' | 
   const colors = {
     green: 'text-emerald-700 dark:text-emerald-400',
     red: 'text-rose-700 dark:text-rose-400',
-    zinc: 'text-muted-foreground',
+    zinc: 'text-zinc-600 dark:text-zinc-400',
   };
   return (
     <li className={cn('flex gap-2 text-sm leading-relaxed', colors[tone])}>
@@ -143,13 +149,19 @@ function Note({ text, tone = 'zinc' }: { text: string; tone?: 'green' | 'red' | 
 function LevelRow({ label, price, description, tone }: {
   label: string; price: number; description: string; tone: 'red' | 'green';
 }) {
+  const bg = tone === 'red'
+    ? 'bg-rose-50 border-rose-200 dark:bg-rose-400/5 dark:border-rose-400/20'
+    : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-400/5 dark:border-emerald-400/20';
+  const labelColor = tone === 'red'
+    ? 'text-rose-600 dark:text-rose-400'
+    : 'text-emerald-600 dark:text-emerald-400';
   return (
-    <div className={cn('flex items-center justify-between gap-4 rounded-xl border px-4 py-2.5', TONE_SURFACE[tone])}>
+    <div className={cn('flex items-center justify-between gap-4 rounded-xl border px-4 py-2.5', bg)}>
       <div className="flex items-center gap-3">
-        <span className={cn('w-7 text-center text-sm font-bold', TONE_TEXT[tone])}>{label}</span>
-        <span className="text-sm text-muted-foreground">{description}</span>
+        <span className={cn('w-7 text-center text-sm font-bold', labelColor)}>{label}</span>
+        <span className="text-sm text-zinc-500 dark:text-zinc-400">{description}</span>
       </div>
-      <span className="font-mono text-base tabular-nums font-semibold text-foreground">
+      <span className="font-mono text-base tabular-nums font-semibold text-zinc-800 dark:text-zinc-200">
         {fmtRp(price)}
       </span>
     </div>
@@ -167,14 +179,14 @@ function RsiBar({ value }: { value: number }) {
           value >= 55 ? 'bg-emerald-500' : 'bg-blue-400';
   return (
     <div className="space-y-1.5">
-      <div className="h-3 w-full overflow-hidden rounded-full bg-muted relative">
+      <div className="h-3 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800 relative">
         {/* zone markers */}
-        <div className="absolute inset-y-0 left-[30%] w-px bg-border" />
-        <div className="absolute inset-y-0 left-[55%] w-px bg-border" />
-        <div className="absolute inset-y-0 left-[70%] w-px bg-border" />
+        <div className="absolute inset-y-0 left-[30%] w-px bg-zinc-300/60 dark:bg-zinc-600/60" />
+        <div className="absolute inset-y-0 left-[55%] w-px bg-zinc-300/60 dark:bg-zinc-600/60" />
+        <div className="absolute inset-y-0 left-[70%] w-px bg-zinc-300/60 dark:bg-zinc-600/60" />
         <div className={cn('h-full rounded-full transition-all', color)} style={{ width: `${pct}%` }} />
       </div>
-      <div className="flex justify-between text-[11px] text-muted-foreground px-0.5">
+      <div className="flex justify-between text-[11px] text-zinc-400 dark:text-zinc-500 px-0.5">
         <span>0</span><span>30 OS</span><span>55</span><span>70 OB</span><span>100</span>
       </div>
     </div>
@@ -194,12 +206,12 @@ function ScenarioCard({ type, entry, tp1, tp2, sl, rr, notes }: {
     : 'border-rose-200 dark:border-rose-400/20';
 
   return (
-    <Card className={cn('gap-0 rounded-xl border py-0 shadow-none ring-0', borderColor)}>
+    <div className={cn('rounded-xl border overflow-hidden', borderColor)}>
       <div className={cn('flex items-center gap-2 px-4 py-3 text-white font-semibold', headerBg)}>
         <Icon className="size-4" />
         Skenario {isBull ? 'Bullish ✓' : 'Bearish ✗'}
       </div>
-      <CardContent className="divide-y divide-border p-0">
+      <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
         <div className="grid grid-cols-2 gap-x-6 px-4 py-3">
           <KV label="Entry" value={fmtRp(entry)} />
           <KV label="TP 1" value={fmtRp(tp1)} valueClass="text-emerald-600 dark:text-emerald-400" />
@@ -207,7 +219,7 @@ function ScenarioCard({ type, entry, tp1, tp2, sl, rr, notes }: {
           <KV label="Stop Loss" value={fmtRp(sl)} valueClass="text-rose-600 dark:text-rose-400" />
         </div>
         <div className="px-4 py-3 flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">Risk / Reward</span>
+          <span className="text-sm text-zinc-500 dark:text-zinc-400">Risk / Reward</span>
           <span className={cn(
             'text-lg font-bold tabular-nums',
             rr >= 2 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
@@ -216,10 +228,10 @@ function ScenarioCard({ type, entry, tp1, tp2, sl, rr, notes }: {
           </span>
         </div>
         <div className="px-4 py-3">
-          <p className="text-sm text-muted-foreground leading-relaxed">{notes}</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">{notes}</p>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -323,9 +335,9 @@ function TrendEmaSection({ number, trendEma, isBullish, isBearish }: {
           { label: 'EMA 50', value: fmtRp(trendEma.ema50) },
           { label: 'EMA 200', value: fmtRp(trendEma.ema200) },
         ].map(({ label, value }) => (
-          <div key={label} className="rounded-xl bg-muted px-4 py-3 text-center">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-            <div className="mt-1 font-mono text-sm font-semibold text-foreground">{value}</div>
+          <div key={label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
+            <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{label}</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}</div>
           </div>
         ))}
       </div>
@@ -392,9 +404,9 @@ function VolumeSection({ number, volume }: { number: number; volume: VolumeAnaly
           { label: 'RVOL', value: Number.isNaN(volume.relativeVolume) ? '–' : `${volume.relativeVolume.toFixed(2)}×` },
           { label: 'Tren Volume', value: volume.volumeTrend === 'increasing' ? '📈 Naik' : volume.volumeTrend === 'decreasing' ? '📉 Turun' : '➡️ Normal' },
         ].map(({ label, value }) => (
-          <div key={label} className="rounded-xl bg-muted px-4 py-3 text-center">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide leading-tight">{label}</div>
-            <div className="mt-1 font-mono text-sm font-semibold text-foreground">{value}</div>
+          <div key={label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
+            <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide leading-tight">{label}</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}</div>
           </div>
         ))}
       </div>
@@ -441,7 +453,7 @@ function IndicatorsSection({ number, indicators }: { number: number; indicators:
           <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{indicators.rsiNote}</p>
         </div>
 
-        <Separator />
+        <div className="h-px bg-zinc-100 dark:bg-zinc-800" />
 
         {/* MACD */}
         <div>
@@ -455,16 +467,16 @@ function IndicatorsSection({ number, indicators }: { number: number; indicators:
             </Pill>
           </div>
           <div className="grid grid-cols-3 gap-3 mb-2">
-            <div className="rounded-xl bg-muted px-3 py-2 text-center">
-              <div className="text-xs text-muted-foreground">MACD</div>
-              <div className="font-mono text-sm font-semibold text-foreground mt-0.5">{fmtN(indicators.macdValue)}</div>
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
+              <div className="text-xs text-zinc-400 dark:text-zinc-500">MACD</div>
+              <div className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100 mt-0.5">{fmtN(indicators.macdValue)}</div>
             </div>
-            <div className="rounded-xl bg-muted px-3 py-2 text-center">
-              <div className="text-xs text-muted-foreground">Signal</div>
-              <div className="font-mono text-sm font-semibold text-foreground mt-0.5">{fmtN(indicators.macdSignal)}</div>
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
+              <div className="text-xs text-zinc-400 dark:text-zinc-500">Signal</div>
+              <div className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100 mt-0.5">{fmtN(indicators.macdSignal)}</div>
             </div>
-            <div className="rounded-xl bg-muted px-3 py-2 text-center">
-              <div className="text-xs text-muted-foreground">Histogram</div>
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
+              <div className="text-xs text-zinc-400 dark:text-zinc-500">Histogram</div>
               <div className={cn(
                 'font-mono text-sm font-semibold mt-0.5',
                 indicators.macdHistogram >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
@@ -476,7 +488,7 @@ function IndicatorsSection({ number, indicators }: { number: number; indicators:
           <p className="text-sm text-zinc-500 dark:text-zinc-400">{indicators.macdNote}</p>
         </div>
 
-        <Separator />
+        <div className="h-px bg-zinc-100 dark:bg-zinc-800" />
 
         {/* Stochastic */}
         <div>
@@ -528,6 +540,22 @@ function FundamentalSection({ summary }: { summary: StockSummary }) {
     { label: 'ROE', value: roe !== 0 ? `${roe.toFixed(1)}%` : '–', note: roeNote },
   ];
 
+  const toneBg: Record<CheckTone, string> = {
+    green: 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5',
+    amber: 'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5',
+    red: 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5',
+  };
+  const toneText: Record<CheckTone, string> = {
+    green: 'text-emerald-700 dark:text-emerald-300',
+    amber: 'text-amber-700 dark:text-amber-300',
+    red: 'text-rose-700 dark:text-rose-300',
+  };
+  const verdictBg: Record<CheckTone, string> = {
+    green: 'bg-emerald-600 dark:bg-emerald-600',
+    amber: 'bg-amber-500 dark:bg-amber-600',
+    red: 'bg-rose-600 dark:bg-rose-600',
+  };
+
   const greens = metrics.filter((m) => m.note.tone === 'green').length;
   const reds = metrics.filter((m) => m.note.tone === 'red').length;
   let verdict: string;
@@ -546,30 +574,30 @@ function FundamentalSection({ summary }: { summary: StockSummary }) {
   return (
     <SectionCard number={1} title="Rasio Fundamental" icon={<PieChart className="size-4" />} accentClass="bg-indigo-500">
       <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
-        <div className="rounded-xl bg-muted px-4 py-3 text-center">
-          <div className="text-xs text-muted-foreground uppercase tracking-wide">Market Cap</div>
-          <div className="mt-1 font-mono text-sm font-semibold text-foreground">{formatCompact(summary.capitalization)}</div>
+        <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
+          <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Market Cap</div>
+          <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{formatCompact(summary.capitalization)}</div>
         </div>
         {metrics.map((m) => (
-          <div key={m.label} className="rounded-xl bg-muted px-4 py-3 text-center">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">{m.label}</div>
-            <div className="mt-1 font-mono text-sm font-semibold text-foreground">{m.value}</div>
+          <div key={m.label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
+            <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{m.label}</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{m.value}</div>
           </div>
         ))}
       </div>
       <div className="space-y-2 mb-4">
         {metrics.map((m) => (
-          <div key={m.label} className={cn('rounded-xl border px-4 py-3', TONE_SURFACE[m.note.tone])}>
-            <span className={cn('text-sm font-semibold', TONE_TEXT[m.note.tone])}>{m.label}</span>
-            <p className="text-xs mt-0.5 text-muted-foreground leading-relaxed">{m.note.text}</p>
+          <div key={m.label} className={cn('rounded-xl border px-4 py-3', toneBg[m.note.tone])}>
+            <span className={cn('text-sm font-semibold', toneText[m.note.tone])}>{m.label}</span>
+            <p className="text-xs mt-0.5 text-zinc-600 dark:text-zinc-400 leading-relaxed">{m.note.text}</p>
           </div>
         ))}
       </div>
-      <div className={cn('rounded-xl px-4 py-3 text-white', TONE_SOLID[verdictTone])}>
+      <div className={cn('rounded-xl px-4 py-3 text-white', verdictBg[verdictTone])}>
         <p className="text-xs font-semibold uppercase tracking-wide opacity-80 mb-0.5">Kesimpulan Fundamental</p>
         <p className="text-sm font-medium leading-relaxed">{verdict}</p>
       </div>
-      <p className="mt-4 text-xs text-muted-foreground italic leading-relaxed">
+      <p className="mt-4 text-xs text-zinc-400 dark:text-zinc-600 italic leading-relaxed">
         Ambang batas di atas bersifat umum dan belum disesuaikan per sektor. Bandingkan selalu dengan rata-rata PER/PBV/ROE sektor {summary.sector || '–'} sebelum mengambil keputusan.
       </p>
     </SectionCard>
@@ -657,11 +685,12 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center max-w-xs">
           Ticker <strong>{ticker.toUpperCase()}</strong> tidak ditemukan atau gagal dimuat.
         </p>
-        <Button asChild className="bg-emerald-600 text-white hover:bg-emerald-700">
-          <Link href="/screener">
-            <ArrowLeft className="size-4" /> Kembali ke Screener
-          </Link>
-        </Button>
+        <Link
+          href="/screener"
+          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
+        >
+          <ArrowLeft className="size-4" /> Kembali ke Screener
+        </Link>
       </div>
     );
   }
@@ -712,16 +741,14 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 {formatPercent(summary.percentChange1D)}
               </span>
             </div>
-            <Button
+            <button
               type="button"
-              variant="outline"
-              size="icon"
               onClick={load}
               title="Muat ulang analisis"
-              className="size-8 rounded-xl"
+              className="flex size-8 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
             >
               <RefreshCw className="size-3.5" />
-            </Button>
+            </button>
           </div>
         </div>
       </header>
@@ -740,42 +767,36 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         )}>
           {/* Action row */}
           <div className="flex flex-wrap items-center gap-3">
-            <Button
+            <button
               type="button"
-              variant="outline"
-              size="icon"
               onClick={load}
               title="Muat ulang analisis"
-              className="size-8 rounded-xl"
+              className="flex size-8 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
             >
               <RefreshCw className="size-3.5" />
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
-              variant="outline"
-              size="icon"
               onClick={handleShare}
               title="Bagikan"
-              className="size-8 rounded-xl"
+              className="flex size-8 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
             >
               <Share2 className="size-3.5" />
-            </Button>
+            </button>
             {justCopied && (
-              <span className="text-xs text-muted-foreground">Tautan disalin</span>
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">Tautan disalin</span>
             )}
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              size="sm"
               onClick={() => watchlist.toggle(summary.ticker)}
               className={cn(
-                'hover:bg-transparent',
-                isWatched ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'
+                'flex items-center gap-1.5 text-sm font-medium transition-colors',
+                isWatched ? 'text-amber-500' : 'text-zinc-400 dark:text-zinc-500 hover:text-amber-500'
               )}
             >
               {isWatched ? <BookmarkCheck className="size-4" /> : <Bookmark className="size-4" />}
               {isWatched ? 'Watching' : 'Watch'}
-            </Button>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
@@ -833,21 +854,27 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         )}
 
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AnalysisTab)} className="gap-4">
-          <TabsList className="w-full rounded-xl border border-border bg-white p-1 dark:bg-zinc-900/40" variant="line">
-            {ANALYSIS_TABS.map((tab) => (
-              <TabsTrigger
-                key={tab.key}
-                value={tab.key}
-                className="flex-1 rounded-lg data-active:bg-emerald-600 data-active:text-black dark:data-active:text-black"
-              >
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        <div className="flex gap-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-1" role="tablist">
+          {ANALYSIS_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'flex-1 rounded-lg px-3 py-2 text-sm font-medium text-center transition-colors',
+                activeTab === tab.key
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-          {/* ── Tab: 7 Indikator ─────────────────────────────────────────────── */}
-          <TabsContent value="indikator" className="space-y-4">
+        {/* ── Tab: 7 Indikator ─────────────────────────────────────────────── */}
+        {activeTab === 'indikator' && (
+          <>
             <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} />
 
             {/* ── 2. Level Penting ────────────────────────────────────────── */}
@@ -930,24 +957,44 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               {/* ── "Apakah layak dibeli hari ini?" ───────────────────────── */}
               {(() => {
                 const { points, verdict, verdictTone } = buildLayakBeli(summary, analysis);
+                const verdictBg = {
+                  green: 'border-emerald-300 bg-emerald-600 dark:bg-emerald-600',
+                  amber: 'border-amber-300 bg-amber-500 dark:bg-amber-600',
+                  red: 'border-rose-300 bg-rose-600 dark:bg-rose-600',
+                };
+                const pointBg: Record<CheckTone, string> = {
+                  green: 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5',
+                  amber: 'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5',
+                  red: 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5',
+                };
+                const labelColor: Record<CheckTone, string> = {
+                  green: 'text-emerald-700 dark:text-emerald-300',
+                  amber: 'text-amber-700 dark:text-amber-300',
+                  red: 'text-rose-700 dark:text-rose-300',
+                };
+                const detailColor: Record<CheckTone, string> = {
+                  green: 'text-emerald-600/80 dark:text-emerald-400/70',
+                  amber: 'text-amber-600/80 dark:text-amber-400/70',
+                  red: 'text-rose-600/80 dark:text-rose-400/70',
+                };
                 return (
                   <div className="mb-5">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
                       Apakah {summary.ticker} layak dibeli hari ini?
                     </p>
                     <div className="space-y-2 mb-4">
                       {points.map((pt) => (
-                        <div key={pt.label} className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', TONE_SURFACE[pt.tone])}>
+                        <div key={pt.label} className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', pointBg[pt.tone])}>
                           <span className="shrink-0 text-base leading-none mt-0.5">{pt.icon}</span>
                           <div>
-                            <span className={cn('text-sm font-semibold', TONE_TEXT[pt.tone])}>{pt.label}</span>
-                            <p className={cn('text-xs mt-0.5 leading-relaxed', TONE_DETAIL_TEXT[pt.tone])}>{pt.detail}</p>
+                            <span className={cn('text-sm font-semibold', labelColor[pt.tone])}>{pt.label}</span>
+                            <p className={cn('text-xs mt-0.5 leading-relaxed', detailColor[pt.tone])}>{pt.detail}</p>
                           </div>
                         </div>
                       ))}
                     </div>
                     {/* Verdict chip */}
-                    <div className={cn('flex items-start gap-3 rounded-xl px-4 py-3 text-white', TONE_SOLID[verdictTone])}>
+                    <div className={cn('flex items-start gap-3 rounded-xl px-4 py-3 text-white', verdictBg[verdictTone])}>
                       <span className="shrink-0 text-base leading-none mt-0.5">💬</span>
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wide opacity-80 mb-0.5">Kesimpulan</p>
@@ -964,19 +1011,20 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">🔑 Level Kunci</p>
                   <p className="text-sm text-blue-600 dark:text-blue-300 leading-relaxed">{conclusion.keyLevel}</p>
                 </div>
-                <Alert className="rounded-xl border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-400/20 dark:bg-amber-400/5">
-                  <AlertTriangle className="size-3.5 text-amber-500" />
-                  <AlertTitle className="text-sm font-semibold text-amber-700 dark:text-amber-400">Waspadai</AlertTitle>
-                  <AlertDescription className="text-sm text-amber-600 dark:text-amber-300 leading-relaxed">
-                    {conclusion.watchOut}
-                  </AlertDescription>
-                </Alert>
+                <div className="rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                    <AlertTriangle className="inline size-3.5 mr-1" />Waspadai
+                  </p>
+                  <p className="text-sm text-amber-600 dark:text-amber-300 leading-relaxed">{conclusion.watchOut}</p>
+                </div>
               </div>
             </SectionCard>
-          </TabsContent>
+          </>
+        )}
 
-          {/* ── Tab: Technical Analysis ──────────────────────────────────────── */}
-          <TabsContent value="technical" className="space-y-4">
+        {/* ── Tab: Technical Analysis ──────────────────────────────────────── */}
+        {activeTab === 'technical' && (
+          <>
             {bars.length > 0 && (
               <OHLCVChart bars={bars} currentClose={summary.lastClose} />
             )}
@@ -984,13 +1032,13 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             <PriceActionSection number={2} priceAction={priceAction} />
             <VolumeSection number={3} volume={volume} />
             <IndicatorsSection number={4} indicators={indicators} />
-          </TabsContent>
+          </>
+        )}
 
-          {/* ── Tab: Fundamental Analysis ────────────────────────────────────── */}
-          <TabsContent value="fundamental" className="space-y-4">
-            <FundamentalSection summary={summary} />
-          </TabsContent>
-        </Tabs>
+        {/* ── Tab: Fundamental Analysis ────────────────────────────────────── */}
+        {activeTab === 'fundamental' && (
+          <FundamentalSection summary={summary} />
+        )}
 
         {/* ── Cara Membaca Analisis Ini ────────────────────────────────── */}
         <section className="rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-white dark:bg-zinc-900/40">
@@ -1026,15 +1074,15 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         <PhilosophyBanner />
 
         {/* ── Disclaimer ───────────────────────────────────────────────── */}
-        <Alert className="rounded-xl border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-400/20 dark:bg-amber-400/5">
-          <TriangleAlert className="size-4 text-amber-500" strokeWidth={2} />
-          <AlertDescription className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+        <div className="flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" strokeWidth={2} />
+          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
             <strong>Disclaimer:</strong> Analisis ini bersifat <strong>edukatif</strong> dan dihasilkan dari data
             historis EOD (End-of-Day). <strong>Bukan merupakan rekomendasi beli/jual.</strong> Selalu lakukan riset
             mandiri, konsultasikan dengan penasihat keuangan terdaftar, dan terapkan manajemen risiko yang ketat
             sebelum mengambil keputusan investasi.
-          </AlertDescription>
-        </Alert>
+          </p>
+        </div>
 
         {/* External link footer */}
         <div className="flex items-center justify-center gap-3 pt-2 text-xs text-zinc-400 dark:text-zinc-600">
