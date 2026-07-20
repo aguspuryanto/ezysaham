@@ -28,6 +28,7 @@ import {
   ExternalLink,
   HelpCircle,
   Loader2,
+  PieChart,
   RefreshCw,
   Share2,
   Target,
@@ -40,7 +41,13 @@ import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
-import { StockAnalysis } from '@/domain/models/StockAnalysis';
+import {
+  IndicatorAnalysis,
+  PriceActionAnalysis,
+  StockAnalysis,
+  TrendEmaAnalysis,
+  VolumeAnalysis,
+} from '@/domain/models/StockAnalysis';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
@@ -316,10 +323,298 @@ function buildLayakBeli(
   return { points, verdict, verdictTone };
 }
 
+// ─── Trend & EMA section ───────────────────────────────────────────────────────
+function TrendEmaSection({ number, trendEma, isBullish, isBearish }: {
+  number: number; trendEma: TrendEmaAnalysis; isBullish: boolean; isBearish: boolean;
+}) {
+  return (
+    <SectionCard number={number} title="Trend & EMA" icon={<TrendingUp className="size-4" />} accentClass="bg-blue-500">
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {[
+          { label: 'EMA 20', value: fmtRp(trendEma.ema20) },
+          { label: 'EMA 50', value: fmtRp(trendEma.ema50) },
+          { label: 'EMA 200', value: fmtRp(trendEma.ema200) },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
+            <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{label}</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <Pill tone={trendEma.priceVsEma20 === 'above' ? 'green' : 'red'}>
+          Close {trendEma.priceVsEma20 === 'above' ? '>' : '<'} EMA20
+        </Pill>
+        <Pill tone={trendEma.priceVsEma50 === 'above' ? 'green' : 'red'}>
+          Close {trendEma.priceVsEma50 === 'above' ? '>' : '<'} EMA50
+        </Pill>
+        <Pill tone={isBullish ? 'green' : isBearish ? 'red' : 'amber'}>
+          Tren {isBullish ? 'Bullish 🟢' : isBearish ? 'Bearish 🔴' : 'Sideways 🟡'}
+        </Pill>
+        {trendEma.higherLows && <Pill tone="green">Higher Low ✓</Pill>}
+      </div>
+      <ul className="space-y-1.5">
+        <Note text={trendEma.trendDescription} tone={isBullish ? 'green' : isBearish ? 'red' : 'zinc'} />
+        {trendEma.higherLows && (
+          <Note text="Terbentuk pola higher low — sinyal akumulasi bertahap yang positif." tone="green" />
+        )}
+      </ul>
+    </SectionCard>
+  );
+}
+
+// ─── Price Action section ──────────────────────────────────────────────────────
+function PriceActionSection({ number, priceAction }: { number: number; priceAction: PriceActionAnalysis }) {
+  return (
+    <SectionCard number={number} title="Price Action" icon={<Activity className="size-4" />} accentClass="bg-emerald-500">
+      <div className="flex flex-wrap gap-2 mb-3">
+        <Pill tone={priceAction.lastCandleColor === 'green' ? 'green' : priceAction.lastCandleColor === 'red' ? 'red' : 'zinc'}>
+          Candle {priceAction.lastCandleColor === 'green' ? '🟢 Hijau' : priceAction.lastCandleColor === 'red' ? '🔴 Merah' : '⚪ Doji'}
+        </Pill>
+        {priceAction.pattern !== 'none' && (
+          <Pill tone={
+            ['bullish_engulfing', 'hammer', 'marubozu_bullish'].includes(priceAction.pattern) ? 'green' :
+              ['bearish_engulfing', 'shooting_star', 'marubozu_bearish'].includes(priceAction.pattern) ? 'red' : 'zinc'
+          }>
+            {priceAction.patternLabel}
+          </Pill>
+        )}
+        <Pill tone={priceAction.aboveEma20 ? 'green' : 'red'}>
+          {priceAction.aboveEma20 ? 'Di atas EMA20' : 'Di bawah EMA20'}
+        </Pill>
+        <Pill tone={priceAction.aboveEma50 ? 'green' : 'red'}>
+          {priceAction.aboveEma50 ? 'Di atas EMA50' : 'Di bawah EMA50'}
+        </Pill>
+      </div>
+      <ul className="space-y-1.5">
+        {priceAction.notes.map((note, i) => <Note key={i} text={note} />)}
+      </ul>
+    </SectionCard>
+  );
+}
+
+// ─── Volume section ─────────────────────────────────────────────────────────────
+function VolumeSection({ number, volume }: { number: number; volume: VolumeAnalysis }) {
+  return (
+    <SectionCard number={number} title="Volume" icon={<BarChart2 className="size-4" />} accentClass="bg-cyan-500">
+      <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
+        {[
+          { label: 'Volume Hari Ini', value: new Intl.NumberFormat('id-ID').format(volume.lastVolume) },
+          { label: 'Volume MA20', value: Number.isNaN(volume.volumeMa20) ? '–' : new Intl.NumberFormat('id-ID').format(Math.round(volume.volumeMa20)) },
+          { label: 'RVOL', value: Number.isNaN(volume.relativeVolume) ? '–' : `${volume.relativeVolume.toFixed(2)}×` },
+          { label: 'Tren Volume', value: volume.volumeTrend === 'increasing' ? '📈 Naik' : volume.volumeTrend === 'decreasing' ? '📉 Turun' : '➡️ Normal' },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
+            <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide leading-tight">{label}</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <Pill tone={volume.isHighVolume ? 'green' : 'amber'}>
+          {volume.isHighVolume ? '✅ Volume Tinggi' : '⚠️ Volume Kurang'}
+        </Pill>
+      </div>
+      <ul className="space-y-1.5">
+        {volume.notes.map((note, i) => (
+          <Note key={i} text={note} tone={volume.isHighVolume ? 'green' : 'zinc'} />
+        ))}
+      </ul>
+      {!Number.isNaN(volume.idealBreakoutVolume) && (
+        <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">📌 Volume Ideal Breakout</p>
+          <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
+            {'>'} {new Intl.NumberFormat('id-ID').format(Math.round(volume.idealBreakoutVolume))} saham saat menembus resistance
+          </p>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+// ─── Indikator Teknikal section ────────────────────────────────────────────────
+function IndicatorsSection({ number, indicators }: { number: number; indicators: IndicatorAnalysis }) {
+  return (
+    <SectionCard number={number} title="Indikator Teknikal" icon={<Zap className="size-4" />} accentClass="bg-amber-500">
+      <div className="space-y-5">
+        {/* RSI */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">RSI (14)</h3>
+            <Pill tone={
+              indicators.rsiZone === 'oversold' ? 'green' :
+                indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'red' :
+                  indicators.rsiZone === 'bullish_zone' ? 'green' : 'zinc'
+            }>
+              {fmtN(indicators.rsi14, 1)}
+            </Pill>
+          </div>
+          <RsiBar value={indicators.rsi14} />
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{indicators.rsiNote}</p>
+        </div>
+
+        <div className="h-px bg-zinc-100 dark:bg-zinc-800" />
+
+        {/* MACD */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">MACD (12, 26, 9)</h3>
+            <Pill tone={
+              indicators.macdSignalType === 'bullish_crossover' || indicators.macdSignalType === 'bullish' ? 'green' :
+                indicators.macdSignalType === 'bearish_crossover' || indicators.macdSignalType === 'bearish' ? 'red' : 'zinc'
+            }>
+              {indicators.macdSignalType.replace(/_/g, ' ')}
+            </Pill>
+          </div>
+          <div className="grid grid-cols-3 gap-3 mb-2">
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
+              <div className="text-xs text-zinc-400 dark:text-zinc-500">MACD</div>
+              <div className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100 mt-0.5">{fmtN(indicators.macdValue)}</div>
+            </div>
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
+              <div className="text-xs text-zinc-400 dark:text-zinc-500">Signal</div>
+              <div className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100 mt-0.5">{fmtN(indicators.macdSignal)}</div>
+            </div>
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
+              <div className="text-xs text-zinc-400 dark:text-zinc-500">Histogram</div>
+              <div className={cn(
+                'font-mono text-sm font-semibold mt-0.5',
+                indicators.macdHistogram >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+              )}>
+                {fmtN(indicators.macdHistogram)}
+              </div>
+            </div>
+          </div>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{indicators.macdNote}</p>
+        </div>
+
+        <div className="h-px bg-zinc-100 dark:bg-zinc-800" />
+
+        {/* Stochastic */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Stochastic (14, 3, 3)</h3>
+            <Pill tone={indicators.stochZone === 'oversold' ? 'green' : indicators.stochZone === 'overbought' ? 'red' : 'zinc'}>
+              %K {fmtN(indicators.stochK, 1)} / %D {fmtN(indicators.stochD, 1)}
+            </Pill>
+          </div>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{indicators.stochNote}</p>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+// ─── Fundamental Analysis section ──────────────────────────────────────────────
+function FundamentalSection({ summary }: { summary: StockSummary }) {
+  const { per, pbv, roe } = summary;
+
+  const perNote: { tone: CheckTone; text: string } =
+    per <= 0
+      ? { tone: 'red', text: 'Perusahaan mencatat rugi atau data PER tidak berlaku.' }
+      : per < 10
+        ? { tone: 'green', text: 'PER relatif rendah — potensi undervalued, cek juga tren pertumbuhan laba.' }
+        : per <= 20
+          ? { tone: 'amber', text: 'PER berada di kisaran wajar untuk saham di BEI pada umumnya.' }
+          : { tone: 'red', text: 'PER cukup tinggi — pasar menghargai ekspektasi pertumbuhan besar, risiko koreksi lebih tinggi.' };
+
+  const pbvNote: { tone: CheckTone; text: string } =
+    pbv <= 0
+      ? { tone: 'amber', text: 'Data PBV tidak tersedia.' }
+      : pbv < 1
+        ? { tone: 'green', text: 'Harga di bawah nilai buku — secara aset tergolong murah.' }
+        : pbv <= 3
+          ? { tone: 'amber', text: 'PBV berada dalam rentang wajar.' }
+          : { tone: 'red', text: 'PBV tinggi — pasar membayar premium jauh di atas nilai buku perusahaan.' };
+
+  const roeNote: { tone: CheckTone; text: string } =
+    roe <= 0
+      ? { tone: 'red', text: 'ROE rendah atau negatif — efisiensi menghasilkan laba dari ekuitas masih lemah.' }
+      : roe < 10
+        ? { tone: 'amber', text: 'ROE cukup, namun belum unggul dibanding rata-rata pasar.' }
+        : { tone: 'green', text: 'ROE baik — perusahaan cukup efisien menghasilkan laba dari ekuitas pemegang saham.' };
+
+  const metrics = [
+    { label: 'P/E Ratio (PER)', value: per > 0 ? `${per.toFixed(1)}×` : '–', note: perNote },
+    { label: 'P/BV Ratio', value: pbv > 0 ? `${pbv.toFixed(2)}×` : '–', note: pbvNote },
+    { label: 'ROE', value: roe !== 0 ? `${roe.toFixed(1)}%` : '–', note: roeNote },
+  ];
+
+  const toneBg: Record<CheckTone, string> = {
+    green: 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5',
+    amber: 'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5',
+    red: 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5',
+  };
+  const toneText: Record<CheckTone, string> = {
+    green: 'text-emerald-700 dark:text-emerald-300',
+    amber: 'text-amber-700 dark:text-amber-300',
+    red: 'text-rose-700 dark:text-rose-300',
+  };
+  const verdictBg: Record<CheckTone, string> = {
+    green: 'bg-emerald-600 dark:bg-emerald-600',
+    amber: 'bg-amber-500 dark:bg-amber-600',
+    red: 'bg-rose-600 dark:bg-rose-600',
+  };
+
+  const greens = metrics.filter((m) => m.note.tone === 'green').length;
+  const reds = metrics.filter((m) => m.note.tone === 'red').length;
+  let verdict: string;
+  let verdictTone: CheckTone;
+  if (greens >= 2 && reds === 0) {
+    verdict = 'Secara valuasi & profitabilitas tergolong menarik. Tetap bandingkan dengan rata-rata sektor.';
+    verdictTone = 'green';
+  } else if (reds >= 2) {
+    verdict = 'Secara fundamental kurang menarik saat ini — valuasi mahal atau profitabilitas lemah.';
+    verdictTone = 'red';
+  } else {
+    verdict = 'Fundamental campuran — perlu dibandingkan lebih jauh dengan rata-rata sektor.';
+    verdictTone = 'amber';
+  }
+
+  return (
+    <SectionCard number={1} title="Rasio Fundamental" icon={<PieChart className="size-4" />} accentClass="bg-indigo-500">
+      <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
+        <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
+          <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Market Cap</div>
+          <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{formatCompact(summary.capitalization)}</div>
+        </div>
+        {metrics.map((m) => (
+          <div key={m.label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
+            <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{m.label}</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{m.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="space-y-2 mb-4">
+        {metrics.map((m) => (
+          <div key={m.label} className={cn('rounded-xl border px-4 py-3', toneBg[m.note.tone])}>
+            <span className={cn('text-sm font-semibold', toneText[m.note.tone])}>{m.label}</span>
+            <p className="text-xs mt-0.5 text-zinc-600 dark:text-zinc-400 leading-relaxed">{m.note.text}</p>
+          </div>
+        ))}
+      </div>
+      <div className={cn('rounded-xl px-4 py-3 text-white', verdictBg[verdictTone])}>
+        <p className="text-xs font-semibold uppercase tracking-wide opacity-80 mb-0.5">Kesimpulan Fundamental</p>
+        <p className="text-sm font-medium leading-relaxed">{verdict}</p>
+      </div>
+      <p className="mt-4 text-xs text-zinc-400 dark:text-zinc-600 italic leading-relaxed">
+        Ambang batas di atas bersifat umum dan belum disesuaikan per sektor. Bandingkan selalu dengan rata-rata PER/PBV/ROE sektor {summary.sector || '–'} sebelum mengambil keputusan.
+      </p>
+    </SectionCard>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Page Component
 // ─────────────────────────────────────────────────────────────────────────────
 type PageStatus = 'loading' | 'ready' | 'error';
+type AnalysisTab = 'indikator' | 'technical' | 'fundamental';
+
+const ANALYSIS_TABS: { key: AnalysisTab; label: string }[] = [
+  { key: 'indikator', label: 'Technical Analysis' },
+  // { key: 'technical', label: 'Technical Analysis' },
+  { key: 'fundamental', label: 'Fundamental Analysis' },
+];
 
 export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const [status, setStatus] = useState<PageStatus>('loading');
@@ -328,6 +623,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const [bars, setBars] = useState<OHLCVBar[]>([]);
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
   const [justCopied, setJustCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<AnalysisTab>('indikator');
   const watchlist = useWatchlist();
 
   const handleShare = useCallback(async () => {
@@ -404,9 +700,6 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const isBearish = trendEma.trend === 'bearish';
   const positiveDay = summary.percentChange1D >= 0;
   const isWatched = watchlist.has(summary.ticker);
-  const prevDateLabel = generatedAt
-    ? new Date(generatedAt.getTime() - 86_400_000).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
-    : '–';
   const todayDateLabel = generatedAt
     ? generatedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
     : '–';
@@ -556,313 +849,196 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </div>
         </div>
 
-        {/* ── Price Chart ─────────────────────────────────────────────────── */}
         {bars.length > 0 && (
           <OHLCVChart bars={bars} currentClose={summary.lastClose} />
         )}
 
-        {/* ── 1. Trend & EMA ──────────────────────────────────────────────── */}
-        <SectionCard number={1} title="Trend & EMA" icon={<TrendingUp className="size-4" />} accentClass="bg-blue-500">
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            {[
-              { label: 'EMA 20', value: fmtRp(trendEma.ema20) },
-              { label: 'EMA 50', value: fmtRp(trendEma.ema50) },
-              { label: 'EMA 200', value: fmtRp(trendEma.ema200) },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
-                <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{label}</div>
-                <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}</div>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            <Pill tone={trendEma.priceVsEma20 === 'above' ? 'green' : 'red'}>
-              Close {trendEma.priceVsEma20 === 'above' ? '>' : '<'} EMA20
-            </Pill>
-            <Pill tone={trendEma.priceVsEma50 === 'above' ? 'green' : 'red'}>
-              Close {trendEma.priceVsEma50 === 'above' ? '>' : '<'} EMA50
-            </Pill>
-            <Pill tone={isBullish ? 'green' : isBearish ? 'red' : 'amber'}>
-              Tren {isBullish ? 'Bullish 🟢' : isBearish ? 'Bearish 🔴' : 'Sideways 🟡'}
-            </Pill>
-            {trendEma.higherLows && <Pill tone="green">Higher Low ✓</Pill>}
-          </div>
-          <ul className="space-y-1.5">
-            <Note text={trendEma.trendDescription} tone={isBullish ? 'green' : isBearish ? 'red' : 'zinc'} />
-            {trendEma.higherLows && (
-              <Note text="Terbentuk pola higher low — sinyal akumulasi bertahap yang positif." tone="green" />
-            )}
-          </ul>
-        </SectionCard>
+        {/* ── Tabs ─────────────────────────────────────────────────────────── */}
+        <div className="flex gap-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-1" role="tablist">
+          {ANALYSIS_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'flex-1 rounded-lg px-3 py-2 text-sm font-medium text-center transition-colors',
+                activeTab === tab.key
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-        {/* ── 2. Level Penting ────────────────────────────────────────────── */}
-        <SectionCard number={2} title="Level Penting (Resistance & Support)" icon={<Crosshair className="size-4" />} accentClass="bg-violet-500">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">
-                Resistance
-              </p>
-              {supportResistance.resistances.length > 0
-                ? supportResistance.resistances.map((r) => (
-                  <LevelRow key={r.label} label={r.label} price={r.price} description={r.description} tone="red" />
-                ))
-                : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-2">
-                Support
-              </p>
-              {supportResistance.supports.length > 0
-                ? supportResistance.supports.map((s) => (
-                  <LevelRow key={s.label} label={s.label} price={s.price} description={s.description} tone="green" />
-                ))
-                : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
-            </div>
-          </div>
-        </SectionCard>
+        {/* ── Tab: 7 Indikator ─────────────────────────────────────────────── */}
+        {activeTab === 'indikator' && (
+          <>
+            <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} />
 
-        {/* ── 3. Price Action ─────────────────────────────────────────────── */}
-        <SectionCard number={3} title="Price Action" icon={<Activity className="size-4" />} accentClass="bg-emerald-500">
-          <div className="flex flex-wrap gap-2 mb-3">
-            <Pill tone={priceAction.lastCandleColor === 'green' ? 'green' : priceAction.lastCandleColor === 'red' ? 'red' : 'zinc'}>
-              Candle {priceAction.lastCandleColor === 'green' ? '🟢 Hijau' : priceAction.lastCandleColor === 'red' ? '🔴 Merah' : '⚪ Doji'}
-            </Pill>
-            {priceAction.pattern !== 'none' && (
-              <Pill tone={
-                ['bullish_engulfing', 'hammer', 'marubozu_bullish'].includes(priceAction.pattern) ? 'green' :
-                  ['bearish_engulfing', 'shooting_star', 'marubozu_bearish'].includes(priceAction.pattern) ? 'red' : 'zinc'
-              }>
-                {priceAction.patternLabel}
-              </Pill>
-            )}
-            <Pill tone={priceAction.aboveEma20 ? 'green' : 'red'}>
-              {priceAction.aboveEma20 ? 'Di atas EMA20' : 'Di bawah EMA20'}
-            </Pill>
-            <Pill tone={priceAction.aboveEma50 ? 'green' : 'red'}>
-              {priceAction.aboveEma50 ? 'Di atas EMA50' : 'Di bawah EMA50'}
-            </Pill>
-          </div>
-          <ul className="space-y-1.5">
-            {priceAction.notes.map((note, i) => <Note key={i} text={note} />)}
-          </ul>
-        </SectionCard>
-
-        {/* ── 4. Volume ───────────────────────────────────────────────────── */}
-        <SectionCard number={4} title="Volume" icon={<BarChart2 className="size-4" />} accentClass="bg-cyan-500">
-          <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
-            {[
-              { label: 'Volume Hari Ini', value: new Intl.NumberFormat('id-ID').format(volume.lastVolume) },
-              { label: 'Volume MA20', value: Number.isNaN(volume.volumeMa20) ? '–' : new Intl.NumberFormat('id-ID').format(Math.round(volume.volumeMa20)) },
-              { label: 'RVOL', value: Number.isNaN(volume.relativeVolume) ? '–' : `${volume.relativeVolume.toFixed(2)}×` },
-              { label: 'Tren Volume', value: volume.volumeTrend === 'increasing' ? '📈 Naik' : volume.volumeTrend === 'decreasing' ? '📉 Turun' : '➡️ Normal' },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
-                <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide leading-tight">{label}</div>
-                <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}</div>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            <Pill tone={volume.isHighVolume ? 'green' : 'amber'}>
-              {volume.isHighVolume ? '✅ Volume Tinggi' : '⚠️ Volume Kurang'}
-            </Pill>
-          </div>
-          <ul className="space-y-1.5">
-            {volume.notes.map((note, i) => (
-              <Note key={i} text={note} tone={volume.isHighVolume ? 'green' : 'zinc'} />
-            ))}
-          </ul>
-          {!Number.isNaN(volume.idealBreakoutVolume) && (
-            <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
-              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">📌 Volume Ideal Breakout</p>
-              <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
-                {'>'} {new Intl.NumberFormat('id-ID').format(Math.round(volume.idealBreakoutVolume))} saham saat menembus resistance
-              </p>
-            </div>
-          )}
-        </SectionCard>
-
-        {/* ── 5. Indikator ────────────────────────────────────────────────── */}
-        <SectionCard number={5} title="Indikator Teknikal" icon={<Zap className="size-4" />} accentClass="bg-amber-500">
-          <div className="space-y-5">
-            {/* RSI */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">RSI (14)</h3>
-                <Pill tone={
-                  indicators.rsiZone === 'oversold' ? 'green' :
-                    indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'red' :
-                      indicators.rsiZone === 'bullish_zone' ? 'green' : 'zinc'
-                }>
-                  {fmtN(indicators.rsi14, 1)}
-                </Pill>
-              </div>
-              <RsiBar value={indicators.rsi14} />
-              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{indicators.rsiNote}</p>
-            </div>
-
-            <div className="h-px bg-zinc-100 dark:bg-zinc-800" />
-
-            {/* MACD */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">MACD (12, 26, 9)</h3>
-                <Pill tone={
-                  indicators.macdSignalType === 'bullish_crossover' || indicators.macdSignalType === 'bullish' ? 'green' :
-                    indicators.macdSignalType === 'bearish_crossover' || indicators.macdSignalType === 'bearish' ? 'red' : 'zinc'
-                }>
-                  {indicators.macdSignalType.replace(/_/g, ' ')}
-                </Pill>
-              </div>
-              <div className="grid grid-cols-3 gap-3 mb-2">
-                <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
-                  <div className="text-xs text-zinc-400 dark:text-zinc-500">MACD</div>
-                  <div className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100 mt-0.5">{fmtN(indicators.macdValue)}</div>
+            {/* ── 2. Level Penting ────────────────────────────────────────── */}
+            <SectionCard number={2} title="Level Penting (Resistance & Support)" icon={<Crosshair className="size-4" />} accentClass="bg-violet-500">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">
+                    Resistance
+                  </p>
+                  {supportResistance.resistances.length > 0
+                    ? supportResistance.resistances.map((r) => (
+                      <LevelRow key={r.label} label={r.label} price={r.price} description={r.description} tone="red" />
+                    ))
+                    : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
                 </div>
-                <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
-                  <div className="text-xs text-zinc-400 dark:text-zinc-500">Signal</div>
-                  <div className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100 mt-0.5">{fmtN(indicators.macdSignal)}</div>
-                </div>
-                <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
-                  <div className="text-xs text-zinc-400 dark:text-zinc-500">Histogram</div>
-                  <div className={cn(
-                    'font-mono text-sm font-semibold mt-0.5',
-                    indicators.macdHistogram >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                  )}>
-                    {fmtN(indicators.macdHistogram)}
-                  </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-2">
+                    Support
+                  </p>
+                  {supportResistance.supports.length > 0
+                    ? supportResistance.supports.map((s) => (
+                      <LevelRow key={s.label} label={s.label} price={s.price} description={s.description} tone="green" />
+                    ))
+                    : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
                 </div>
               </div>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">{indicators.macdNote}</p>
-            </div>
+            </SectionCard>
 
-            <div className="h-px bg-zinc-100 dark:bg-zinc-800" />
+            <PriceActionSection number={3} priceAction={priceAction} />
+            <VolumeSection number={4} volume={volume} />
+            <IndicatorsSection number={5} indicators={indicators} />
 
-            {/* Stochastic */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Stochastic (14, 3, 3)</h3>
-                <Pill tone={indicators.stochZone === 'oversold' ? 'green' : indicators.stochZone === 'overbought' ? 'red' : 'zinc'}>
-                  %K {fmtN(indicators.stochK, 1)} / %D {fmtN(indicators.stochD, 1)}
-                </Pill>
+            {/* ── 6. Rencana Trading ──────────────────────────────────────── */}
+            <SectionCard number={6} title="Rencana Trading" icon={<Target className="size-4" />} accentClass="bg-rose-500">
+              <div className="grid gap-4 sm:grid-cols-2 mb-4">
+                <ScenarioCard
+                  type="bullish"
+                  entry={tradingPlan.bullish.entry}
+                  tp1={tradingPlan.bullish.tp1}
+                  tp2={tradingPlan.bullish.tp2}
+                  sl={tradingPlan.bullish.sl}
+                  rr={tradingPlan.bullish.riskRewardRatio}
+                  notes={tradingPlan.bullish.notes}
+                />
+                <ScenarioCard
+                  type="bearish"
+                  entry={tradingPlan.bearish.entry}
+                  tp1={tradingPlan.bearish.tp1}
+                  tp2={tradingPlan.bearish.tp2}
+                  sl={tradingPlan.bearish.sl}
+                  rr={tradingPlan.bearish.riskRewardRatio}
+                  notes={tradingPlan.bearish.notes}
+                />
               </div>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">{indicators.stochNote}</p>
-            </div>
-          </div>
-        </SectionCard>
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/40 px-4 py-3">
+                <span className="text-sm text-zinc-500 dark:text-zinc-400">Bias rekomendasi:</span>
+                <Pill tone={tradingPlan.recommendedBias === 'bullish' ? 'green' : tradingPlan.recommendedBias === 'bearish' ? 'red' : 'amber'}>
+                  {tradingPlan.recommendedBias === 'bullish' ? '🟢 Bullish' : tradingPlan.recommendedBias === 'bearish' ? '🔴 Bearish' : '🟡 Netral'}
+                </Pill>
+                <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                  Selalu konfirmasi dengan analisis mandiri Anda.
+                </span>
+              </div>
+            </SectionCard>
 
-        {/* ── 6. Rencana Trading ──────────────────────────────────────────── */}
-        <SectionCard number={6} title="Rencana Trading" icon={<Target className="size-4" />} accentClass="bg-rose-500">
-          <div className="grid gap-4 sm:grid-cols-2 mb-4">
-            <ScenarioCard
-              type="bullish"
-              entry={tradingPlan.bullish.entry}
-              tp1={tradingPlan.bullish.tp1}
-              tp2={tradingPlan.bullish.tp2}
-              sl={tradingPlan.bullish.sl}
-              rr={tradingPlan.bullish.riskRewardRatio}
-              notes={tradingPlan.bullish.notes}
-            />
-            <ScenarioCard
-              type="bearish"
-              entry={tradingPlan.bearish.entry}
-              tp1={tradingPlan.bearish.tp1}
-              tp2={tradingPlan.bearish.tp2}
-              sl={tradingPlan.bearish.sl}
-              rr={tradingPlan.bearish.riskRewardRatio}
-              notes={tradingPlan.bearish.notes}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/40 px-4 py-3">
-            <span className="text-sm text-zinc-500 dark:text-zinc-400">Bias rekomendasi:</span>
-            <Pill tone={tradingPlan.recommendedBias === 'bullish' ? 'green' : tradingPlan.recommendedBias === 'bearish' ? 'red' : 'amber'}>
-              {tradingPlan.recommendedBias === 'bullish' ? '🟢 Bullish' : tradingPlan.recommendedBias === 'bearish' ? '🔴 Bearish' : '🟡 Netral'}
-            </Pill>
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">
-              Selalu konfirmasi dengan analisis mandiri Anda.
-            </span>
-          </div>
-        </SectionCard>
+            {/* ── 7. Kesimpulan ───────────────────────────────────────────── */}
+            <SectionCard number={7} title="Kesimpulan" icon={<BookOpen className="size-4" />} accentClass="bg-zinc-600">
+              {/* Ringkasan singkat */}
+              <div className={cn(
+                'rounded-xl border px-4 py-4 mb-5',
+                conclusion.overallBias === 'bullish'
+                  ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5'
+                  : conclusion.overallBias === 'bearish'
+                    ? 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5'
+                    : 'border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/40'
+              )}>
+                <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">{conclusion.summary}</p>
+              </div>
 
-        {/* ── 7. Kesimpulan ───────────────────────────────────────────────── */}
-        <SectionCard number={7} title="Kesimpulan" icon={<BookOpen className="size-4" />} accentClass="bg-zinc-600">
-          {/* Ringkasan singkat */}
-          <div className={cn(
-            'rounded-xl border px-4 py-4 mb-5',
-            conclusion.overallBias === 'bullish'
-              ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5'
-              : conclusion.overallBias === 'bearish'
-                ? 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5'
-                : 'border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/40'
-          )}>
-            <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">{conclusion.summary}</p>
-          </div>
-
-          {/* ── "Apakah layak dibeli hari ini?" ───────────────────────── */}
-          {(() => {
-            const { points, verdict, verdictTone } = buildLayakBeli(summary, analysis);
-            const verdictBg = {
-              green: 'border-emerald-300 bg-emerald-600 dark:bg-emerald-600',
-              amber: 'border-amber-300 bg-amber-500 dark:bg-amber-600',
-              red: 'border-rose-300 bg-rose-600 dark:bg-rose-600',
-            };
-            const pointBg: Record<CheckTone, string> = {
-              green: 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5',
-              amber: 'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5',
-              red: 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5',
-            };
-            const labelColor: Record<CheckTone, string> = {
-              green: 'text-emerald-700 dark:text-emerald-300',
-              amber: 'text-amber-700 dark:text-amber-300',
-              red: 'text-rose-700 dark:text-rose-300',
-            };
-            const detailColor: Record<CheckTone, string> = {
-              green: 'text-emerald-600/80 dark:text-emerald-400/70',
-              amber: 'text-amber-600/80 dark:text-amber-400/70',
-              red: 'text-rose-600/80 dark:text-rose-400/70',
-            };
-            return (
-              <div className="mb-5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
-                  Apakah {summary.ticker} layak dibeli hari ini?
-                </p>
-                <div className="space-y-2 mb-4">
-                  {points.map((pt) => (
-                    <div key={pt.label} className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', pointBg[pt.tone])}>
-                      <span className="shrink-0 text-base leading-none mt-0.5">{pt.icon}</span>
+              {/* ── "Apakah layak dibeli hari ini?" ───────────────────────── */}
+              {(() => {
+                const { points, verdict, verdictTone } = buildLayakBeli(summary, analysis);
+                const verdictBg = {
+                  green: 'border-emerald-300 bg-emerald-600 dark:bg-emerald-600',
+                  amber: 'border-amber-300 bg-amber-500 dark:bg-amber-600',
+                  red: 'border-rose-300 bg-rose-600 dark:bg-rose-600',
+                };
+                const pointBg: Record<CheckTone, string> = {
+                  green: 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5',
+                  amber: 'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5',
+                  red: 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5',
+                };
+                const labelColor: Record<CheckTone, string> = {
+                  green: 'text-emerald-700 dark:text-emerald-300',
+                  amber: 'text-amber-700 dark:text-amber-300',
+                  red: 'text-rose-700 dark:text-rose-300',
+                };
+                const detailColor: Record<CheckTone, string> = {
+                  green: 'text-emerald-600/80 dark:text-emerald-400/70',
+                  amber: 'text-amber-600/80 dark:text-amber-400/70',
+                  red: 'text-rose-600/80 dark:text-rose-400/70',
+                };
+                return (
+                  <div className="mb-5">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+                      Apakah {summary.ticker} layak dibeli hari ini?
+                    </p>
+                    <div className="space-y-2 mb-4">
+                      {points.map((pt) => (
+                        <div key={pt.label} className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', pointBg[pt.tone])}>
+                          <span className="shrink-0 text-base leading-none mt-0.5">{pt.icon}</span>
+                          <div>
+                            <span className={cn('text-sm font-semibold', labelColor[pt.tone])}>{pt.label}</span>
+                            <p className={cn('text-xs mt-0.5 leading-relaxed', detailColor[pt.tone])}>{pt.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Verdict chip */}
+                    <div className={cn('flex items-start gap-3 rounded-xl px-4 py-3 text-white', verdictBg[verdictTone])}>
+                      <span className="shrink-0 text-base leading-none mt-0.5">💬</span>
                       <div>
-                        <span className={cn('text-sm font-semibold', labelColor[pt.tone])}>{pt.label}</span>
-                        <p className={cn('text-xs mt-0.5 leading-relaxed', detailColor[pt.tone])}>{pt.detail}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide opacity-80 mb-0.5">Kesimpulan</p>
+                        <p className="text-sm font-medium leading-relaxed">{verdict}</p>
                       </div>
                     </div>
-                  ))}
-                </div>
-                {/* Verdict chip */}
-                <div className={cn('flex items-start gap-3 rounded-xl px-4 py-3 text-white', verdictBg[verdictTone])}>
-                  <span className="shrink-0 text-base leading-none mt-0.5">💬</span>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide opacity-80 mb-0.5">Kesimpulan</p>
-                    <p className="text-sm font-medium leading-relaxed">{verdict}</p>
                   </div>
+                );
+              })()}
+
+              {/* Level kunci & Waspadai */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-blue-200 dark:border-blue-400/20 bg-blue-50 dark:bg-blue-400/5 px-4 py-3">
+                  <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">🔑 Level Kunci</p>
+                  <p className="text-sm text-blue-600 dark:text-blue-300 leading-relaxed">{conclusion.keyLevel}</p>
+                </div>
+                <div className="rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                    <AlertTriangle className="inline size-3.5 mr-1" />Waspadai
+                  </p>
+                  <p className="text-sm text-amber-600 dark:text-amber-300 leading-relaxed">{conclusion.watchOut}</p>
                 </div>
               </div>
-            );
-          })()}
+            </SectionCard>
+          </>
+        )}
 
-          {/* Level kunci & Waspadai */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-blue-200 dark:border-blue-400/20 bg-blue-50 dark:bg-blue-400/5 px-4 py-3">
-              <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">🔑 Level Kunci</p>
-              <p className="text-sm text-blue-600 dark:text-blue-300 leading-relaxed">{conclusion.keyLevel}</p>
-            </div>
-            <div className="rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
-              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
-                <AlertTriangle className="inline size-3.5 mr-1" />Waspadai
-              </p>
-              <p className="text-sm text-amber-600 dark:text-amber-300 leading-relaxed">{conclusion.watchOut}</p>
-            </div>
-          </div>
-        </SectionCard>
+        {/* ── Tab: Technical Analysis ──────────────────────────────────────── */}
+        {activeTab === 'technical' && (
+          <>
+            {bars.length > 0 && (
+              <OHLCVChart bars={bars} currentClose={summary.lastClose} />
+            )}
+            <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} />
+            <PriceActionSection number={2} priceAction={priceAction} />
+            <VolumeSection number={3} volume={volume} />
+            <IndicatorsSection number={4} indicators={indicators} />
+          </>
+        )}
+
+        {/* ── Tab: Fundamental Analysis ────────────────────────────────────── */}
+        {activeTab === 'fundamental' && (
+          <FundamentalSection summary={summary} />
+        )}
 
         {/* ── Cara Membaca Analisis Ini ────────────────────────────────── */}
         <section className="rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-white dark:bg-zinc-900/40">

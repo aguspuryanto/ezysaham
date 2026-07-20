@@ -11,7 +11,7 @@
  *   • EMA 20 / EMA 50 / EMA 200 overlays
  *   • Volume bars below (dual-axis)
  *   • Tooltip with OHLCV + EMA values
- *   • Period selector: 1M / 3M / 6M / 1Y
+ *   • Period selector: 1D / 1W / 1M / 3M / 6M / 1Y / 3Y / 5Y
  */
 
 import {
@@ -34,10 +34,14 @@ import { cn } from '@/lib/format';
 
 // ─── Period selector ──────────────────────────────────────────────────────────
 const PERIODS = [
+  { key: '1D', bars: 1 },
+  { key: '1W', bars: 5 },
   { key: '1M', bars: 22 },
   { key: '3M', bars: 66 },
   { key: '6M', bars: 132 },
   { key: '1Y', bars: 252 },
+  { key: '3Y', bars: 756 },
+  { key: '5Y', bars: 1260 },
 ] as const;
 type Period = (typeof PERIODS)[number]['key'];
 
@@ -215,8 +219,8 @@ export function OHLCVChart({ bars, currentClose }: OHLCVChartProps) {
   return (
     <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="flex items-center gap-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Grafik Harga
           </p>
@@ -227,14 +231,14 @@ export function OHLCVChart({ bars, currentClose }: OHLCVChartProps) {
           </div>
         </div>
         {/* Period tabs */}
-        <div className="flex gap-0.5 rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5">
+        <div className="flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5">
           {PERIODS.map(({ key }) => (
             <button
               key={key}
               type="button"
               onClick={() => setPeriod(key)}
               className={cn(
-                'rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                'shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors',
                 period === key
                   ? 'bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900'
                   : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
