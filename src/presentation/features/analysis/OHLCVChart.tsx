@@ -219,8 +219,8 @@ export function OHLCVChart({ bars, currentClose }: OHLCVChartProps) {
   return (
     <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col gap-2 px-4 pt-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="flex items-center gap-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Grafik Harga
           </p>
