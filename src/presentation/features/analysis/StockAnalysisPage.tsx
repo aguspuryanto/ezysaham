@@ -30,6 +30,7 @@ import {
   Loader2,
   PieChart,
   RefreshCw,
+  Rocket,
   Share2,
   Target,
   TrendingDown,
@@ -49,6 +50,7 @@ import {
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
+import { BreakoutScores, computeBreakoutScores } from '@/domain/screener/presets';
 import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
@@ -604,16 +606,110 @@ function FundamentalSection({ summary }: { summary: StockSummary }) {
   );
 }
 
+// ─── Breakout Hunter section ────────────────────────────────────────────────────
+const BREAKOUT_STATUS_LABEL: Record<BreakoutScores['status'], string> = {
+  BUY_WATCH: '🚀 BUY WATCH',
+  WATCH: '👀 WATCH',
+  SKIP: '⏭️ SKIP',
+};
+const BREAKOUT_STATUS_BG: Record<BreakoutScores['status'], string> = {
+  BUY_WATCH: 'bg-emerald-600 dark:bg-emerald-600',
+  WATCH: 'bg-amber-500 dark:bg-amber-600',
+  SKIP: 'bg-zinc-500 dark:bg-zinc-600',
+};
+
+function scoreBarColor(value: number): string {
+  return value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400';
+}
+
+function BreakoutScoreRow({ icon, label, weight, value }: {
+  icon: string; label: string; weight: number; value: number;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-sm text-zinc-600 dark:text-zinc-300">
+          {icon} {label} <span className="text-zinc-400 dark:text-zinc-500">({weight}%)</span>
+        </span>
+        <span className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}/100</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+        <div className={cn('h-full rounded-full transition-all', scoreBarColor(value))} style={{ width: `${value}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function BreakoutHunterSection({ ticker, scores }: { ticker: string; scores: BreakoutScores }) {
+  const dimensions = [
+    { icon: '🌀', label: 'Compression Score', weight: 20, value: scores.compression },
+    { icon: '🏦', label: 'Smart Money Score', weight: 20, value: scores.smartMoney },
+    { icon: '💰', label: 'Liquidity Score', weight: 15, value: scores.likuiditas },
+    { icon: '📊', label: 'Volume Expansion', weight: 15, value: scores.volumeExpansion },
+    { icon: '🎯', label: 'Breakout Position', weight: 10, value: scores.breakoutPosition },
+    { icon: '🔥', label: 'Momentum Score', weight: 10, value: scores.momentum },
+    { icon: '📐', label: 'Historical Volatility', weight: 5, value: scores.historicalVolatility },
+    { icon: '🧭', label: 'Historical Beta', weight: 5, value: scores.historicalBeta },
+  ];
+
+  return (
+    <SectionCard number={1} title="Breakout Hunter Score" icon={<Rocket className="size-4" />} accentClass="bg-rose-500">
+      <div className={cn('flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 mb-5 text-white', BREAKOUT_STATUS_BG[scores.status])}>
+        <span className="text-sm font-semibold uppercase tracking-wide">{BREAKOUT_STATUS_LABEL[scores.status]}</span>
+        <span className="font-mono text-lg font-bold tabular-nums">Composite {scores.composite}/100</span>
+      </div>
+
+      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+        8 Dimensi Skor AI
+      </p>
+      <div className="space-y-4 mb-5">
+        {dimensions.map((d) => (
+          <BreakoutScoreRow key={d.label} icon={d.icon} label={d.label} weight={d.weight} value={d.value} />
+        ))}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 mb-4">
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-400/20 bg-emerald-50 dark:bg-emerald-400/5 px-4 py-3">
+          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-0.5">📈 Prob. Naik &gt;10% (1-3 hari)</p>
+          <p className="font-mono text-lg font-bold text-emerald-600 dark:text-emerald-300">{scores.probUp}%</p>
+        </div>
+        <div className="rounded-xl border border-rose-200 dark:border-rose-400/20 bg-rose-50 dark:bg-rose-400/5 px-4 py-3">
+          <p className="text-xs font-semibold text-rose-700 dark:text-rose-400 mb-0.5">📉 Prob. Turun &gt;3%</p>
+          <p className="font-mono text-lg font-bold text-rose-600 dark:text-rose-300">{scores.probDown}%</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <Pill tone={scores.distributionRisk < 50 ? 'green' : 'red'}>
+          ⚠️ Distribution Risk {scores.distributionRisk}/100
+        </Pill>
+        <Pill tone={scores.openingConfirmation >= 40 ? 'green' : 'amber'}>
+          🌅 Opening Confirmation {scores.openingConfirmation}/100
+        </Pill>
+      </div>
+
+      <p className="text-xs text-zinc-400 dark:text-zinc-600 italic leading-relaxed">
+        Distribution Risk & Opening Confirmation berfungsi sebagai safety gate (bukan bagian bobot Composite Score).
+        Historical Beta adalah proxy ekspansi ATR — {ticker} tidak dibandingkan terhadap IHSG karena data historis
+        indeks belum tersedia. Skor ini menekankan pola &quot;compressed before explosive move&quot; sehingga saham
+        dengan tren EMA masih bearish tetap bisa mendapat skor tinggi jika kompresi volatilitas dan smart money
+        inflow-nya kuat — bukan jaminan ARA, melainkan probabilitas pergerakan eksplosif jika ada katalis.
+      </p>
+    </SectionCard>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Page Component
 // ─────────────────────────────────────────────────────────────────────────────
 type PageStatus = 'loading' | 'ready' | 'error';
-type AnalysisTab = 'indikator' | 'technical' | 'fundamental';
+type AnalysisTab = 'indikator' | 'technical' | 'fundamental' | 'breakout';
 
 const ANALYSIS_TABS: { key: AnalysisTab; label: string }[] = [
   { key: 'indikator', label: 'Technical Analysis' },
   // { key: 'technical', label: 'Technical Analysis' },
   { key: 'fundamental', label: 'Fundamental Analysis' },
+  { key: 'breakout', label: 'Breakout Hunter' },
 ];
 
 export function StockAnalysisPage({ ticker }: { ticker: string }) {
@@ -695,6 +791,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     );
   }
 
+  const breakoutScores = computeBreakoutScores(summary, bars);
   const { trendEma, supportResistance, priceAction, volume, indicators, tradingPlan, conclusion } = analysis;
   const isBullish = trendEma.trend === 'bullish';
   const isBearish = trendEma.trend === 'bearish';
@@ -1038,6 +1135,11 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         {/* ── Tab: Fundamental Analysis ────────────────────────────────────── */}
         {activeTab === 'fundamental' && (
           <FundamentalSection summary={summary} />
+        )}
+
+        {/* ── Tab: Breakout Hunter ─────────────────────────────────────────── */}
+        {activeTab === 'breakout' && (
+          <BreakoutHunterSection ticker={summary.ticker} scores={breakoutScores} />
         )}
 
         {/* ── Cara Membaca Analisis Ini ────────────────────────────────── */}

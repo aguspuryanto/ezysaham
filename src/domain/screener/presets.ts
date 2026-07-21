@@ -10,21 +10,33 @@ export const LOT_SIZE = 100;
 
 export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout';
 
-// ── Breakout Hunter scoring (7 dimensions) ────────────────────────────────────
+// ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
-  /** 🔥 0-100 — EMA structure, MACD, RSI sweet-spot, breakout position */
+  /** 🌀 0-100 — volatility/range contraction ("coiled spring" before an explosive move) */
+  compression: number;
+  /** 🔥 0-100 — EMA structure, MACD, RSI sweet-spot */
   momentum: number;
   /** 💰 0-100 — Nilai transaksi tier */
   likuiditas: number;
   /** 🏦 0-100 — Volume surge, candle quality, closing position */
   smartMoney: number;
-  /** ⚠️ 0-100 — lower is safer — overbought signals, distribution flags */
+  /** 📊 0-100 — multi-day volume ramp (acceleration), distinct from single-day RVOL burst */
+  volumeExpansion: number;
+  /** 🎯 0-100 — close position within the recent trading range */
+  breakoutPosition: number;
+  /** 📐 0-100 — magnitude of historical daily swings (ARA/ARB-prone stocks score higher) */
+  historicalVolatility: number;
+  /** 🧭 0-100 — proxy for beta: ATR(14) now vs. ~2 months ago. No IHSG series is available in this
+   *  codebase, so true market-beta can't be computed — this approximates "is this stock's volatility
+   *  regime structurally expanding" instead. */
+  historicalBeta: number;
+  /** ⚠️ 0-100 — lower is safer — overbought signals, distribution flags (safety gate, not weighted into composite) */
   distributionRisk: number;
   /** 📈 0-100 — synthetic probability of >10% gain in 1-3 days */
   probUp: number;
   /** 📉 0-100 — synthetic probability of >3% loss */
   probDown: number;
-  /** 🌅 0-100 — pre-open positioning quality */
+  /** 🌅 0-100 — pre-open positioning quality (safety gate, not weighted into composite) */
   openingConfirmation: number;
   /** Weighted composite of all dimensions */
   composite: number;
@@ -162,31 +174,161 @@ function calcMomentumScore(s: StockSummary, bars: OHLCVBar[]): number {
 
   let score = 0;
 
-  // EMA structure (25 pts)
-  if (!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50) score += 15;
-  if (!Number.isNaN(ema20) && s.lastClose > ema20) score += 10;
+  // EMA structure (30 pts)
+  if (!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50) score += 18;
+  if (!Number.isNaN(ema20) && s.lastClose > ema20) score += 12;
 
-  // MACD (30 pts): bullish position + crossover bonus
-  if (!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast) score += 20;
-  if (!Number.isNaN(histLast) && !Number.isNaN(prevHist) && histLast > 0 && prevHist <= 0) score += 10; // fresh crossover
+  // MACD (40 pts): bullish position + crossover bonus
+  if (!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast) score += 25;
+  if (!Number.isNaN(histLast) && !Number.isNaN(prevHist) && histLast > 0 && prevHist <= 0) score += 15; // fresh crossover
 
-  // RSI sweet-spot (25 pts)
+  // RSI sweet-spot (30 pts)
   if (!Number.isNaN(rsiLast)) {
-    if (rsiLast >= 55 && rsiLast <= 70) score += 25;
-    else if (rsiLast >= 50 && rsiLast < 55) score += 15;
+    if (rsiLast >= 55 && rsiLast <= 70) score += 30;
+    else if (rsiLast >= 50 && rsiLast < 55) score += 18;
     else if (rsiLast > 70 && rsiLast <= 75) score += 10;
   }
 
-  // Breakout position: close in upper 80%+ of 20-day range (20 pts)
-  const last20 = bars.slice(-20);
+  return clamp(score);
+}
+
+/** True range at index i (needs bars[i - 1] for the prior close). */
+function trueRangeAt(bars: OHLCVBar[], i: number): number {
+  const prevClose = bars[i - 1].close;
+  return Math.max(
+    bars[i].high - bars[i].low,
+    Math.abs(bars[i].high - prevClose),
+    Math.abs(bars[i].low - prevClose)
+  );
+}
+
+function avgTrueRange(bars: OHLCVBar[], from: number, count: number): number {
+  let sum = 0;
+  for (let i = from; i < from + count; i++) sum += trueRangeAt(bars, i);
+  return sum / count;
+}
+
+/** 🌀 Compression: volatility/range contraction — a "coiled spring" setup. Rewards a
+ *  tight recent range even when the trend (EMA) is still bearish, since this is exactly
+ *  the pattern that precedes explosive ARA-style moves on the IDX. */
+function calcCompressionScore(bars: OHLCVBar[]): number {
+  if (bars.length < 25) return 50;
+  const n = bars.length;
+  const atrShort = avgTrueRange(bars, n - 5, 5);
+  const atrLong = avgTrueRange(bars, n - 20, 20);
+  if (atrLong <= 0) return 50;
+  const ratio = atrShort / atrLong;
+
+  let score: number;
+  if (ratio <= 0.5) score = 100;
+  else if (ratio <= 0.7) score = 85;
+  else if (ratio <= 0.9) score = 65;
+  else if (ratio <= 1.1) score = 40;
+  else score = 15;
+
+  // Bonus: last close still inside a tight 10-day range (hasn't expanded yet)
+  const last10 = bars.slice(-10);
+  const high10 = Math.max(...last10.map((b) => b.high));
+  const low10 = Math.min(...last10.map((b) => b.low));
+  const range10Pct = high10 > 0 ? ((high10 - low10) / high10) * 100 : 100;
+  if (range10Pct <= 8) score += 10;
+  else if (range10Pct <= 12) score += 5;
+
+  return clamp(score);
+}
+
+/** 📊 Volume Expansion: multi-day volume ramp (acceleration), distinct from Smart Money's
+ *  single-day RVOL burst — catches volume building up over several days ahead of a move. */
+function calcVolumeExpansionScore(s: StockSummary, bars: OHLCVBar[]): number {
+  if (bars.length < 15) return 30;
+  const volumes = bars.map((b) => b.volume);
+
+  const recent3 = volumes.slice(-3);
+  const avgRecent3 = recent3.reduce((a, b) => a + b, 0) / recent3.length;
+  const prior10 = volumes.slice(-13, -3);
+  const avgPrior10 = prior10.length > 0 ? prior10.reduce((a, b) => a + b, 0) / prior10.length : avgRecent3;
+
+  let score = 0;
+
+  const expansionRatio = avgPrior10 > 0 ? avgRecent3 / avgPrior10 : 1;
+  if (expansionRatio >= 2) score += 50;
+  else if (expansionRatio >= 1.5) score += 35;
+  else if (expansionRatio >= 1.2) score += 20;
+  else if (expansionRatio >= 1) score += 10;
+
+  const volMa5 = lastValid(sma(volumes, 5));
+  const todayVsMa5 = !Number.isNaN(volMa5) && volMa5 > 0 ? s.volume / volMa5 : 1;
+  if (todayVsMa5 >= 2) score += 30;
+  else if (todayVsMa5 >= 1.5) score += 20;
+  else if (todayVsMa5 >= 1.2) score += 10;
+
+  const last3Bars = bars.slice(-3);
+  let risingDays = 0;
+  for (let i = 1; i < last3Bars.length; i++) {
+    if (last3Bars[i].volume > last3Bars[i - 1].volume) risingDays++;
+  }
+  score += risingDays * 10;
+
+  return clamp(score);
+}
+
+/** 🎯 Breakout Position: where the close sits within the recent trading range. */
+function calcBreakoutPositionScore(s: StockSummary, bars: OHLCVBar[]): number {
+  if (bars.length < 5) return 50;
+  const last20 = bars.slice(-Math.min(20, bars.length));
   const high20 = Math.max(...last20.map((b) => b.high));
   const low20 = Math.min(...last20.map((b) => b.low));
   const posInRange = high20 > low20 ? (s.lastClose - low20) / (high20 - low20) : 0.5;
-  if (posInRange >= 0.8) score += 20;
-  else if (posInRange >= 0.6) score += 12;
-  else if (posInRange >= 0.4) score += 5;
 
-  return clamp(score);
+  if (posInRange >= 0.9) return 100;
+  if (posInRange >= 0.8) return 85;
+  if (posInRange >= 0.6) return 60;
+  if (posInRange >= 0.4) return 40;
+  if (posInRange >= 0.2) return 20;
+  return 10;
+}
+
+/** 📐 Historical Volatility: magnitude of daily swings over the last 20 sessions.
+ *  Higher volatility scores higher here — it's exactly the character of stocks capable
+ *  of an explosive ARA-style move, not a risk penalty (see Distribution Risk for that). */
+function calcHistoricalVolatilityScore(bars: OHLCVBar[]): number {
+  if (bars.length < 21) return 40;
+  const closes = bars.map((b) => b.close);
+  const returns: number[] = [];
+  for (let i = closes.length - 20; i < closes.length; i++) {
+    if (i <= 0) continue;
+    returns.push((closes[i] - closes[i - 1]) / closes[i - 1]);
+  }
+  if (returns.length === 0) return 40;
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((a, r) => a + (r - mean) ** 2, 0) / returns.length;
+  const dailyVolPct = Math.sqrt(variance) * 100;
+
+  if (dailyVolPct >= 6) return 100;
+  if (dailyVolPct >= 4) return 85;
+  if (dailyVolPct >= 3) return 65;
+  if (dailyVolPct >= 2) return 45;
+  if (dailyVolPct >= 1) return 25;
+  return 10;
+}
+
+/** 🧭 Historical Beta (proxy): no IHSG/index series exists in this codebase, so true
+ *  market-beta can't be computed. This approximates it as ATR(14) now vs. ATR(14) from
+ *  ~40 sessions ago — a structurally expanding volatility regime is the closest available
+ *  signal for "this stock is becoming more beta-sensitive / explosive". */
+function calcHistoricalBetaScore(bars: OHLCVBar[]): number {
+  if (bars.length < 60) return 40;
+  const n = bars.length;
+  const atrRecent = avgTrueRange(bars, n - 14, 14);
+  const atrPast = avgTrueRange(bars, n - 54, 14);
+  if (atrPast <= 0) return 40;
+  const ratio = atrRecent / atrPast;
+
+  if (ratio >= 1.5) return 100;
+  if (ratio >= 1.2) return 75;
+  if (ratio >= 0.9) return 50;
+  if (ratio >= 0.7) return 30;
+  return 15;
 }
 
 function calcLikuiditasScore(s: StockSummary): number {
@@ -314,10 +456,15 @@ function calcOpeningConfirmation(s: StockSummary, bars: OHLCVBar[]): number {
   return clamp(score);
 }
 
-function computeBreakoutScores(s: StockSummary, bars: OHLCVBar[]): BreakoutScores {
+export function computeBreakoutScores(s: StockSummary, bars: OHLCVBar[]): BreakoutScores {
+  const compression = calcCompressionScore(bars);
   const momentum = calcMomentumScore(s, bars);
   const likuiditas = calcLikuiditasScore(s);
   const smartMoney = calcSmartMoneyScore(s, bars);
+  const volumeExpansion = calcVolumeExpansionScore(s, bars);
+  const breakoutPosition = calcBreakoutPositionScore(s, bars);
+  const historicalVolatility = calcHistoricalVolatilityScore(bars);
+  const historicalBeta = calcHistoricalBetaScore(bars);
   const distributionRisk = calcDistributionRisk(s, bars);
   const openingConfirmation = calcOpeningConfirmation(s, bars);
 
@@ -331,13 +478,19 @@ function computeBreakoutScores(s: StockSummary, bars: OHLCVBar[]): BreakoutScore
     distributionRisk * 0.50 + (100 - momentum) * 0.30 + (100 - smartMoney) * 0.20
   );
 
-  // Composite weighted score
+  // Composite weighted score — favors a "compressed before explosive move" setup
+  // (e.g. SULI-style: tight range + smart money inflow) over a strict EMA-bullish trend.
+  // Distribution Risk & Opening Confirmation stay out of the weighted sum and instead
+  // act as safety gates below, same as before.
   const composite = clamp(
-    momentum * 0.30 +
+    compression * 0.20 +
+    smartMoney * 0.20 +
     likuiditas * 0.15 +
-    smartMoney * 0.25 +
-    (100 - distributionRisk) * 0.20 +
-    openingConfirmation * 0.10
+    volumeExpansion * 0.15 +
+    breakoutPosition * 0.10 +
+    momentum * 0.10 +
+    historicalVolatility * 0.05 +
+    historicalBeta * 0.05
   );
 
   // Status determination
@@ -351,9 +504,14 @@ function computeBreakoutScores(s: StockSummary, bars: OHLCVBar[]): BreakoutScore
   }
 
   return {
+    compression: Math.round(compression),
     momentum: Math.round(momentum),
     likuiditas: Math.round(likuiditas),
     smartMoney: Math.round(smartMoney),
+    volumeExpansion: Math.round(volumeExpansion),
+    breakoutPosition: Math.round(breakoutPosition),
+    historicalVolatility: Math.round(historicalVolatility),
+    historicalBeta: Math.round(historicalBeta),
     distributionRisk: Math.round(distributionRisk),
     probUp: Math.round(probUp),
     probDown: Math.round(probDown),
@@ -366,15 +524,20 @@ function computeBreakoutScores(s: StockSummary, bars: OHLCVBar[]): BreakoutScore
 const breakoutPreset: ScreenerPreset = {
   id: 'breakout',
   label: 'Breakout Hunter',
-  description: 'Mencari saham dengan peluang tertinggi menghasilkan kenaikan 10–20% dalam 1–3 hari, dengan risiko maksimal ~3%. Menggunakan 7 dimensi skor AI.',
+  description: 'Mencari saham dengan peluang tertinggi menghasilkan kenaikan 10–20% dalam 1–3 hari, dengan risiko maksimal ~3%. Menggunakan 8 dimensi skor AI — menekankan pola "compressed before explosive move" (SULI-style), bukan hanya tren EMA yang sudah bullish.',
   criteria: [
     'Harga > 100 (hindari penny stock)',
     'Nilai transaksi > Rp 5 miliar',
-    'Momentum Score (EMA, MACD, RSI, posisi breakout)',
-    'Smart Money Score (RVOL, kualitas candle, posisi close)',
-    'Distribution Risk < 50 (bukan overbought berat)',
+    'Compression Score 20% — kontraksi volatilitas/range ("coiled spring")',
+    'Smart Money Score 20% — RVOL, kualitas candle, posisi close',
+    'Liquidity Score 15% — tier nilai transaksi',
+    'Volume Expansion 15% — akselerasi volume multi-hari',
+    'Breakout Position 10% — posisi close dalam range terkini',
+    'Momentum Score 10% — EMA, MACD, RSI',
+    'Historical Volatility 5% — magnitude swing harian historis',
+    'Historical Beta 5% — proxy ekspansi ATR (tidak ada data IHSG)',
+    'Distribution Risk < 50 & Opening Confirmation ≥ 40 (safety gate)',
     'Composite Score ≥ 55',
-    'Opening Confirmation Score ≥ 40',
   ],
   coarseFilter: (s) =>
     s.lastClose > 100 &&
@@ -392,14 +555,22 @@ const breakoutPreset: ScreenerPreset = {
     if (scores.composite >= 55) reasons.push(`Composite Score ${scores.composite}/100`);
     else failed.push(`Composite Score lemah (${scores.composite}/100)`);
 
-    if (scores.momentum >= 50) reasons.push(`🔥 Momentum ${scores.momentum}/100`);
-    else failed.push(`🔥 Momentum lemah (${scores.momentum}/100)`);
+    if (scores.compression >= 60) reasons.push(`🌀 Compression ${scores.compression}/100`);
+    else failed.push(`🌀 Compression lemah (${scores.compression}/100)`);
+
+    if (scores.smartMoney >= 40) reasons.push(`🏦 Smart Money ${scores.smartMoney}/100`);
+    else failed.push(`🏦 Smart Money lemah (${scores.smartMoney}/100)`);
 
     if (scores.likuiditas >= 45) reasons.push(`💰 Likuiditas ${scores.likuiditas}/100`);
     else failed.push(`💰 Likuiditas rendah (${scores.likuiditas}/100)`);
 
-    if (scores.smartMoney >= 40) reasons.push(`🏦 Smart Money ${scores.smartMoney}/100`);
-    else failed.push(`🏦 Smart Money lemah (${scores.smartMoney}/100)`);
+    if (scores.volumeExpansion >= 40) reasons.push(`📊 Volume Expansion ${scores.volumeExpansion}/100`);
+    else failed.push(`📊 Volume Expansion lemah (${scores.volumeExpansion}/100)`);
+
+    reasons.push(`🎯 Breakout Position ${scores.breakoutPosition}/100`);
+    reasons.push(`🔥 Momentum ${scores.momentum}/100`);
+    reasons.push(`📐 Historical Volatility ${scores.historicalVolatility}/100`);
+    reasons.push(`🧭 Historical Beta ${scores.historicalBeta}/100`);
 
     if (scores.distributionRisk < 50) reasons.push(`⚠️ Distribution Risk ${scores.distributionRisk}/100 (aman)`);
     else failed.push(`⚠️ Distribution Risk tinggi (${scores.distributionRisk}/100)`);
