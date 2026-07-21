@@ -13,7 +13,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
+import { getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
 import { StockSummary } from '@/domain/models/Stock';
 import { ScreenerPresetId, SCREENER_PRESETS } from '@/domain/screener/presets';
 import { mapWithConcurrency } from '@/lib/concurrency';
@@ -79,10 +79,10 @@ export function ScreenerPage() {
   }, [drawerOpen]);
 
   useEffect(() => {
-    getStockSummaries()
-      .then((data) => {
-        setSummaries(data);
-        setLastUpdatedAt(new Date());
+    getStockSummariesWithTimestamp()
+      .then(({ summaries, lastUpdatedAt }) => {
+        setSummaries(summaries);
+        setLastUpdatedAt(lastUpdatedAt);
         setStatus('idle');
       })
       .catch(() => {

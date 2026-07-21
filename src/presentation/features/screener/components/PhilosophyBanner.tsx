@@ -100,6 +100,13 @@ export function PhilosophyBanner() {
               EzySaham menjawab satu pertanyaan sederhana tersebut dengan bahasa yang mudah
               dipahami — bukan angka-angka mentah.
             </p>
+            <p className="mt-2.5 text-sm text-blue-700/80 dark:text-blue-300/80 leading-relaxed">
+              Setiap kali Anda membuka EzySaham, AI menganalisis hampir 1.000 saham di Bursa Efek
+              Indonesia dan memilih sekitar 20–30 saham dengan setup terbaik untuk dipantau. Untuk
+              tiap pilihan, AI menjelaskan alasan pemilihannya, level support–resistance, potensi
+              risiko, serta skenario bullish maupun bearish — keputusan akhir tetap berada di
+              tangan Anda sebagai investor.
+            </p>
           </div>
 
           {/* Example output */}

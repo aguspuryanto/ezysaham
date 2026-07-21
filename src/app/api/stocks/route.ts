@@ -7,7 +7,7 @@ export async function GET() {
       throw new Error(`Network response was not ok: ${response.statusText}`);
     }
     const data = await response.json();
-    return Response.json(data);
+    return Response.json(data, { headers: { 'X-Fetched-At': new Date().toISOString() } });
   } catch (error) {
     console.error('Error fetching from pasardana:', error);
     return Response.json({ error: 'Failed to fetch stocks' }, { status: 500 });

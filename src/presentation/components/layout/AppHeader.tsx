@@ -1,7 +1,7 @@
 'use client';
 
 import { Search, SlidersHorizontal, TrendingUp } from 'lucide-react';
-import { SITE_NAME } from '@/lib/site';
+import { SITE_NAME, SITE_SLOGAN } from '@/lib/site';
 
 export function AppHeader({
   query,
