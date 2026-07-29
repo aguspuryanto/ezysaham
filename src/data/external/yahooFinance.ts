@@ -6,7 +6,19 @@ function toDateString(unixSeconds: number, gmtOffsetSeconds: number): string {
 }
 
 export async function fetchYahooDailyBars(code: string, range: string): Promise<HistoryResponse> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}.JK?range=${encodeURIComponent(range)}&interval=1d`;
+  return fetchYahooChart(code, `${code}.JK`, range);
+}
+
+/**
+ * For index/global symbols (e.g. "^JKSE" for IHSG) that must not get the
+ * ".JK" suffix `fetchYahooDailyBars` appends for IDX stock tickers.
+ */
+export async function fetchYahooIndexBars(symbol: string, range: string): Promise<HistoryResponse> {
+  return fetchYahooChart(symbol, symbol, range);
+}
+
+async function fetchYahooChart(code: string, symbol: string, range: string): Promise<HistoryResponse> {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=1d`;
 
   let response: Response;
   try {

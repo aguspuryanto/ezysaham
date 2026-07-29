@@ -26,6 +26,7 @@ import {
 import { ema, lastValid, sma } from '@/domain/indicators/movingAverages';
 import { macd } from '@/domain/indicators/macd';
 import { rsi } from '@/domain/indicators/rsi';
+import { formatCompact } from '@/lib/format';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function closes(bars: OHLCVBar[]): number[] {
@@ -405,20 +406,39 @@ function buildConclusion(
   trendEma: TrendEmaAnalysis,
   sr: SupportResistanceAnalysis,
   priceAction: PriceActionAnalysis,
+  volume: VolumeAnalysis,
   indicators: IndicatorAnalysis
 ): ConclusionAnalysis {
   const price = summary.lastClose;
   const pct = summary.percentChange1D;
   const r1 = sr.resistances[0]?.price;
   const s1 = sr.supports[0]?.price;
+  const isOverbought = indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk';
+  const isOversold = indicators.rsiZone === 'oversold';
+  const midTrendConfirmed = trendEma.ema20 > trendEma.ema50;
 
   const overallBias = trendEma.trend;
 
-  const summary_str =
-    `${summary.ticker} ${pct >= 0 ? 'naik' : 'turun'} ${Math.abs(pct).toFixed(2)}% hari ini dan close di ${price.toLocaleString('id-ID')}. ` +
-    `Harga ${trendEma.priceVsEma20 === 'above' ? 'berada di atas' : 'masih di bawah'} EMA20, ` +
-    `${trendEma.priceVsEma50 === 'above' ? 'dan di atas EMA50' : 'dan di bawah EMA50'}. ` +
-    `${trendEma.trendDescription}`;
+  // Kalimat 1: apa yang terjadi hari ini (harga + volume + likuiditas)
+  const moveSentence =
+    `${summary.ticker} ${pct >= 0 ? 'mengalami lonjakan harga' : 'mengalami penurunan harga'} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%) dan close di ${price.toLocaleString('id-ID')}` +
+    (volume.isHighVolume
+      ? ` dengan volume sangat tinggi (RVOL ${Number.isNaN(volume.relativeVolume) ? '–' : volume.relativeVolume.toFixed(2)}×) dan nilai transaksi ${formatCompact(summary.value)}, menandakan minat pasar yang kuat.`
+      : ` dengan volume yang belum istimewa (RVOL ${Number.isNaN(volume.relativeVolume) ? '–' : volume.relativeVolume.toFixed(2)}×) dan nilai transaksi ${formatCompact(summary.value)}.`);
+
+  // Kalimat 2: konfirmasi tren menengah via EMA20 vs EMA50
+  const trendSentence = midTrendConfirmed
+    ? `Tren menengah sudah terkonfirmasi dengan EMA20 di atas EMA50, sejalan dengan ${trendEma.trend === 'bullish' ? 'arah kenaikan harga' : 'pergerakan harga saat ini'}.`
+    : `Namun, tren menengah belum sepenuhnya terkonfirmasi karena EMA20 masih berada di bawah EMA50.`;
+
+  // Kalimat 3: kondisi momentum/RSI
+  const rsiSentence = isOverbought
+    ? `RSI ${indicators.rsi14.toFixed(1)} menunjukkan saham sudah berada di area overbought, sehingga risiko profit taking meningkat.`
+    : isOversold
+    ? `RSI ${indicators.rsi14.toFixed(1)} berada di area oversold, membuka peluang rebound jika volume mendukung.`
+    : `RSI ${indicators.rsi14.toFixed(1)} masih di zona netral, momentum belum menunjukkan sinyal ekstrem.`;
+
+  const summary_str = `${moveSentence} ${trendSentence} ${rsiSentence}`;
 
   const keyLevel = r1
     ? `Kunci utama ada di area ${r1.toLocaleString('id-ID')}${sr.resistances[1] ? ` – ${sr.resistances[1].price.toLocaleString('id-ID')}` : ''}, jika berhasil dikonfirmasi volume, peluang naik ke ${sr.resistances[1]?.price?.toLocaleString('id-ID') ?? 'target berikutnya'} terbuka.`
@@ -426,11 +446,21 @@ function buildConclusion(
 
   const watchOut = s1
     ? `Waspadai jika harga gagal bertahan di atas ${s1.toLocaleString('id-ID')} — potensi tekanan jual lebih lanjut.`
-    : indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk'
+    : isOverbought
     ? 'Waspadai koreksi karena RSI mulai overbought.'
     : 'Tetap disiplin manajemen risiko, pantau perkembangan volume.';
 
-  return { overallBias, summary: summary_str, keyLevel, watchOut };
+  // Rencana trading singkat: kombinasi lonjakan harga + overbought → jangan kejar, tunggu konfirmasi/pullback.
+  const tradingNote =
+    volume.isHighVolume && isOverbought
+      ? `Rencana trading: Jangan mengejar harga jika besok langsung gap up. Lebih baik menunggu apakah momentum benar-benar berlanjut dengan volume yang tetap tinggi, atau menunggu pullback sehat sebelum mempertimbangkan entry.`
+      : overallBias === 'bullish' && !isOverbought
+      ? `Rencana trading: Momentum masih sehat — entry dapat dipertimbangkan saat pullback ke area EMA20 dengan volume yang tetap terjaga di atas rata-rata.`
+      : overallBias === 'bearish'
+      ? `Rencana trading: Hindari entry buy dahulu, tunggu tanda-tanda reversal (higher low + volume beli) sebelum masuk.`
+      : `Rencana trading: Belum ada sinyal yang cukup kuat — tunggu breakout atau breakdown yang terkonfirmasi volume sebelum mengambil posisi.`;
+
+  return { overallBias, summary: summary_str, keyLevel, watchOut, tradingNote };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -467,7 +497,7 @@ export function computeStockAnalysis(
       recommendedBias: 'neutral',
     };
     const noConc: ConclusionAnalysis = {
-      overallBias: 'sideways', summary: 'Data tidak cukup untuk analisis.', keyLevel: '–', watchOut: '–',
+      overallBias: 'sideways', summary: 'Data tidak cukup untuk analisis.', keyLevel: '–', watchOut: '–', tradingNote: '–',
     };
     return {
       ticker: summary.ticker, generatedAt: new Date(),
@@ -482,7 +512,7 @@ export function computeStockAnalysis(
   const volume = analyzeVolume(bars, summary);
   const indicators = analyzeIndicators(bars);
   const tradingPlan = buildTradingPlan(summary, supportResistance, trendEma.trend);
-  const conclusion = buildConclusion(summary, trendEma, supportResistance, priceAction, indicators);
+  const conclusion = buildConclusion(summary, trendEma, supportResistance, priceAction, volume, indicators);
 
   return {
     ticker: summary.ticker,

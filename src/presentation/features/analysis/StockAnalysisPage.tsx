@@ -14,6 +14,7 @@
  *   5. Indikator Teknikal
  *   6. Rencana Trading (Bullish & Bearish)
  *   7. Kesimpulan
+ *   8. Risk Guard (peringatan disiplin sebelum entry)
  */
 
 import {
@@ -43,6 +44,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
 import {
+  CandlePattern,
   IndicatorAnalysis,
   PriceActionAnalysis,
   StockAnalysis,
@@ -246,7 +248,7 @@ interface CheckPoint { icon: string; tone: CheckTone; label: string; detail: str
 function buildLayakBeli(
   summary: StockSummary,
   analysis: StockAnalysis
-): { points: CheckPoint[]; verdict: string; verdictTone: CheckTone } {
+): { points: CheckPoint[]; verdict: string; verdictTone: CheckTone; score: number } {
   const { trendEma, supportResistance, volume, indicators } = analysis;
   const points: CheckPoint[] = [];
 
@@ -322,7 +324,107 @@ function buildLayakBeli(
     verdictTone = 'amber';
   }
 
-  return { points, verdict, verdictTone };
+  // Skor kelayakan 0-100: hijau = 100, kuning = 50, merah = 0
+  const scoreSum = points.reduce((sum, p) => sum + (p.tone === 'green' ? 100 : p.tone === 'amber' ? 50 : 0), 0);
+  const score = points.length > 0 ? Math.round(scoreSum / points.length) : 0;
+
+  return { points, verdict, verdictTone, score };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "Risk Guard" helper — peringatan disiplin sebelum entry
+// ─────────────────────────────────────────────────────────────────────────────
+type RiskLevel = 'danger' | 'warning' | 'ok';
+interface RiskAlert { level: RiskLevel; icon: string; text: string; }
+
+const BULLISH_REVERSAL_PATTERNS: CandlePattern[] = ['bullish_engulfing', 'hammer', 'marubozu_bullish'];
+
+function buildRiskGuard(
+  summary: StockSummary,
+  analysis: StockAnalysis,
+  bars: OHLCVBar[],
+  layakScore: number
+): RiskAlert[] {
+  const { indicators, supportResistance, trendEma, priceAction, tradingPlan } = analysis;
+  const alerts: RiskAlert[] = [];
+
+  // 1. Kenaikan harga cepat — risiko FOMO
+  if (bars.length >= 4) {
+    const closeNow = bars[bars.length - 1].close;
+    const closePrev3 = bars[bars.length - 4].close;
+    const change3d = ((closeNow - closePrev3) / closePrev3) * 100;
+    if (change3d >= 20) {
+      alerts.push({ level: 'danger', icon: '⚠️', text: `Harga sudah naik ${change3d.toFixed(1)}% dalam 3 hari — risiko FOMO tinggi, hindari mengejar harga.` });
+    } else if (change3d >= 10) {
+      alerts.push({ level: 'warning', icon: '⚠️', text: `Harga naik ${change3d.toFixed(1)}% dalam 3 hari — waspadai potensi koreksi jangka pendek.` });
+    }
+  }
+
+  // 2. RSI overbought — potensi profit taking
+  if (indicators.rsi14 > 80) {
+    alerts.push({ level: 'danger', icon: '⚠️', text: `RSI ${fmtN(indicators.rsi14, 1)} (> 80) — potensi profit taking, hindari entry baru.` });
+  } else if (indicators.rsi14 > 70) {
+    alerts.push({ level: 'warning', icon: '⚠️', text: `RSI ${fmtN(indicators.rsi14, 1)} — mulai memasuki zona overbought.` });
+  }
+
+  // 3. Dekat resistance — risk-reward kurang menarik
+  const r1 = supportResistance.resistances[0];
+  if (r1) {
+    const upside = ((r1.price - summary.lastClose) / summary.lastClose) * 100;
+    if (upside <= 1.5 || tradingPlan.bullish.riskRewardRatio < 1.5) {
+      alerts.push({ level: 'warning', icon: '⚠️', text: `Dekat ${r1.label} (${fmtRp(r1.price)}) — risk-reward kurang menarik (1:${fmtN(tradingPlan.bullish.riskRewardRatio, 1)}).` });
+    }
+  }
+
+  // 4. Tren turun tanpa sinyal reversal — jangan average down
+  if (trendEma.trend === 'bearish' && !BULLISH_REVERSAL_PATTERNS.includes(priceAction.pattern)) {
+    alerts.push({ level: 'danger', icon: '⚠️', text: 'Belum ada sinyal reversal — hindari average down selama tren masih turun.' });
+  }
+
+  // 5. Ambang skor kelayakan untuk entry
+  if (layakScore >= 80) {
+    alerts.push({ level: 'ok', icon: '✅', text: `Skor kelayakan ${layakScore}/100 — memenuhi ambang batas entry (≥ 80).` });
+  } else {
+    alerts.push({ level: 'warning', icon: '⚠️', text: `Skor kelayakan ${layakScore}/100 — di bawah ambang aman (≥ 80), tunggu konfirmasi lebih lanjut sebelum entry.` });
+  }
+
+  return alerts;
+}
+
+// ─── Risk Guard section ───────────────────────────────────────────────────────
+function RiskGuardSection({ number, alerts, score }: {
+  number: number; alerts: RiskAlert[]; score: number;
+}) {
+  const alertBg: Record<RiskLevel, string> = {
+    danger: 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5 text-rose-700 dark:text-rose-300',
+    warning: 'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5 text-amber-700 dark:text-amber-300',
+    ok: 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5 text-emerald-700 dark:text-emerald-300',
+  };
+  return (
+    <SectionCard number={number} title="Risk Guard" icon={<TriangleAlert className="size-4" />} accentClass="bg-orange-500">
+      <div className="flex items-center justify-between gap-3 mb-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/40 px-4 py-3">
+        <span className="text-sm text-zinc-500 dark:text-zinc-400">Skor Kelayakan Entry</span>
+        <span className={cn(
+          'font-mono text-lg font-bold tabular-nums',
+          score >= 80 ? 'text-emerald-600 dark:text-emerald-400' : score >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
+        )}>
+          {score}/100
+        </span>
+      </div>
+      <div className="space-y-2">
+        {alerts.map((a, i) => (
+          <div key={i} className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', alertBg[a.level])}>
+            <span className="shrink-0 text-base leading-none mt-0.5">{a.icon}</span>
+            <p className="text-sm leading-relaxed">{a.text}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed">
+        Risk Guard bukan sinyal beli/jual — ini pengingat disiplin sebelum entry. Idealnya entry hanya dilakukan
+        jika skor kelayakan ≥ 80/100 dan tidak ada peringatan berlevel bahaya.
+      </p>
+    </SectionCard>
+  );
 }
 
 // ─── Trend & EMA section ───────────────────────────────────────────────────────
@@ -795,6 +897,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const { trendEma, supportResistance, priceAction, volume, indicators, tradingPlan, conclusion } = analysis;
   const isBullish = trendEma.trend === 'bullish';
   const isBearish = trendEma.trend === 'bearish';
+  const layakBeli = buildLayakBeli(summary, analysis);
+  const riskGuardAlerts = buildRiskGuard(summary, analysis, bars, layakBeli.score);
   const positiveDay = summary.percentChange1D >= 0;
   const isWatched = watchlist.has(summary.ticker);
   const todayDateLabel = generatedAt
@@ -1049,11 +1153,14 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                     : 'border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/40'
               )}>
                 <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">{conclusion.summary}</p>
+                {conclusion.tradingNote && conclusion.tradingNote !== '–' && (
+                  <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 mt-2 font-medium">{conclusion.tradingNote}</p>
+                )}
               </div>
 
               {/* ── "Apakah layak dibeli hari ini?" ───────────────────────── */}
               {(() => {
-                const { points, verdict, verdictTone } = buildLayakBeli(summary, analysis);
+                const { points, verdict, verdictTone } = layakBeli;
                 const verdictBg = {
                   green: 'border-emerald-300 bg-emerald-600 dark:bg-emerald-600',
                   amber: 'border-amber-300 bg-amber-500 dark:bg-amber-600',
@@ -1116,6 +1223,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 </div>
               </div>
             </SectionCard>
+
+            {/* ── 8. Risk Guard ────────────────────────────────────────────── */}
+            <RiskGuardSection number={8} alerts={riskGuardAlerts} score={layakBeli.score} />
           </>
         )}
 
@@ -1164,6 +1274,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               <Note text="Indikator Teknikal — RSI/MACD/Stochastic mengukur momentum dan potensi jenuh beli (overbought) atau jenuh jual (oversold)." />
               <Note text="Rencana Trading — contoh skenario entry, target profit, dan stop loss lengkap dengan rasio risk/reward." />
               <Note text="Kesimpulan — rangkuman semua faktor di atas jadi satu jawaban sederhana: layak dibeli atau belum." />
+              <Note text="Risk Guard — peringatan disiplin sebelum entry: kenaikan harga cepat, RSI ekstrem, jarak ke resistance, sinyal reversal, dan skor kelayakan minimum." />
             </ul>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
               Gunakan semua ini sebagai satu alat bantu, bukan satu-satunya dasar keputusan. Tetap kombinasikan

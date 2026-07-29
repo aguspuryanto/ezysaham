@@ -103,6 +103,7 @@ export interface ConclusionAnalysis {
   summary: string;
   keyLevel: string; // "Kunci utama area X.XXX"
   watchOut: string; // risk warning
+  tradingNote: string; // actionable plan, e.g. "jangan mengejar harga jika gap up"
 }
 
 // ── Composite ─────────────────────────────────────────────────────────────────
