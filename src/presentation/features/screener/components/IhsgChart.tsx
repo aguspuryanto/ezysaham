@@ -93,7 +93,7 @@ export function IhsgChart() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            IHSG
+            IHSG: {new Date(last?.date).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
           </p>
           {last ? (
             <div className="mt-0.5 flex items-baseline gap-2">
