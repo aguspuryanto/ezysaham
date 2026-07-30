@@ -52,14 +52,26 @@ async function fetchYahooChart(code: string, symbol: string, range: string): Pro
   const timestamps: number[] = result.timestamp || [];
   const quote = result.indicators?.quote?.[0] || {};
   const gmtOffset: number = result.meta?.gmtoffset || 0;
+  const regularMarketPrice: number | undefined = result.meta?.regularMarketPrice;
 
   const bars: OHLCVBar[] = [];
   for (let i = 0; i < timestamps.length; i++) {
-    const open = quote.open?.[i];
-    const high = quote.high?.[i];
-    const low = quote.low?.[i];
-    const close = quote.close?.[i];
+    let open = quote.open?.[i];
+    let high = quote.high?.[i];
+    let low = quote.low?.[i];
+    let close = quote.close?.[i];
     const volume = quote.volume?.[i];
+
+    // Today's still-open session has no finalized OHLC yet (Yahoo returns
+    // null until close) — fall back to the live price so the chart isn't
+    // stuck showing the last fully-closed day.
+    const isLast = i === timestamps.length - 1;
+    if (isLast && close == null && regularMarketPrice != null) {
+      open = open ?? regularMarketPrice;
+      high = high ?? regularMarketPrice;
+      low = low ?? regularMarketPrice;
+      close = regularMarketPrice;
+    }
 
     if (open == null || high == null || low == null || close == null) continue;
 
