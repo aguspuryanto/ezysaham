@@ -1,7 +1,7 @@
-import { Star, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket } from 'lucide-react';
+import { Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket } from 'lucide-react';
 import Link from 'next/link';
 import { StockSummary } from '@/domain/models/Stock';
-import { BreakoutScores, PresetEvaluation } from '@/domain/screener/presets';
+import { BreakoutScores, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 
 export interface ScreenerResult {
@@ -145,6 +145,83 @@ function BreakoutBadge({ scores }: { scores: BreakoutScores }) {
   );
 }
 
+// ── Trading Plan badge ─────────────────────────────────────────────────────────
+const TRADING_PLAN_STATUS_STYLES: Record<TradingPlanScore['status'], string> = {
+  STRONG_BUY:  'bg-emerald-600 text-white dark:bg-emerald-600',
+  BUY:         'bg-emerald-500 text-white dark:bg-emerald-600',
+  WATCHLIST:   'bg-amber-400 text-white dark:bg-amber-500',
+  SPECULATIVE: 'bg-orange-400 text-white dark:bg-orange-500',
+  AVOID:       'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+};
+
+const TRADING_PLAN_STATUS_LABEL: Record<TradingPlanScore['status'], string> = {
+  STRONG_BUY: 'STRONG BUY',
+  BUY: 'BUY',
+  WATCHLIST: 'WATCHLIST',
+  SPECULATIVE: 'SPEKULATIF',
+  AVOID: 'HINDARI',
+};
+
+function StarRating({ count }: { count: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Star
+          key={i}
+          className={cn('size-3', i < count ? 'text-amber-400' : 'text-zinc-200 dark:text-zinc-700')}
+          fill={i < count ? 'currentColor' : 'none'}
+          strokeWidth={2}
+        />
+      ))}
+    </span>
+  );
+}
+
+function TradingPlanBadge({ plan }: { plan: TradingPlanScore }) {
+  return (
+    <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+      {/* Status pill + momentum stars */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide', TRADING_PLAN_STATUS_STYLES[plan.status])}>
+          <Target className="size-3" />
+          {TRADING_PLAN_STATUS_LABEL[plan.status]}
+        </span>
+        <StarRating count={plan.momentumStars} />
+      </div>
+
+      {/* Buy Area / SL / TP / RR */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+        <div className="col-span-2 flex items-center justify-between">
+          <span className="text-zinc-400 dark:text-zinc-500">Buy Area</span>
+          <span className="font-mono font-semibold text-zinc-700 dark:text-zinc-200">
+            {formatRupiah(plan.buyAreaLow)}–{formatRupiah(plan.buyAreaHigh)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-400 dark:text-zinc-500">Stop Loss</span>
+          <span className="font-mono font-semibold text-rose-500 dark:text-rose-400">{formatRupiah(plan.stopLoss)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-400 dark:text-zinc-500">TP1</span>
+          <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{formatRupiah(plan.tp1)}</span>
+        </div>
+      </div>
+
+      {/* Risk/Reward + score */}
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="text-zinc-400 dark:text-zinc-500">Risk/Reward</span>
+        <span className={cn('font-mono font-semibold', plan.riskRewardRatio >= 2 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500')}>
+          1 : {plan.riskRewardRatio.toFixed(1)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="text-zinc-400 dark:text-zinc-500">Opportunity Score</span>
+        <span className="font-mono font-semibold text-zinc-600 dark:text-zinc-300">{plan.score}/100</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Empty state ────────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
@@ -173,6 +250,7 @@ function StockCard({
   const { summary, evaluation } = result;
   const positive = summary.percentChange1D >= 0;
   const bScores = evaluation.breakoutScores;
+  const tradingPlan = evaluation.tradingPlan;
 
   return (
     <Link
@@ -213,9 +291,11 @@ function StockCard({
         </div>
       </div>
 
-      {/* Breakout scores (only for breakout preset) */}
+      {/* Extra scoring badge (only for the Breakout Hunter / Trading Plan presets) */}
       {bScores ? (
         <BreakoutBadge scores={bScores} />
+      ) : tradingPlan ? (
+        <TradingPlanBadge plan={tradingPlan} />
       ) : (
         /* Footer meta — standard */
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
@@ -252,6 +332,7 @@ function StockTableRow({
 }) {
   const { summary, evaluation } = result;
   const bScores = evaluation.breakoutScores;
+  const tradingPlan = evaluation.tradingPlan;
 
   return (
     <tr className={cn(
@@ -288,7 +369,7 @@ function StockTableRow({
         {formatCompact(summary.value)}
       </td>
 
-      {/* Breakout score column (shows composite + status) or P/E */}
+      {/* Extra scoring column: Breakout score, Trading Plan, or plain P/E */}
       {bScores ? (
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
@@ -303,6 +384,22 @@ function StockTableRow({
             <span>🏦{bScores.smartMoney}</span>
             <span className={bScores.distributionRisk >= 50 ? 'text-rose-500' : 'text-emerald-500'}>
               ⚠️{bScores.distributionRisk}
+            </span>
+          </div>
+        </td>
+      ) : tradingPlan ? (
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide', TRADING_PLAN_STATUS_STYLES[tradingPlan.status])}>
+              <Target className="size-2.5" />
+              {TRADING_PLAN_STATUS_LABEL[tradingPlan.status]}
+            </span>
+            <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{tradingPlan.score}/100</span>
+          </div>
+          <div className="flex gap-2 mt-1 text-[10px] text-zinc-400">
+            <span>Buy {formatRupiah(tradingPlan.buyAreaLow)}–{formatRupiah(tradingPlan.buyAreaHigh)}</span>
+            <span className={tradingPlan.riskRewardRatio >= 2 ? 'text-emerald-500' : 'text-amber-500'}>
+              RR 1:{tradingPlan.riskRewardRatio.toFixed(1)}
             </span>
           </div>
         </td>
@@ -332,6 +429,7 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
   if (results.length === 0) return <EmptyState />;
 
   const hasBreakoutScores = results.some((r) => r.evaluation.breakoutScores);
+  const hasTradingPlan = results.some((r) => r.evaluation.tradingPlan);
 
   if (view === 'grid') {
     return (
@@ -361,7 +459,9 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
               <th className="px-4 py-3">Harga</th>
               <th className="px-4 py-3">1D</th>
               <th className="px-4 py-3">Nilai Transaksi</th>
-              <th className="px-4 py-3">{hasBreakoutScores ? 'Score & Status' : 'P/E'}</th>
+              <th className="px-4 py-3">
+                {hasBreakoutScores ? 'Score & Status' : hasTradingPlan ? 'Trading Plan' : 'P/E'}
+              </th>
               <th className="px-4 py-3">Detail</th>
             </tr>
           </thead>

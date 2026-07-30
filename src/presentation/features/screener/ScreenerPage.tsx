@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Rocket,
   Table2,
+  Target,
   TrendingUp,
   X,
   Zap,
@@ -41,6 +42,7 @@ const FILTER_ITEMS: FilterChipItem[] = [
   // { id: 'bpjs', label: 'BPJS', icon: Zap },
   { id: 'momentum', label: 'Momentum', icon: TrendingUp },
   { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
+  { id: 'tradingPlan', label: 'Trading Plan', icon: Target },
 ];
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [

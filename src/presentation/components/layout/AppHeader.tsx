@@ -2,6 +2,7 @@
 
 import { Search, SlidersHorizontal, TrendingUp } from 'lucide-react';
 import { SITE_NAME, SITE_SLOGAN } from '@/lib/site';
+import { AuthButton } from '@/presentation/features/auth/AuthButton';
 
 export function AppHeader({
   query,
@@ -58,6 +59,8 @@ export function AppHeader({
             Update {lastUpdatedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
+
+        {/* <AuthButton /> */}
       </div>
     </header>
   );

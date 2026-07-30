@@ -1043,7 +1043,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               </div>
               {generatedAt && (
                 <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  Last close: {lastBarDateLabel} • Vol: {new Intl.NumberFormat('id-ID').format(summary.volume)}
+                  Last Update: {todayDateLabel} • Vol: {new Intl.NumberFormat('id-ID').format(summary.volume)}
                 </p>
               )}
             </div>

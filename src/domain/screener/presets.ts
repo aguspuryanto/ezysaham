@@ -8,7 +8,7 @@ import { relativeVolume, volumeMA } from '@/domain/indicators/volume';
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -44,12 +44,49 @@ export interface BreakoutScores {
   status: 'BUY_WATCH' | 'WATCH' | 'SKIP';
 }
 
+// ── Trading Plan scoring ("Opportunity Score", 8 weighted factors) ────────────
+export interface TradingPlanScore {
+  /** Overall trend classification from EMA structure */
+  trend: 'bullish' | 'bearish' | 'sideways';
+  /** 1-5 — quality of momentum (RSI/Stochastic/MACD sweet-spot) */
+  momentumStars: number;
+  /** Area harga yang disarankan untuk entry */
+  buyAreaLow: number;
+  buyAreaHigh: number;
+  /** Batas keluar jika setup gagal */
+  stopLoss: number;
+  /** Target profit bertingkat */
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  /** (tp1 - entry) / (entry - stopLoss) */
+  riskRewardRatio: number;
+  /** 0-100 — weighted composite ("Opportunity Score") */
+  score: number;
+  /** 0-100 — proxy keyakinan setup, sejalan dengan score */
+  confidencePct: number;
+  status: 'STRONG_BUY' | 'BUY' | 'WATCHLIST' | 'SPECULATIVE' | 'AVOID';
+  /** Breakdown per faktor (masing-masing 0-100) untuk transparansi skor */
+  breakdown: {
+    emaTrend: number;
+    supportStrength: number;
+    resistanceSpace: number;
+    volume: number;
+    rvol: number;
+    stochastic: number;
+    rsi: number;
+    momentum1W: number;
+  };
+}
+
 export interface PresetEvaluation {
   passed: boolean;
   reasons: string[];
   failed: string[];
   /** Only present for the Breakout Hunter preset */
   breakoutScores?: BreakoutScores;
+  /** Only present for the Trading Plan preset */
+  tradingPlan?: TradingPlanScore;
 }
 
 export interface ScreenerPreset {
@@ -159,6 +196,10 @@ const momentumPreset: ScreenerPreset = {
 
 function clamp(v: number, min = 0, max = 100): number {
   return Math.min(max, Math.max(min, v));
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function calcMomentumScore(s: StockSummary, bars: OHLCVBar[]): number {
@@ -585,6 +626,264 @@ const breakoutPreset: ScreenerPreset = {
   },
 };
 
+// ── Trading Plan ──────────────────────────────────────────────────────────────
+
+/** Local pivot-low/high + clustering, mirroring stockAnalysisEngine's swing detection
+ *  (kept private here to avoid coupling the screener preset to the detail-page module). */
+function pivotLows(bars: OHLCVBar[], lookback = 5): number[] {
+  const result: number[] = [];
+  for (let i = lookback; i < bars.length - lookback; i++) {
+    const slice = bars.slice(i - lookback, i + lookback + 1);
+    const minL = Math.min(...slice.map((b) => b.low));
+    if (bars[i].low === minL) result.push(bars[i].low);
+  }
+  return result;
+}
+
+function pivotHighs(bars: OHLCVBar[], lookback = 5): number[] {
+  const result: number[] = [];
+  for (let i = lookback; i < bars.length - lookback; i++) {
+    const slice = bars.slice(i - lookback, i + lookback + 1);
+    const maxH = Math.max(...slice.map((b) => b.high));
+    if (bars[i].high === maxH) result.push(bars[i].high);
+  }
+  return result;
+}
+
+function clusterPrices(levels: number[], tolerance = 0.015): number[] {
+  if (levels.length === 0) return [];
+  const sorted = [...levels].sort((a, b) => a - b);
+  const clusters: number[] = [];
+  let group: number[] = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if ((sorted[i] - sorted[i - 1]) / sorted[i - 1] < tolerance) {
+      group.push(sorted[i]);
+    } else {
+      clusters.push(group.reduce((a, b) => a + b, 0) / group.length);
+      group = [sorted[i]];
+    }
+  }
+  clusters.push(group.reduce((a, b) => a + b, 0) / group.length);
+  return clusters;
+}
+
+function calcStochK(bars: OHLCVBar[], period = 14): number {
+  if (bars.length < period) return 50;
+  const slice = bars.slice(-period);
+  const lowest = Math.min(...slice.map((b) => b.low));
+  const highest = Math.max(...slice.map((b) => b.high));
+  return highest === lowest ? 50 : ((bars[bars.length - 1].close - lowest) / (highest - lowest)) * 100;
+}
+
+function calcEmaTrendScore(price: number, ema20: number, ema50: number): number {
+  if (Number.isNaN(ema20) || Number.isNaN(ema50)) return 50;
+  if (price > ema20 && ema20 > ema50) return 100;
+  if (price > ema20 && ema20 <= ema50) return 65;
+  if (price <= ema20 && ema20 > ema50) return 45;
+  return 20;
+}
+
+function calcSupportStrengthScore(price: number, nearestSupport: number | undefined): number {
+  if (!nearestSupport) return 50;
+  const distancePct = ((price - nearestSupport) / price) * 100;
+  if (distancePct <= 3) return 100;
+  if (distancePct <= 6) return 80;
+  if (distancePct <= 10) return 60;
+  if (distancePct <= 15) return 40;
+  return 20;
+}
+
+function calcResistanceSpaceScore(price: number, nearestResistance: number | undefined): number {
+  if (!nearestResistance) return 50;
+  const upsidePct = ((nearestResistance - price) / price) * 100;
+  if (upsidePct > 10) return 100;
+  if (upsidePct > 7) return 85;
+  if (upsidePct > 5) return 65;
+  if (upsidePct > 3) return 45;
+  if (upsidePct > 1.5) return 25;
+  return 10;
+}
+
+function calcRvolScore(rvol: number): number {
+  if (Number.isNaN(rvol)) return 30;
+  if (rvol >= 3) return 100;
+  if (rvol >= 2) return 85;
+  if (rvol >= 1.5) return 65;
+  if (rvol >= 1.2) return 45;
+  if (rvol >= 1) return 25;
+  return 10;
+}
+
+function calcStochasticScore(stochK: number): number {
+  if (stochK >= 40 && stochK <= 80) return 100;
+  if (stochK < 40 && stochK >= 20) return 60;
+  if (stochK < 20) return 50; // oversold — rebound potential
+  if (stochK > 80 && stochK <= 90) return 40;
+  return 15; // deeply overbought
+}
+
+function calcRsiScore(rsiLast: number): number {
+  if (Number.isNaN(rsiLast)) return 30;
+  if (rsiLast >= 55 && rsiLast <= 70) return 100;
+  if ((rsiLast >= 50 && rsiLast < 55) || (rsiLast > 70 && rsiLast <= 75)) return 70;
+  if (rsiLast < 50 && rsiLast >= 40) return 45;
+  return 25;
+}
+
+function calcMomentum1WScore(percentChange1W: number): number {
+  if (percentChange1W > 5) return 100;
+  if (percentChange1W > 2) return 80;
+  if (percentChange1W > 0) return 60;
+  if (percentChange1W > -2) return 40;
+  return 15;
+}
+
+export function computeTradingPlanScore(s: StockSummary, bars: OHLCVBar[]): TradingPlanScore {
+  const price = s.lastClose;
+  const closes = bars.map((b) => b.close);
+  const ema20 = lastValid(ema(closes, 20));
+  const ema50 = lastValid(ema(closes, 50));
+  const rsiLast = lastValid(rsi(bars, 14));
+  const stochK = calcStochK(bars, 14);
+  const rvol = relativeVolume(bars, 20);
+  const volumeExpansion = calcVolumeExpansionScore(s, bars);
+
+  const supports = clusterPrices(pivotLows(bars, 5))
+    .concat(s.annualLow > 0 ? [s.annualLow] : [])
+    .filter((p) => p < price * 0.995)
+    .sort((a, b) => b - a);
+  const resistances = clusterPrices(pivotHighs(bars, 5))
+    .concat(s.annualHigh > 0 ? [s.annualHigh] : [])
+    .filter((p) => p > price * 1.005)
+    .sort((a, b) => a - b);
+
+  const nearestSupport = supports[0];
+  const [r1, r2, r3] = resistances;
+
+  const emaTrend = calcEmaTrendScore(price, ema20, ema50);
+  const supportStrength = calcSupportStrengthScore(price, nearestSupport);
+  const resistanceSpace = calcResistanceSpaceScore(price, r1);
+  const volume = volumeExpansion;
+  const rvolScore = calcRvolScore(rvol);
+  const stochastic = calcStochasticScore(stochK);
+  const rsiScore = calcRsiScore(rsiLast);
+  const momentum1W = calcMomentum1WScore(s.percentChange1W);
+
+  const score = clamp(
+    emaTrend * 0.20 +
+    supportStrength * 0.20 +
+    resistanceSpace * 0.15 +
+    volume * 0.15 +
+    rvolScore * 0.10 +
+    stochastic * 0.10 +
+    rsiScore * 0.05 +
+    momentum1W * 0.05
+  );
+
+  let status: TradingPlanScore['status'];
+  if (score >= 90) status = 'STRONG_BUY';
+  else if (score >= 80) status = 'BUY';
+  else if (score >= 70) status = 'WATCHLIST';
+  else if (score >= 60) status = 'SPECULATIVE';
+  else status = 'AVOID';
+
+  const trend: TradingPlanScore['trend'] =
+    !Number.isNaN(ema20) && !Number.isNaN(ema50) && price > ema20 && ema20 > ema50
+      ? 'bullish'
+      : !Number.isNaN(ema20) && !Number.isNaN(ema50) && price < ema20 && ema20 < ema50
+      ? 'bearish'
+      : 'sideways';
+
+  const momentumStars = clamp(Math.round(((rsiScore * 0.4 + stochastic * 0.35 + emaTrend * 0.25) / 100) * 5), 1, 5);
+
+  // Buy area: pullback zone between EMA20 (if below price) and a small band above current price.
+  const emaFloor = !Number.isNaN(ema20) ? Math.min(ema20, price) : price * 0.98;
+  const buyAreaLow = round2(Math.max(emaFloor, price * 0.97));
+  const buyAreaHigh = round2(Math.max(buyAreaLow, price * 1.005));
+
+  const stopLoss = round2(nearestSupport ? nearestSupport * 0.99 : price * 0.95);
+  const tp1 = round2(r1 ?? price * 1.05);
+  const tp2 = round2(r2 ?? tp1 * 1.05);
+  const tp3 = round2(r3 ?? tp2 * 1.05);
+
+  const risk = buyAreaHigh - stopLoss;
+  const riskRewardRatio = round2((tp1 - buyAreaHigh) / Math.max(risk, 1));
+
+  return {
+    trend,
+    momentumStars,
+    buyAreaLow,
+    buyAreaHigh,
+    stopLoss,
+    tp1,
+    tp2,
+    tp3,
+    riskRewardRatio,
+    score: Math.round(score),
+    confidencePct: Math.round(score),
+    status,
+    breakdown: {
+      emaTrend: Math.round(emaTrend),
+      supportStrength: Math.round(supportStrength),
+      resistanceSpace: Math.round(resistanceSpace),
+      volume: Math.round(volume),
+      rvol: Math.round(rvolScore),
+      stochastic: Math.round(stochastic),
+      rsi: Math.round(rsiScore),
+      momentum1W: Math.round(momentum1W),
+    },
+  };
+}
+
+const tradingPlanPreset: ScreenerPreset = {
+  id: 'tradingPlan',
+  label: 'Trading Plan',
+  description: 'Rencana beli-jual siap pakai: buy area, stop loss, target bertingkat, dan risk-reward — dihitung dari 8 faktor teknikal berbobot ("Opportunity Score").',
+  criteria: [
+    'EMA Trend 20% — struktur EMA20 vs EMA50',
+    'Support Strength 20% — jarak ke support terdekat',
+    'Resistance Space 15% — ruang naik ke resistance terdekat',
+    'Volume 15% — akselerasi volume multi-hari',
+    'RVOL 10% — volume relatif hari ini',
+    'Stochastic 10% — posisi %K',
+    'RSI 5% — zona RSI',
+    'Momentum 1W 5% — perubahan harga 1 minggu',
+    'Risk-Reward minimal 1:2 (di bawah itu otomatis tidak layak entry)',
+    'Opportunity Score ≥ 60',
+  ],
+  coarseFilter: (s) => s.lastClose > 50 && s.value > 1_000_000_000,
+  evaluate: (s, bars) => {
+    const plan = computeTradingPlanScore(s, bars);
+    const passed = plan.status !== 'AVOID' && plan.riskRewardRatio >= 2;
+
+    const reasons: string[] = [];
+    const failed: string[] = [];
+
+    if (plan.score >= 70) reasons.push(`Opportunity Score ${plan.score}/100`);
+    else failed.push(`Opportunity Score lemah (${plan.score}/100)`);
+
+    if (plan.trend === 'bullish') reasons.push('Trend bullish — EMA20 > EMA50');
+    else if (plan.trend === 'bearish') failed.push('Trend bearish — harga di bawah EMA20 & EMA50');
+    else reasons.push('Trend sideways — tunggu konfirmasi arah');
+
+    if (plan.breakdown.supportStrength >= 60) reasons.push(`Dekat support kuat (skor ${plan.breakdown.supportStrength}/100)`);
+    else failed.push(`Jauh dari support (skor ${plan.breakdown.supportStrength}/100)`);
+
+    if (plan.breakdown.resistanceSpace >= 45) reasons.push(`Ruang naik ke resistance cukup (skor ${plan.breakdown.resistanceSpace}/100)`);
+    else failed.push(`Ruang naik terbatas (skor ${plan.breakdown.resistanceSpace}/100)`);
+
+    if (plan.riskRewardRatio >= 2) reasons.push(`Risk-Reward 1:${plan.riskRewardRatio.toFixed(1)}`);
+    else failed.push(`Risk-Reward kurang menarik (1:${plan.riskRewardRatio.toFixed(1)})`);
+
+    reasons.push(`RVOL skor ${plan.breakdown.rvol}/100`);
+    reasons.push(`Stochastic skor ${plan.breakdown.stochastic}/100`);
+    reasons.push(`RSI skor ${plan.breakdown.rsi}/100`);
+    reasons.push(`Momentum 1W skor ${plan.breakdown.momentum1W}/100`);
+
+    return { passed, reasons, failed, tradingPlan: plan };
+  },
+};
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
@@ -592,6 +891,13 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   bpjs: bpjsPreset,
   momentum: momentumPreset,
   breakout: breakoutPreset,
+  tradingPlan: tradingPlanPreset,
 };
 
-export const SCREENER_PRESET_LIST: ScreenerPreset[] = [araPreset, bpjsPreset, momentumPreset, breakoutPreset];
+export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
+  araPreset,
+  bpjsPreset,
+  momentumPreset,
+  breakoutPreset,
+  tradingPlanPreset,
+];
