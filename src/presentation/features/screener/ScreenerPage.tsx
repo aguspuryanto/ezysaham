@@ -37,8 +37,8 @@ type SortKey = 'change_desc' | 'change_asc' | 'value_desc' | 'ticker_asc';
 
 const FILTER_ITEMS: FilterChipItem[] = [
   { id: 'all', label: 'Semua', icon: LayoutGrid },
-  { id: 'ara', label: 'ARA', icon: Flame },
-  { id: 'bpjs', label: 'BPJS', icon: Zap },
+  // { id: 'ara', label: 'ARA', icon: Flame },
+  // { id: 'bpjs', label: 'BPJS', icon: Zap },
   { id: 'momentum', label: 'Momentum', icon: TrendingUp },
   { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
 ];
@@ -258,9 +258,9 @@ export function ScreenerPage() {
             <PhilosophyBanner />
           </div>
 
-          {/* <div className="hidden lg:block">
+          <div className="hidden lg:block">
             <PresetTabs items={FILTER_ITEMS} selected={filterId} onSelect={handleSelectFilter} />
-          </div> */}
+          </div>
 
           {status === 'loading-summary' && (
             <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
