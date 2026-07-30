@@ -258,9 +258,9 @@ export function ScreenerPage() {
             <PhilosophyBanner />
           </div>
 
-          <div className="hidden lg:block">
+          {/* <div className="hidden lg:block">
             <PresetTabs items={FILTER_ITEMS} selected={filterId} onSelect={handleSelectFilter} />
-          </div>
+          </div> */}
 
           {status === 'loading-summary' && (
             <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
