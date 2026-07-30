@@ -93,8 +93,8 @@ function ChangeBadge({ value }: { value: number }) {
 // ── Breakout Score badge ──────────────────────────────────────────────────────
 const STATUS_STYLES: Record<BreakoutScores['status'], string> = {
   BUY_WATCH: 'bg-emerald-500 text-white dark:bg-emerald-600',
-  WATCH:     'bg-amber-400 text-white dark:bg-amber-500',
-  SKIP:      'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+  WATCH: 'bg-amber-400 text-white dark:bg-amber-500',
+  SKIP: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
 };
 
 function BreakoutBadge({ scores }: { scores: BreakoutScores }) {
@@ -147,11 +147,11 @@ function BreakoutBadge({ scores }: { scores: BreakoutScores }) {
 
 // ── Trading Plan badge ─────────────────────────────────────────────────────────
 const TRADING_PLAN_STATUS_STYLES: Record<TradingPlanScore['status'], string> = {
-  STRONG_BUY:  'bg-emerald-600 text-white dark:bg-emerald-600',
-  BUY:         'bg-emerald-500 text-white dark:bg-emerald-600',
-  WATCHLIST:   'bg-amber-400 text-white dark:bg-amber-500',
+  STRONG_BUY: 'bg-emerald-600 text-white dark:bg-emerald-600',
+  BUY: 'bg-emerald-500 text-white dark:bg-emerald-600',
+  WATCHLIST: 'bg-amber-400 text-white dark:bg-amber-500',
   SPECULATIVE: 'bg-orange-400 text-white dark:bg-orange-500',
-  AVOID:       'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+  AVOID: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
 };
 
 const TRADING_PLAN_STATUS_LABEL: Record<TradingPlanScore['status'], string> = {
@@ -360,13 +360,16 @@ function StockTableRow({
         </Link>
       </td>
       <td className="px-4 py-3 font-mono tabular-nums text-zinc-800 dark:text-zinc-200">
-        {formatRupiah(summary.lastClose)}
+        {tradingPlan ? formatRupiah(tradingPlan.buyAreaLow) + ' - ' + formatRupiah(tradingPlan.buyAreaHigh) : formatRupiah(summary.lastClose)}
       </td>
       <td className="px-4 py-3">
-        <ChangeBadge value={summary.percentChange1D} />
+        {tradingPlan ? <div className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide', TRADING_PLAN_STATUS_STYLES[tradingPlan.status])}>
+          <Target className="size-2.5" />
+          {tradingPlan.status}
+        </div> : <ChangeBadge value={summary.percentChange1D} />}
       </td>
       <td className="px-4 py-3 font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
-        {formatCompact(summary.value)}
+        {tradingPlan ? `${tradingPlan.score}/100` : formatCompact(summary.value)}
       </td>
 
       {/* Extra scoring column: Breakout score, Trading Plan, or plain P/E */}
@@ -389,17 +392,17 @@ function StockTableRow({
         </td>
       ) : tradingPlan ? (
         <td className="px-4 py-3">
-          <div className="flex items-center gap-2">
+          {/* <div className="flex items-center gap-2">
             <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide', TRADING_PLAN_STATUS_STYLES[tradingPlan.status])}>
               <Target className="size-2.5" />
               {TRADING_PLAN_STATUS_LABEL[tradingPlan.status]}
             </span>
             <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{tradingPlan.score}/100</span>
-          </div>
-          <div className="flex gap-2 mt-1 text-[10px] text-zinc-400">
-            <span>Buy {formatRupiah(tradingPlan.buyAreaLow)}–{formatRupiah(tradingPlan.buyAreaHigh)}</span>
+          </div> */}
+          <div className="flex gap-2 mt-1 text-zinc-400">
+            {/* <span>Buy {formatRupiah(tradingPlan.buyAreaLow)}–{formatRupiah(tradingPlan.buyAreaHigh)}</span> */}
             <span className={tradingPlan.riskRewardRatio >= 2 ? 'text-emerald-500' : 'text-amber-500'}>
-              RR 1:{tradingPlan.riskRewardRatio.toFixed(1)}
+              1:{tradingPlan.riskRewardRatio.toFixed(1)}
             </span>
           </div>
         </td>
@@ -456,11 +459,11 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
             <tr>
               <th className="w-10 px-4 py-3" />
               <th className="px-4 py-3">Saham</th>
-              <th className="px-4 py-3">Harga</th>
-              <th className="px-4 py-3">1D</th>
-              <th className="px-4 py-3">Nilai Transaksi</th>
+              <th className="px-4 py-3">{hasTradingPlan ? 'Buy Area' : 'Harga'}</th>
+              <th className="px-4 py-3">{hasTradingPlan ? 'Trend' : '1D'}</th>
+              <th className="px-4 py-3">{hasTradingPlan ? 'Score' : 'Nilai Transaksi'}</th>
               <th className="px-4 py-3">
-                {hasBreakoutScores ? 'Score & Status' : hasTradingPlan ? 'Trading Plan' : 'P/E'}
+                {hasBreakoutScores ? 'Score & Status' : hasTradingPlan ? 'Reward Ratio' : 'P/E'}
               </th>
               <th className="px-4 py-3">Detail</th>
             </tr>
