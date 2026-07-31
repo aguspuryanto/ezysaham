@@ -2,6 +2,8 @@
 
 import {
   AlertCircle,
+  Crosshair,
+  Eye,
   Flame,
   LayoutGrid,
   Loader2,
@@ -40,8 +42,11 @@ const FILTER_ITEMS: FilterChipItem[] = [
   { id: 'all', label: 'Semua', icon: LayoutGrid },
   // { id: 'ara', label: 'ARA', icon: Flame },
   // { id: 'bpjs', label: 'BPJS', icon: Zap },
-  { id: 'momentum', label: 'Momentum', icon: TrendingUp },
-  { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
+  // { id: 'momentum', label: 'Momentum', icon: TrendingUp },
+  // { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
+  { id: 'swingHunter', label: 'Swing Hunter', icon: Crosshair },
+  { id: 'araHunter', label: 'ARA Hunter', icon: Flame },
+  { id: 'smartMoneyHunter', label: 'Smart Money', icon: Eye },
   { id: 'tradingPlan', label: 'Trading Plan', icon: Target },
 ];
 

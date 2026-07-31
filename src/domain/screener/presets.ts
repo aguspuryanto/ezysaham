@@ -4,11 +4,12 @@ import { ema, lastValid, sma } from '@/domain/indicators/movingAverages';
 import { macd } from '@/domain/indicators/macd';
 import { rsi } from '@/domain/indicators/rsi';
 import { relativeVolume, volumeMA } from '@/domain/indicators/volume';
+import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -627,53 +628,10 @@ const breakoutPreset: ScreenerPreset = {
 };
 
 // ── Trading Plan ──────────────────────────────────────────────────────────────
-
-/** Local pivot-low/high + clustering, mirroring stockAnalysisEngine's swing detection
- *  (kept private here to avoid coupling the screener preset to the detail-page module). */
-function pivotLows(bars: OHLCVBar[], lookback = 5): number[] {
-  const result: number[] = [];
-  for (let i = lookback; i < bars.length - lookback; i++) {
-    const slice = bars.slice(i - lookback, i + lookback + 1);
-    const minL = Math.min(...slice.map((b) => b.low));
-    if (bars[i].low === minL) result.push(bars[i].low);
-  }
-  return result;
-}
-
-function pivotHighs(bars: OHLCVBar[], lookback = 5): number[] {
-  const result: number[] = [];
-  for (let i = lookback; i < bars.length - lookback; i++) {
-    const slice = bars.slice(i - lookback, i + lookback + 1);
-    const maxH = Math.max(...slice.map((b) => b.high));
-    if (bars[i].high === maxH) result.push(bars[i].high);
-  }
-  return result;
-}
-
-function clusterPrices(levels: number[], tolerance = 0.015): number[] {
-  if (levels.length === 0) return [];
-  const sorted = [...levels].sort((a, b) => a - b);
-  const clusters: number[] = [];
-  let group: number[] = [sorted[0]];
-  for (let i = 1; i < sorted.length; i++) {
-    if ((sorted[i] - sorted[i - 1]) / sorted[i - 1] < tolerance) {
-      group.push(sorted[i]);
-    } else {
-      clusters.push(group.reduce((a, b) => a + b, 0) / group.length);
-      group = [sorted[i]];
-    }
-  }
-  clusters.push(group.reduce((a, b) => a + b, 0) / group.length);
-  return clusters;
-}
-
-function calcStochK(bars: OHLCVBar[], period = 14): number {
-  if (bars.length < period) return 50;
-  const slice = bars.slice(-period);
-  const lowest = Math.min(...slice.map((b) => b.low));
-  const highest = Math.max(...slice.map((b) => b.high));
-  return highest === lowest ? 50 : ((bars[bars.length - 1].close - lowest) / (highest - lowest)) * 100;
-}
+// Buy Area / Stop Loss / Targets / Risk-Reward below are derived from the exact
+// same computeStockAnalysis() the ticker detail page uses for its "6. Rencana
+// Trading" section, so the numbers shown in the screener list always match what
+// the user sees after clicking through to /screener/[ticker].
 
 function calcEmaTrendScore(price: number, ema20: number, ema50: number): number {
   if (Number.isNaN(ema20) || Number.isNaN(ema50)) return 50;
@@ -715,6 +673,7 @@ function calcRvolScore(rvol: number): number {
 }
 
 function calcStochasticScore(stochK: number): number {
+  if (Number.isNaN(stochK)) return 30;
   if (stochK >= 40 && stochK <= 80) return 100;
   if (stochK < 40 && stochK >= 20) return 60;
   if (stochK < 20) return 50; // oversold — rebound potential
@@ -740,42 +699,29 @@ function calcMomentum1WScore(percentChange1W: number): number {
 
 export function computeTradingPlanScore(s: StockSummary, bars: OHLCVBar[]): TradingPlanScore {
   const price = s.lastClose;
-  const closes = bars.map((b) => b.close);
-  const ema20 = lastValid(ema(closes, 20));
-  const ema50 = lastValid(ema(closes, 50));
-  const rsiLast = lastValid(rsi(bars, 14));
-  const stochK = calcStochK(bars, 14);
-  const rvol = relativeVolume(bars, 20);
-  const volumeExpansion = calcVolumeExpansionScore(s, bars);
+  const analysis = computeStockAnalysis(s, bars);
+  const { trendEma, supportResistance, volume, indicators, tradingPlan } = analysis;
 
-  const supports = clusterPrices(pivotLows(bars, 5))
-    .concat(s.annualLow > 0 ? [s.annualLow] : [])
-    .filter((p) => p < price * 0.995)
-    .sort((a, b) => b - a);
-  const resistances = clusterPrices(pivotHighs(bars, 5))
-    .concat(s.annualHigh > 0 ? [s.annualHigh] : [])
-    .filter((p) => p > price * 1.005)
-    .sort((a, b) => a - b);
+  const nearestSupport = supportResistance.supports[0]?.price;
+  const nearestResistance = supportResistance.resistances[0]?.price;
+  const thirdResistance = supportResistance.resistances[2]?.price;
 
-  const nearestSupport = supports[0];
-  const [r1, r2, r3] = resistances;
-
-  const emaTrend = calcEmaTrendScore(price, ema20, ema50);
+  const emaTrend = calcEmaTrendScore(price, trendEma.ema20, trendEma.ema50);
   const supportStrength = calcSupportStrengthScore(price, nearestSupport);
-  const resistanceSpace = calcResistanceSpaceScore(price, r1);
-  const volume = volumeExpansion;
-  const rvolScore = calcRvolScore(rvol);
-  const stochastic = calcStochasticScore(stochK);
-  const rsiScore = calcRsiScore(rsiLast);
+  const resistanceSpace = calcResistanceSpaceScore(price, nearestResistance);
+  const volumeScore = calcVolumeExpansionScore(s, bars);
+  const rvolScore = calcRvolScore(volume.relativeVolume);
+  const stochasticScore = calcStochasticScore(indicators.stochK);
+  const rsiScore = calcRsiScore(indicators.rsi14);
   const momentum1W = calcMomentum1WScore(s.percentChange1W);
 
   const score = clamp(
     emaTrend * 0.20 +
     supportStrength * 0.20 +
     resistanceSpace * 0.15 +
-    volume * 0.15 +
+    volumeScore * 0.15 +
     rvolScore * 0.10 +
-    stochastic * 0.10 +
+    stochasticScore * 0.10 +
     rsiScore * 0.05 +
     momentum1W * 0.05
   );
@@ -787,30 +733,22 @@ export function computeTradingPlanScore(s: StockSummary, bars: OHLCVBar[]): Trad
   else if (score >= 60) status = 'SPECULATIVE';
   else status = 'AVOID';
 
-  const trend: TradingPlanScore['trend'] =
-    !Number.isNaN(ema20) && !Number.isNaN(ema50) && price > ema20 && ema20 > ema50
-      ? 'bullish'
-      : !Number.isNaN(ema20) && !Number.isNaN(ema50) && price < ema20 && ema20 < ema50
-      ? 'bearish'
-      : 'sideways';
+  const momentumStars = clamp(Math.round(((rsiScore * 0.4 + stochasticScore * 0.35 + emaTrend * 0.25) / 100) * 5), 1, 5);
 
-  const momentumStars = clamp(Math.round(((rsiScore * 0.4 + stochastic * 0.35 + emaTrend * 0.25) / 100) * 5), 1, 5);
-
-  // Buy area: pullback zone between EMA20 (if below price) and a small band above current price.
-  const emaFloor = !Number.isNaN(ema20) ? Math.min(ema20, price) : price * 0.98;
-  const buyAreaLow = round2(Math.max(emaFloor, price * 0.97));
-  const buyAreaHigh = round2(Math.max(buyAreaLow, price * 1.005));
-
-  const stopLoss = round2(nearestSupport ? nearestSupport * 0.99 : price * 0.95);
-  const tp1 = round2(r1 ?? price * 1.05);
-  const tp2 = round2(r2 ?? tp1 * 1.05);
-  const tp3 = round2(r3 ?? tp2 * 1.05);
-
-  const risk = buyAreaHigh - stopLoss;
-  const riskRewardRatio = round2((tp1 - buyAreaHigh) / Math.max(risk, 1));
+  // Buy Area / Stop Loss / Targets / Risk-Reward: identical to the bullish scenario
+  // shown in the detail page's "6. Rencana Trading" section (buildTradingPlan()),
+  // so a stock's screener badge never contradicts its own detail page.
+  const bullish = tradingPlan.bullish;
+  const buyAreaLow = bullish.entry;
+  const buyAreaHigh = round2(price * 1.002);
+  const stopLoss = bullish.sl;
+  const tp1 = bullish.tp1;
+  const tp2 = bullish.tp2;
+  const tp3 = round2(thirdResistance ?? tp2 * 1.05);
+  const riskRewardRatio = bullish.riskRewardRatio;
 
   return {
-    trend,
+    trend: trendEma.trend,
     momentumStars,
     buyAreaLow,
     buyAreaHigh,
@@ -826,9 +764,9 @@ export function computeTradingPlanScore(s: StockSummary, bars: OHLCVBar[]): Trad
       emaTrend: Math.round(emaTrend),
       supportStrength: Math.round(supportStrength),
       resistanceSpace: Math.round(resistanceSpace),
-      volume: Math.round(volume),
+      volume: Math.round(volumeScore),
       rvol: Math.round(rvolScore),
-      stochastic: Math.round(stochastic),
+      stochastic: Math.round(stochasticScore),
       rsi: Math.round(rsiScore),
       momentum1W: Math.round(momentum1W),
     },
@@ -884,6 +822,225 @@ const tradingPlanPreset: ScreenerPreset = {
   },
 };
 
+// ── Swing Hunter ──────────────────────────────────────────────────────────────
+// Target: 5–15% | Holding: 3–10 hari
+// Filter: EMA20 > EMA50, ADX > 25, RSI 55–70, MACD Bullish, RVOL > 1.5, Nilai > 20 M
+
+/** Wilder's Average True Range helper, used by ADX. */
+function wilderATR(bars: OHLCVBar[], period: number): number[] {
+  const trs: number[] = [];
+  for (let i = 1; i < bars.length; i++) {
+    trs.push(Math.max(
+      bars[i].high - bars[i].low,
+      Math.abs(bars[i].high - bars[i - 1].close),
+      Math.abs(bars[i].low - bars[i - 1].close)
+    ));
+  }
+  if (trs.length < period) return [];
+  const result: number[] = new Array(trs.length).fill(NaN);
+  let atr = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  result[period - 1] = atr;
+  for (let i = period; i < trs.length; i++) {
+    atr = (atr * (period - 1) + trs[i]) / period;
+    result[i] = atr;
+  }
+  return result;
+}
+
+/** Approximate ADX(14) using Wilder's smoothing. Returns NaN when insufficient data. */
+function calcADX(bars: OHLCVBar[], period = 14): number {
+  if (bars.length < period * 2) return NaN;
+  const dmPlus: number[] = [];
+  const dmMinus: number[] = [];
+  for (let i = 1; i < bars.length; i++) {
+    const upMove = bars[i].high - bars[i - 1].high;
+    const downMove = bars[i - 1].low - bars[i].low;
+    dmPlus.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    dmMinus.push(downMove > upMove && downMove > 0 ? downMove : 0);
+  }
+  const atrArr = wilderATR(bars, period);
+  if (atrArr.length < period) return NaN;
+
+  // Wilder-smooth DM+, DM-
+  let smDmPlus = dmPlus.slice(0, period).reduce((a, b) => a + b, 0);
+  let smDmMinus = dmMinus.slice(0, period).reduce((a, b) => a + b, 0);
+
+  const dxArr: number[] = [];
+  for (let i = period; i < dmPlus.length; i++) {
+    const atr = atrArr[i - 1];
+    smDmPlus = smDmPlus - smDmPlus / period + dmPlus[i];
+    smDmMinus = smDmMinus - smDmMinus / period + dmMinus[i];
+    const diPlus = atr > 0 ? (smDmPlus / atr) * 100 : 0;
+    const diMinus = atr > 0 ? (smDmMinus / atr) * 100 : 0;
+    const dx = diPlus + diMinus > 0 ? (Math.abs(diPlus - diMinus) / (diPlus + diMinus)) * 100 : 0;
+    dxArr.push(dx);
+  }
+  if (dxArr.length < period) return NaN;
+  return dxArr.slice(-period).reduce((a, b) => a + b, 0) / period;
+}
+
+const swingHunterPreset: ScreenerPreset = {
+  id: 'swingHunter',
+  label: 'Swing Hunter',
+  description: 'Mendeteksi setup swing trading berkualitas tinggi dengan probabilitas tertinggi untuk pengguna umum. Target 5–15% dalam 3–10 hari trading.',
+  criteria: [
+    'EMA20 > EMA50 — trend naik terkonfirmasi',
+    'ADX > 25 — tren cukup kuat',
+    'RSI 55–70 — momentum naik, belum overbought',
+    'MACD Bullish — MACD Line > Signal Line',
+    'RVOL > 1.5 — volume di atas rata-rata',
+    'Nilai transaksi > Rp 20 miliar',
+  ],
+  coarseFilter: (s) => s.value > 20_000_000_000 && s.percentChange1D > -5,
+  evaluate: (s, bars) => {
+    const closes = bars.map((b) => b.close);
+    const ema20 = lastValid(ema(closes, 20));
+    const ema50 = lastValid(ema(closes, 50));
+    const { macdLine, signalLine } = macd(bars);
+    const macdLast = lastValid(macdLine);
+    const signalLast = lastValid(signalLine);
+    const rsiLast = lastValid(rsi(bars, 14));
+    const rvol = relativeVolume(bars, 20);
+    const adx = calcADX(bars, 14);
+
+    return verdict([
+      [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
+      [!Number.isNaN(adx) && adx > 25, `ADX > 25 (${Number.isNaN(adx) ? 'N/A' : adx.toFixed(1)})`],
+      [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, `RSI 55–70 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
+      [!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast, 'MACD Bullish'],
+      [!Number.isNaN(rvol) && rvol > 1.5, `RVOL > 1.5 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
+      [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
+    ]);
+  },
+};
+
+// ── ARA Hunter ────────────────────────────────────────────────────────────────
+// Target: 10–25% | Holding: 1–3 hari
+// Filter: naik 5-10% hari ini, belum ARA, EMA20 > EMA50, RVOL > 2,
+//         close dekat high, volume meningkat, resistance masih jauh, nilai > 20 M
+
+const araHunterPreset: ScreenerPreset = {
+  id: 'araHunter',
+  label: 'ARA Hunter',
+  description: 'Mencari saham bermomentum kuat yang berpotensi melanjutkan kenaikan keesokan hari (mendekati ARA). Target 10–25% dalam 1–3 hari.',
+  criteria: [
+    'Naik 5–10% hari ini — momentum kuat, belum habis',
+    'Belum ARA (< 20%) — masih ada ruang naik',
+    'EMA20 > EMA50 — trend naik terkonfirmasi',
+    'RVOL > 2 — volume jauh di atas rata-rata',
+    'Close dekat High hari ini (> 80% range)',
+    'Volume meningkat vs. rata-rata 5 hari terakhir',
+    'Resistance masih jauh (> 5% dari harga)',
+    'Nilai transaksi > Rp 20 miliar',
+    'Bukan saham distribusi (RSI < 80)',
+  ],
+  coarseFilter: (s) =>
+    s.percentChange1D >= 5 &&
+    s.percentChange1D < 20 &&
+    s.value > 20_000_000_000,
+  evaluate: (s, bars) => {
+    const closes = bars.map((b) => b.close);
+    const ema20 = lastValid(ema(closes, 20));
+    const ema50 = lastValid(ema(closes, 50));
+    const rvol = relativeVolume(bars, 20);
+    const rsiLast = lastValid(rsi(bars, 14));
+    const lastBar = bars[bars.length - 1];
+    const volMa5 = lastValid(sma(bars.map((b) => b.volume), 5));
+    const todayVsMa5 = !Number.isNaN(volMa5) && volMa5 > 0 ? s.volume / volMa5 : 1;
+
+    // Close position within today's range
+    const dayRange = lastBar ? lastBar.high - lastBar.low : 0;
+    const closePos = dayRange > 0 && lastBar ? (s.lastClose - lastBar.low) / dayRange : 0;
+
+    // Resistance distance check (use 20-day high excl. today)
+    const prior20 = bars.slice(-21, -1);
+    const high20 = prior20.length > 0 ? Math.max(...prior20.map((b) => b.high)) : s.lastClose;
+    const resistancePct = high20 > s.lastClose ? ((high20 - s.lastClose) / s.lastClose) * 100 : 0;
+    const resistanceFar = resistancePct > 5 || high20 <= s.lastClose;
+
+    return verdict([
+      [s.percentChange1D >= 5 && s.percentChange1D < 20, `Naik ${s.percentChange1D.toFixed(1)}% (5–20%)`],
+      [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
+      [!Number.isNaN(rvol) && rvol > 2, `RVOL > 2 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
+      [closePos >= 0.8, `Close dekat High (${(closePos * 100).toFixed(0)}% range)`],
+      [todayVsMa5 >= 1.3, `Volume naik vs MA5 (${todayVsMa5.toFixed(2)}x)`],
+      [resistanceFar, 'Resistance masih jauh (> 5%)'],
+      [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
+      [!Number.isNaN(rsiLast) && rsiLast < 80, `Bukan distribusi (RSI ${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
+    ]);
+  },
+};
+
+// ── Smart Money Hunter ────────────────────────────────────────────────────────
+// Target: 5–15% | Holding: 5–20 hari
+// Filter: harga sideways, EMA20 mulai naik, volume naik perlahan, RVOL > 1.3,
+//         MACD baru golden cross, RSI 50–60, belum breakout besar
+
+const smartMoneyHunterPreset: ScreenerPreset = {
+  id: 'smartMoneyHunter',
+  label: 'Smart Money Hunter',
+  description: 'Mendeteksi saham yang mulai diakumulasi institusi sebelum ramai. Harga masih sideways tapi ada tanda-tanda inflow bertahap. Target 5–15% dalam 5–20 hari.',
+  criteria: [
+    'Harga sideways (range 20 hari < 15%)',
+    'EMA20 mulai naik (EMA20 > EMA50 atau mendekati)',
+    'Volume naik perlahan (MA5 volume > MA20 volume)',
+    'RVOL > 1.3 — ada inflow bertahap',
+    'MACD baru Golden Cross (histogram baru positif)',
+    'RSI 50–60 — belum overbought',
+    'Belum breakout besar (perubahan 1 hari < 5%)',
+    'Nilai transaksi > Rp 5 miliar',
+  ],
+  coarseFilter: (s) =>
+    s.value > 5_000_000_000 &&
+    s.percentChange1D < 5 &&
+    s.percentChange1D > -5,
+  evaluate: (s, bars) => {
+    const closes = bars.map((b) => b.close);
+    const volumes = bars.map((b) => b.volume);
+    const ema20 = lastValid(ema(closes, 20));
+    const ema50 = lastValid(ema(closes, 50));
+    const rsiLast = lastValid(rsi(bars, 14));
+    const rvol = relativeVolume(bars, 20);
+    const { histogram } = macd(bars);
+    const histLast = lastValid(histogram);
+    const prevHist = histogram[histogram.length - 2] ?? NaN;
+    const volMa5 = lastValid(sma(volumes, 5));
+    const volMa20 = lastValid(sma(volumes, 20));
+
+    // Sideways: 20-day high-low range < 15%
+    const last20 = bars.slice(-20);
+    const high20 = last20.length > 0 ? Math.max(...last20.map((b) => b.high)) : s.lastClose;
+    const low20 = last20.length > 0 ? Math.min(...last20.map((b) => b.low)) : s.lastClose;
+    const rangePct = high20 > 0 ? ((high20 - low20) / high20) * 100 : 100;
+    const isSideways = rangePct < 15;
+
+    // EMA20 trending up: EMA20 >= EMA50 (or within 3% below)
+    const emaUptrend =
+      !Number.isNaN(ema20) && !Number.isNaN(ema50) &&
+      (ema20 > ema50 || (ema50 > 0 && (ema50 - ema20) / ema50 < 0.03));
+
+    // MACD Golden Cross: histogram just turned positive
+    const macdGoldenCross =
+      !Number.isNaN(histLast) && !Number.isNaN(prevHist) &&
+      histLast > 0 && prevHist <= 0;
+
+    // Volume rising gradually: MA5 > MA20
+    const volumeRising =
+      !Number.isNaN(volMa5) && !Number.isNaN(volMa20) && volMa5 > volMa20;
+
+    return verdict([
+      [isSideways, `Harga sideways (range ${rangePct.toFixed(1)}%)`],
+      [emaUptrend, 'EMA20 mulai naik (mendekati atau di atas EMA50)'],
+      [volumeRising, 'Volume MA5 > MA20 — inflow bertahap'],
+      [!Number.isNaN(rvol) && rvol > 1.3, `RVOL > 1.3 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
+      [macdGoldenCross, 'MACD baru Golden Cross'],
+      [!Number.isNaN(rsiLast) && rsiLast >= 50 && rsiLast <= 60, `RSI 50–60 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
+      [Math.abs(s.percentChange1D) < 5, `Belum breakout besar (${s.percentChange1D.toFixed(1)}%)`],
+      [s.value > 5_000_000_000, 'Nilai transaksi > Rp 5 miliar'],
+    ]);
+  },
+};
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
@@ -892,6 +1049,9 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   momentum: momentumPreset,
   breakout: breakoutPreset,
   tradingPlan: tradingPlanPreset,
+  swingHunter: swingHunterPreset,
+  araHunter: araHunterPreset,
+  smartMoneyHunter: smartMoneyHunterPreset,
 };
 
 export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
@@ -900,4 +1060,7 @@ export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
   momentumPreset,
   breakoutPreset,
   tradingPlanPreset,
+  swingHunterPreset,
+  araHunterPreset,
+  smartMoneyHunterPreset,
 ];
