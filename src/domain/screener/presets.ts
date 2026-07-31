@@ -9,7 +9,7 @@ import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -1041,6 +1041,65 @@ const smartMoneyHunterPreset: ScreenerPreset = {
   },
 };
 
+// ── Day Trading ──────────────────────────────────────────────────────────────
+// Target: 3–8% | Holding: 1–3 hari
+// Timeframe: H1, H4 (disimulasikan dari data daily EOD)
+// Buy ketika: EMA20 > EMA50, RSI 55–70, MACD Golden Cross, Volume meningkat
+
+const dayTradingPreset: ScreenerPreset = {
+  id: 'dayTrading',
+  label: 'Day Trading',
+  description: 'Setup day trading dengan konfirmasi multi-indikator. Target 3–8% dalam 1–3 hari. Gunakan pada timeframe H1/H4 untuk entry presisi.',
+  criteria: [
+    'EMA20 > EMA50 — trend intraday naik',
+    'RSI 55–70 — momentum bullish, belum overbought',
+    'MACD Golden Cross — histogram baru positif (momentum fresh)',
+    'Volume meningkat — volume hari ini > rata-rata 5 hari',
+    'Close > EMA20 — harga di atas tren jangka pendek',
+    'Nilai transaksi > Rp 10 miliar (likuiditas cukup)',
+  ],
+  coarseFilter: (s) =>
+    s.value > 10_000_000_000 &&
+    s.percentChange1D > -3 &&
+    s.percentChange1D < 10,
+  evaluate: (s, bars) => {
+    const closes = bars.map((b) => b.close);
+    const volumes = bars.map((b) => b.volume);
+
+    const ema20 = lastValid(ema(closes, 20));
+    const ema50 = lastValid(ema(closes, 50));
+    const rsiLast = lastValid(rsi(bars, 14));
+
+    const { macdLine, signalLine, histogram } = macd(bars);
+    const macdLast = lastValid(macdLine);
+    const signalLast = lastValid(signalLine);
+    const histLast = lastValid(histogram);
+    const prevHist = histogram[histogram.length - 2] ?? NaN;
+
+    // MACD Golden Cross: histogram baru berubah dari negatif/nol ke positif
+    const macdGoldenCross =
+      !Number.isNaN(histLast) && !Number.isNaN(prevHist) &&
+      histLast > 0 && prevHist <= 0;
+    // Atau setidaknya MACD bullish (MACD line > Signal line)
+    const macdBullish =
+      macdGoldenCross ||
+      (!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast);
+
+    // Volume meningkat: hari ini > rata-rata 5 hari terakhir
+    const volMa5 = lastValid(sma(volumes, 5));
+    const volIncreasing = !Number.isNaN(volMa5) && volMa5 > 0 && s.volume > volMa5;
+
+    return verdict([
+      [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
+      [!Number.isNaN(ema20) && s.lastClose > ema20, `Close > EMA20 (${Number.isNaN(ema20) ? 'N/A' : ema20.toFixed(0)})`],
+      [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, `RSI 55–70 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
+      [macdBullish, macdGoldenCross ? 'MACD Golden Cross ✓' : 'MACD Bullish (MACD > Signal)'],
+      [volIncreasing, `Volume meningkat (${Number.isNaN(volMa5) ? 'N/A' : (s.volume / volMa5).toFixed(2)}x MA5)`],
+      [s.value > 10_000_000_000, 'Nilai transaksi > Rp 10 miliar'],
+    ]);
+  },
+};
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
@@ -1052,6 +1111,7 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   swingHunter: swingHunterPreset,
   araHunter: araHunterPreset,
   smartMoneyHunter: smartMoneyHunterPreset,
+  dayTrading: dayTradingPreset,
 };
 
 export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
@@ -1063,4 +1123,5 @@ export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
   swingHunterPreset,
   araHunterPreset,
   smartMoneyHunterPreset,
+  dayTradingPreset,
 ];
