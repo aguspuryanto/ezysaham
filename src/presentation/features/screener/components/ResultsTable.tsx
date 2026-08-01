@@ -331,21 +331,23 @@ function StockTableRow({
   onToggleWatchlist: () => void;
 }) {
   const { summary, evaluation } = result;
-  const bScores = evaluation.breakoutScores;
-  const tradingPlan = evaluation.tradingPlan;
+  const rvol = evaluation.relativeVolume;
+  const volShares = summary.volume;
 
   return (
     <tr className={cn(
       'group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/40',
-      bScores?.status === 'BUY_WATCH' && 'bg-emerald-50/50 dark:bg-emerald-400/5'
     )}>
-      <td className="px-4 py-3">
+      {/* ★ Watchlist */}
+      <td className="px-3 py-3">
         <WatchlistStar
           active={isWatchlisted}
           onToggle={onToggleWatchlist}
           ticker={summary.ticker}
         />
       </td>
+
+      {/* Simbol + Nama */}
       <td className="px-4 py-3">
         <Link href={`/screener/${summary.ticker}`} className="flex items-center gap-3">
           <TickerAvatar ticker={summary.ticker} />
@@ -353,65 +355,71 @@ function StockTableRow({
             <div className="font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
               {summary.ticker}
             </div>
-            <div className="max-w-[14rem] truncate text-xs text-zinc-500 dark:text-zinc-400">
+            <div className="max-w-[12rem] truncate text-xs text-zinc-500 dark:text-zinc-400">
               {summary.name}
             </div>
           </div>
         </Link>
       </td>
-      <td className="px-4 py-3 font-mono tabular-nums text-zinc-800 dark:text-zinc-200">
-        {tradingPlan ? formatRupiah(tradingPlan.buyAreaLow) + ' - ' + formatRupiah(tradingPlan.buyAreaHigh) : formatRupiah(summary.lastClose)}
-      </td>
+
+      {/* Perubahan % */}
       <td className="px-4 py-3">
-        {tradingPlan ? <div className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide', TRADING_PLAN_STATUS_STYLES[tradingPlan.status])}>
-          <Target className="size-2.5" />
-          {tradingPlan.status}
-        </div> : <ChangeBadge value={summary.percentChange1D} />}
-      </td>
-      <td className="px-4 py-3 font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
-        {tradingPlan ? `${tradingPlan.score}/100` : formatCompact(summary.value)}
+        <ChangeBadge value={summary.percentChange1D} />
       </td>
 
-      {/* Extra scoring column: Breakout score, Trading Plan, or plain P/E */}
-      {bScores ? (
-        <td className="px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide', STATUS_STYLES[bScores.status])}>
-              <Rocket className="size-2.5" />
-              {bScores.status}
-            </span>
-            <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{bScores.composite}/100</span>
-          </div>
-          <div className="flex gap-2 mt-1 text-[10px] text-zinc-400">
-            <span>🔥{bScores.momentum}</span>
-            <span>🏦{bScores.smartMoney}</span>
-            <span className={bScores.distributionRisk >= 50 ? 'text-rose-500' : 'text-emerald-500'}>
-              ⚠️{bScores.distributionRisk}
-            </span>
-          </div>
-        </td>
-      ) : tradingPlan ? (
-        <td className="px-4 py-3">
-          {/* <div className="flex items-center gap-2">
-            <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide', TRADING_PLAN_STATUS_STYLES[tradingPlan.status])}>
-              <Target className="size-2.5" />
-              {TRADING_PLAN_STATUS_LABEL[tradingPlan.status]}
-            </span>
-            <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{tradingPlan.score}/100</span>
-          </div> */}
-          <div className="flex gap-2 mt-1 text-zinc-400">
-            {/* <span>Buy {formatRupiah(tradingPlan.buyAreaLow)}–{formatRupiah(tradingPlan.buyAreaHigh)}</span> */}
-            <span className={tradingPlan.riskRewardRatio >= 2 ? 'text-emerald-500' : 'text-amber-500'}>
-              1:{tradingPlan.riskRewardRatio.toFixed(1)}
-            </span>
-          </div>
-        </td>
-      ) : (
-        <td className="px-4 py-3 font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
-          {summary.per > 0 ? summary.per.toFixed(1) : '—'}
-        </td>
-      )}
+      {/* Harga */}
+      <td className="px-4 py-3 font-mono tabular-nums text-zinc-800 dark:text-zinc-200">
+        {formatCompact(summary.lastClose)}
+        <span className="ml-1 text-[10px] text-zinc-400">IDR</span>
+      </td>
 
+      {/* Vol (lembar) */}
+      <td className="px-4 py-3 font-mono tabular-nums text-zinc-600 dark:text-zinc-300">
+        {formatCompact(volShares)}
+      </td>
+
+      {/* Volume Relatif */}
+      {/* <td className="px-4 py-3 font-mono tabular-nums">
+        {rvol != null ? (
+          <span className={cn(
+            'font-semibold',
+            rvol >= 2 ? 'text-emerald-600 dark:text-emerald-400' :
+              rvol >= 1.2 ? 'text-zinc-700 dark:text-zinc-200' :
+                'text-zinc-400 dark:text-zinc-500'
+          )}>
+            {rvol.toFixed(2)}
+          </span>
+        ) : (
+          <span className="text-zinc-300 dark:text-zinc-700">—</span>
+        )}
+      </td> */}
+
+      {/* Kap Pasar */}
+      <td className="px-4 py-3 font-mono tabular-nums text-zinc-600 dark:text-zinc-300">
+        {summary.capitalization > 0 ? (
+          <>{formatCompact(summary.capitalization)}<span className="ml-1 text-[10px] text-zinc-400">IDR</span></>
+        ) : (
+          <span className="text-zinc-300 dark:text-zinc-700">—</span>
+        )}
+      </td>
+
+      {/* P/E */}
+      <td className="px-4 py-3 font-mono tabular-nums text-zinc-600 dark:text-zinc-300">
+        {summary.per > 0 ? summary.per.toFixed(2) : <span className="text-zinc-300 dark:text-zinc-700">—</span>}
+      </td>
+
+      {/* Sektor */}
+      {/* <td className="px-4 py-3">
+        {summary.sector ? (
+          <span className="inline-block max-w-[9rem] truncate rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+            {summary.sector}
+          </span>
+        ) : (
+          <span className="text-zinc-300 dark:text-zinc-700">—</span>
+        )}
+      </td> */}
+
+      {/* Detail */}
       <td className="px-4 py-3">
         <Link
           href={`/screener/${summary.ticker}`}
@@ -425,14 +433,13 @@ function StockTableRow({
   );
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────────────────────────────────────────
 export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }: ResultsTableProps) {
   if (results.length === 0) return <EmptyState />;
 
-  const hasBreakoutScores = results.some((r) => r.evaluation.breakoutScores);
-  const hasTradingPlan = results.some((r) => r.evaluation.tradingPlan);
 
   if (view === 'grid') {
     return (
@@ -457,14 +464,17 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-900/60 dark:text-zinc-400">
             <tr>
-              <th className="w-10 px-4 py-3" />
-              <th className="px-4 py-3">Saham</th>
-              <th className="px-4 py-3">{hasTradingPlan ? 'Buy Area' : 'Harga'}</th>
-              <th className="px-4 py-3">{hasTradingPlan ? 'Trend' : '1D'}</th>
-              <th className="px-4 py-3">{hasTradingPlan ? 'Score' : 'Nilai Transaksi'}</th>
-              <th className="px-4 py-3">
-                {hasBreakoutScores ? 'Score & Status' : hasTradingPlan ? 'Reward Ratio' : 'P/E'}
-              </th>
+              <th className="w-9 px-3 py-3" />
+              <th className="px-4 py-3">Simbol</th>
+              <th className="px-4 py-3">Perubahan %</th>
+              <th className="px-4 py-3">Harga</th>
+              <th className="px-4 py-3">Vol</th>
+              {/* <th className="px-4 py-3">
+                <span className="leading-tight">Volume<br />relatif</span>
+              </th> */}
+              <th className="px-4 py-3">Kap pasar</th>
+              <th className="px-4 py-3">P/E</th>
+              {/* <th className="px-4 py-3">Sektor</th> */}
               <th className="px-4 py-3">Detail</th>
             </tr>
           </thead>
@@ -480,6 +490,7 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
           </tbody>
         </table>
       </div>
+
 
       {/* Mobile: stacked cards */}
       <div className="grid gap-2.5 md:hidden">

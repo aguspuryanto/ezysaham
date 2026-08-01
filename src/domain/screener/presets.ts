@@ -88,6 +88,8 @@ export interface PresetEvaluation {
   breakoutScores?: BreakoutScores;
   /** Only present for the Trading Plan preset */
   tradingPlan?: TradingPlanScore;
+  /** Relative volume (volume hari ini / volume MA20) — diisi oleh preset yang menghitungnya */
+  relativeVolume?: number;
 }
 
 export interface ScreenerPreset {
@@ -182,7 +184,7 @@ const momentumPreset: ScreenerPreset = {
     const rsiLast = lastValid(rsi(bars, 14));
     const rvol = relativeVolume(bars, 20);
 
-    return verdict([
+    const result = verdict([
       [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
       [!Number.isNaN(ema20) && s.lastClose > ema20, 'Close > EMA20'],
       [!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast, 'MACD bullish'],
@@ -190,6 +192,7 @@ const momentumPreset: ScreenerPreset = {
       [!Number.isNaN(rvol) && rvol > 2, 'RVOL > 2'],
       [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
     ]);
+    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
   },
 };
 
@@ -903,7 +906,7 @@ const swingHunterPreset: ScreenerPreset = {
     const rvol = relativeVolume(bars, 20);
     const adx = calcADX(bars, 14);
 
-    return verdict([
+    const result = verdict([
       [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
       [!Number.isNaN(adx) && adx > 25, `ADX > 25 (${Number.isNaN(adx) ? 'N/A' : adx.toFixed(1)})`],
       [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, `RSI 55–70 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
@@ -911,6 +914,7 @@ const swingHunterPreset: ScreenerPreset = {
       [!Number.isNaN(rvol) && rvol > 1.5, `RVOL > 1.5 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
       [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
     ]);
+    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
   },
 };
 
@@ -958,7 +962,7 @@ const araHunterPreset: ScreenerPreset = {
     const resistancePct = high20 > s.lastClose ? ((high20 - s.lastClose) / s.lastClose) * 100 : 0;
     const resistanceFar = resistancePct > 5 || high20 <= s.lastClose;
 
-    return verdict([
+    const result = verdict([
       [s.percentChange1D >= 5 && s.percentChange1D < 20, `Naik ${s.percentChange1D.toFixed(1)}% (5–20%)`],
       [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
       [!Number.isNaN(rvol) && rvol > 2, `RVOL > 2 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
@@ -968,6 +972,7 @@ const araHunterPreset: ScreenerPreset = {
       [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
       [!Number.isNaN(rsiLast) && rsiLast < 80, `Bukan distribusi (RSI ${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
     ]);
+    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
   },
 };
 
@@ -1028,7 +1033,7 @@ const smartMoneyHunterPreset: ScreenerPreset = {
     const volumeRising =
       !Number.isNaN(volMa5) && !Number.isNaN(volMa20) && volMa5 > volMa20;
 
-    return verdict([
+    const result = verdict([
       [isSideways, `Harga sideways (range ${rangePct.toFixed(1)}%)`],
       [emaUptrend, 'EMA20 mulai naik (mendekati atau di atas EMA50)'],
       [volumeRising, 'Volume MA5 > MA20 — inflow bertahap'],
@@ -1038,6 +1043,7 @@ const smartMoneyHunterPreset: ScreenerPreset = {
       [Math.abs(s.percentChange1D) < 5, `Belum breakout besar (${s.percentChange1D.toFixed(1)}%)`],
       [s.value > 5_000_000_000, 'Nilai transaksi > Rp 5 miliar'],
     ]);
+    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
   },
 };
 
@@ -1089,7 +1095,10 @@ const dayTradingPreset: ScreenerPreset = {
     const volMa5 = lastValid(sma(volumes, 5));
     const volIncreasing = !Number.isNaN(volMa5) && volMa5 > 0 && s.volume > volMa5;
 
-    return verdict([
+    // RVOL approx: volume hari ini vs MA5 volume
+    const rvolApprox = !Number.isNaN(volMa5) && volMa5 > 0 ? s.volume / volMa5 : NaN;
+
+    const result = verdict([
       [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
       [!Number.isNaN(ema20) && s.lastClose > ema20, `Close > EMA20 (${Number.isNaN(ema20) ? 'N/A' : ema20.toFixed(0)})`],
       [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, `RSI 55–70 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
@@ -1097,6 +1106,7 @@ const dayTradingPreset: ScreenerPreset = {
       [volIncreasing, `Volume meningkat (${Number.isNaN(volMa5) ? 'N/A' : (s.volume / volMa5).toFixed(2)}x MA5)`],
       [s.value > 10_000_000_000, 'Nilai transaksi > Rp 10 miliar'],
     ]);
+    return { ...result, relativeVolume: Number.isNaN(rvolApprox) ? undefined : rvolApprox };
   },
 };
 
