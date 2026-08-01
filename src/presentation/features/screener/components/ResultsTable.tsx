@@ -466,7 +466,7 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
             <tr>
               <th className="w-9 px-3 py-3" />
               <th className="px-4 py-3">Simbol</th>
-              <th className="px-4 py-3">Perubahan %</th>
+              <th className="px-4 py-3">Perubahan</th>
               <th className="px-4 py-3">Harga</th>
               <th className="px-4 py-3">Vol</th>
               {/* <th className="px-4 py-3">
