@@ -5,9 +5,10 @@
  *
  * IHSG (Jakarta Composite Index) mini overview card: last value, change vs.
  * the start of the selected range, and an area chart with range tabs.
+ * Includes automatic background refresh every 15 minutes.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { getIhsgHistory } from '@/data/repositories/MarketRepository';
 import { OHLCVBar } from '@/domain/models/History';
@@ -20,6 +21,8 @@ const RANGES = [
   { key: 'max', label: 'Maks' },
 ] as const;
 type RangeKey = (typeof RANGES)[number]['key'];
+
+const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 
 function shortDate(dateStr: string, range: RangeKey): string {
   try {
@@ -41,30 +44,42 @@ export function IhsgChart() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  const fetchIhsg = useCallback(async (selectedRange: RangeKey, isBackground = false) => {
+    if (!isBackground && !cache[selectedRange]) {
+      setLoading(true);
+    }
+    try {
+      const bars = await getIhsgHistory(selectedRange);
+      if (bars.length > 0) {
+        setCache((c) => ({ ...c, [selectedRange]: bars }));
+        setError(false);
+      } else if (!cache[selectedRange]) {
+        setError(true);
+      }
+    } catch {
+      if (!cache[selectedRange]) {
+        setError(true);
+      }
+    } finally {
+      if (!isBackground) {
+        setLoading(false);
+      }
+    }
+  }, [cache]);
+
+  // Fetch when range changes or initial mount
   useEffect(() => {
-    if (cache[range]) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-    getIhsgHistory(range)
-      .then((bars) => {
-        if (cancelled) return;
-        if (bars.length === 0) {
-          setError(true);
-          return;
-        }
-        setCache((c) => ({ ...c, [range]: bars }));
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [range, cache]);
+    fetchIhsg(range, false);
+  }, [range]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-refresh IHSG history every 15 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchIhsg(range, true);
+    }, FIFTEEN_MINUTES_MS);
+
+    return () => clearInterval(interval);
+  }, [range, fetchIhsg]);
 
   const bars = cache[range] ?? [];
   const chartData = useMemo(
@@ -93,7 +108,7 @@ export function IhsgChart() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            IHSG: {new Date(last?.date).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+            IHSG: {last?.date ? new Date(last.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'}
           </p>
           {last ? (
             <div className="mt-0.5 flex items-baseline gap-2">
