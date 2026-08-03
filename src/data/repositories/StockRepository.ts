@@ -1,10 +1,32 @@
 import { HistoryResponse, OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
 import { mapToStockSummary, PasardanaStockItem } from '@/data/external/pasardana';
+import { AnalysisCacheManager } from '@/data/cache/analysisCache';
 
 export async function getStockSummaries(): Promise<StockSummary[]> {
-  const { summaries } = await getStockSummariesWithTimestamp();
-  return summaries;
+  const cached = AnalysisCacheManager.getSummaries();
+  if (cached && cached.length > 0) {
+    return cached;
+  }
+
+  // Deduplicate ongoing network flight requests
+  const flightPromise = AnalysisCacheManager.getSummariesPromise();
+  if (flightPromise) {
+    return flightPromise;
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      const { summaries } = await getStockSummariesWithTimestamp();
+      AnalysisCacheManager.setSummaries(summaries);
+      return summaries;
+    } finally {
+      AnalysisCacheManager.setSummariesPromise(null);
+    }
+  })();
+
+  AnalysisCacheManager.setSummariesPromise(fetchPromise);
+  return fetchPromise;
 }
 
 /**

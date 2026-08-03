@@ -1,5 +1,7 @@
 import { fetchYahooDailyBars } from '@/data/external/yahooFinance';
 
+export const revalidate = 1800; // 30 minutes cache
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ code: string }> }
@@ -16,5 +18,9 @@ export async function GET(
   }
 
   const result = await fetchYahooDailyBars(code, range);
-  return Response.json(result);
+  return Response.json(result, {
+    headers: {
+      'Cache-Control': 'public, max-age=1800, stale-while-revalidate=3600',
+    },
+  });
 }

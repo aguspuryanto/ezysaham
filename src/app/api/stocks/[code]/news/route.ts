@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { StockNewsItem } from '@/domain/models/News';
 
+export const revalidate = 1800; // 30 mins cache
+
 function analyzeSentiment(text: string): { sentiment: 'bullish' | 'bearish' | 'neutral'; impactScore: number } {
   const lower = text.toLowerCase();
   
@@ -53,7 +55,7 @@ function parseRssXml(xmlText: string, ticker: string): StockNewsItem[] {
     if (title) {
       const { sentiment, impactScore } = analyzeSentiment(title);
       items.push({
-        id: `${ticker}-news-${idx}-${Date.now()}`,
+        id: `${ticker}-news-${idx}`,
         title,
         snippet: `Kabar terkini terkait pergerakan emiten ${ticker} di Pasar Modal Indonesia.`,
         url,
@@ -121,6 +123,7 @@ export async function GET(
 ) {
   const { code } = await context.params;
   const ticker = code.toUpperCase();
+  const headers = { 'Cache-Control': 'public, max-age=1800, stale-while-revalidate=3600' };
 
   try {
     const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(ticker + ' saham IDX')}&hl=id-ID&gl=ID&ceid=ID:id`;
@@ -128,19 +131,19 @@ export async function GET(
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
-      next: { revalidate: 1800 }, // Cache 30 mins
+      next: { revalidate: 1800 },
     });
 
     if (res.ok) {
       const xmlText = await res.text();
       const newsItems = parseRssXml(xmlText, ticker);
       if (newsItems.length > 0) {
-        return NextResponse.json(newsItems);
+        return NextResponse.json(newsItems, { headers });
       }
     }
   } catch {
     // Fallback on fetch error
   }
 
-  return NextResponse.json(generateFallbackNews(ticker));
+  return NextResponse.json(generateFallbackNews(ticker), { headers });
 }

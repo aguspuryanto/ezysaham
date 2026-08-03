@@ -8,6 +8,7 @@
  * 2. Technical Screening (Trend, EMA, S/R, Price Action, RVOL, Indicators)
  * 3. News & Market Sentiment Analysis (Live RSS / Google News / Yahoo Finance)
  * 4. AI Decision Engine (AI Buy/Avoid Advisor with Reasons to Buy & Reasons to Avoid)
+ * 5. High-Performance Instant Cache (0ms page load for cached analysis)
  */
 
 import {
@@ -28,7 +29,6 @@ import {
   RefreshCw,
   Rocket,
   Share2,
-  ShieldAlert,
   Sparkles,
   Target,
   TrendingDown,
@@ -38,7 +38,7 @@ import {
   Zap,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
 import {
@@ -59,6 +59,7 @@ import {
   FundamentalScreeningResult,
   TechnicalScreeningResult,
 } from '@/domain/analysis/aiStockEngine';
+import { AnalysisCacheManager } from '@/data/cache/analysisCache';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
@@ -804,8 +805,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     netSentimentScore: 50,
     overallSentiment: 'neutral',
   });
-  const [newsLoading, setNewsLoading] = useState(true);
-  const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
+  const [newsLoading, setNewsLoading] = useState(false);
   const [justCopied, setJustCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<AnalysisTab>('ai_summary');
   const watchlist = useWatchlist();
@@ -825,36 +825,80 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     } catch { /* clipboard unavailable */ }
   }, [summary]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = false) => {
+    const code = ticker.toUpperCase();
+
+    // ⚡ Fast-path: Check Client Cache first for 0ms loading!
+    if (!forceRefresh) {
+      const cached = AnalysisCacheManager.getTickerAnalysis(code);
+      if (cached) {
+        setSummary(cached.summary);
+        setBars(cached.bars);
+        setAnalysis(cached.analysis);
+        setNewsItems(cached.newsItems);
+        setNewsSummary(cached.newsSummary);
+        setStatus('ready');
+        return; // 0ms instant render!
+      }
+    } else {
+      AnalysisCacheManager.clearTickerCache(code);
+    }
+
     setStatus('loading');
     setNewsLoading(true);
-    setAnalysis(null);
     try {
       const [summaries, bars, newsData] = await Promise.all([
         getStockSummaries(),
-        getStockHistory(ticker),
-        getStockNews(ticker),
+        getStockHistory(code),
+        getStockNews(code),
       ]);
 
-      const found = summaries.find((s) => s.ticker === ticker.toUpperCase());
+      const found = summaries.find((s) => s.ticker === code);
       if (!found) throw new Error('Ticker tidak ditemukan');
 
       setSummary(found);
       setBars(bars);
-      const result = computeStockAnalysis(found, bars);
-      setAnalysis(result);
+
+      // Computations
+      const computedAnalysis = computeStockAnalysis(found, bars);
+      const computedBreakout = computeBreakoutScores(found, bars);
+      const computedAdvisor = computeAiStockAdvisor(found, computedAnalysis, newsData.summary, computedBreakout).advisor;
+
+      setAnalysis(computedAnalysis);
       setNewsItems(newsData.items);
       setNewsSummary(newsData.summary);
       setNewsLoading(false);
-      setGeneratedAt(new Date());
       setStatus('ready');
+
+      // 💾 Save to Instant Cache
+      AnalysisCacheManager.setTickerAnalysis(code, {
+        summary: found,
+        bars,
+        analysis: computedAnalysis,
+        newsItems: newsData.items,
+        newsSummary: newsData.summary,
+        breakoutScores: computedBreakout,
+        advisor: computedAdvisor,
+      });
     } catch {
       setStatus('error');
       setNewsLoading(false);
     }
   }, [ticker]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(false); }, [load]);
+
+  const breakoutScores = useMemo(() => {
+    if (!summary || bars.length === 0) return null;
+    return computeBreakoutScores(summary, bars);
+  }, [summary, bars]);
+
+  const { advisor, fundamentalScreening, technicalScreening } = useMemo(() => {
+    if (!summary || !analysis || !breakoutScores) {
+      return { advisor: null, fundamentalScreening: null, technicalScreening: null };
+    }
+    return computeAiStockAdvisor(summary, analysis, newsSummary, breakoutScores);
+  }, [summary, analysis, newsSummary, breakoutScores]);
 
   if (status === 'loading') {
     return (
@@ -867,7 +911,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     );
   }
 
-  if (status === 'error' || !analysis || !summary) {
+  if (status === 'error' || !analysis || !summary || !advisor || !fundamentalScreening || !technicalScreening || !breakoutScores) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white dark:bg-zinc-950 px-4">
         <AlertTriangle className="size-10 text-amber-400" />
@@ -884,14 +928,6 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       </div>
     );
   }
-
-  const breakoutScores = computeBreakoutScores(summary, bars);
-  const { advisor, fundamentalScreening, technicalScreening } = computeAiStockAdvisor(
-    summary,
-    analysis,
-    newsSummary,
-    breakoutScores
-  );
 
   const { trendEma, supportResistance, priceAction, volume, indicators, tradingPlan } = analysis;
   const isBullish = trendEma.trend === 'bullish';
@@ -935,8 +971,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             </div>
             <button
               type="button"
-              onClick={load}
-              title="Muat ulang data"
+              onClick={() => load(true)}
+              title="Perbarui & muat ulang data"
               className="flex size-8 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
             >
               <RefreshCw className="size-3.5" />
