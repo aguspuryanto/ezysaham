@@ -369,8 +369,7 @@ function StockTableRow({
 
       {/* Harga */}
       <td className="px-4 py-3 font-mono tabular-nums text-zinc-800 dark:text-zinc-200">
-        {formatCompact(summary.lastClose)}
-        <span className="ml-1 text-[10px] text-zinc-400">IDR</span>
+        {formatRupiah(summary.lastClose)}
       </td>
 
       {/* Vol (lembar) */}
