@@ -187,7 +187,7 @@ export function IhsgChart() {
                 stroke={lineColor}
                 strokeWidth={2}
                 fill="url(#ihsgFill)"
-                isAnimationActive={false}
+                isAnimationActive={true}
                 dot={false}
               />
             </AreaChart>
