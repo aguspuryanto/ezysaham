@@ -5,6 +5,8 @@ import { macd } from '@/domain/indicators/macd';
 import { rsi } from '@/domain/indicators/rsi';
 import { relativeVolume, volumeMA } from '@/domain/indicators/volume';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
+import { computeDataFreshness } from '@/domain/analysis/dataFreshness';
+import { formatCompact } from '@/lib/format';
 
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
@@ -88,8 +90,112 @@ export interface PresetEvaluation {
   breakoutScores?: BreakoutScores;
   /** Only present for the Trading Plan preset */
   tradingPlan?: TradingPlanScore;
+  /** Only present for the ARA Hunter preset */
+  araProbability?: AraProbabilityScore;
   /** Relative volume (volume hari ini / volume MA20) — diisi oleh preset yang menghitungnya */
   relativeVolume?: number;
+}
+
+// ── ARA Probability scoring ────────────────────────────────────────────────────
+export interface AraProbabilityScore {
+  /** 0-100 — naik 5-20% sweet-spot, dikonfirmasi EMA20 > EMA50 */
+  momentum: number;
+  /** 0-100 — RVOL & akselerasi volume vs MA5 */
+  volume: number;
+  /** 0-100 — posisi close dalam range harian + ruang ke resistance */
+  breakout: number;
+  /** 0-100 — tier nilai transaksi (lebih besar = lebih aman untuk entry) */
+  liquidity: number;
+  /** Komposit tertimbang dari 4 dimensi di atas */
+  composite: number;
+  probability: 'HIGH' | 'MEDIUM' | 'LOW';
+  /** True bila data stale memaksa probability turun ke LOW terlepas dari composite */
+  freshnessCapped: boolean;
+  reasons: string[];
+  /** Selalu ditampilkan berdampingan dengan label probability. */
+  disclaimer: string;
+}
+
+/**
+ * Momentum/volume/breakout detection framework — bukan "ARA prediction".
+ * News catalyst sengaja tidak diikutkan: preset ini dievaluasi per-ticker di
+ * dalam scan massal screener (lihat ScreenerPage.tsx), fetch berita per
+ * ticker di sana terlalu mahal untuk dilakukan di jalur itu.
+ */
+export function computeAraProbability(s: StockSummary, bars: OHLCVBar[]): AraProbabilityScore {
+  const closes = bars.map((b) => b.close);
+  const ema20 = lastValid(ema(closes, 20));
+  const ema50 = lastValid(ema(closes, 50));
+  const rvol = relativeVolume(bars, 20);
+  const rsiLast = lastValid(rsi(bars, 14));
+  const lastBar = bars[bars.length - 1];
+  const volMa5 = lastValid(sma(bars.map((b) => b.volume), 5));
+  const todayVsMa5 = !Number.isNaN(volMa5) && volMa5 > 0 ? s.volume / volMa5 : 1;
+
+  const dayRange = lastBar ? lastBar.high - lastBar.low : 0;
+  const closePos = dayRange > 0 && lastBar ? (s.lastClose - lastBar.low) / dayRange : 0;
+
+  const prior20 = bars.slice(-21, -1);
+  const high20 = prior20.length > 0 ? Math.max(...prior20.map((b) => b.high)) : s.lastClose;
+  const resistancePct = high20 > s.lastClose ? ((high20 - s.lastClose) / s.lastClose) * 100 : 15;
+
+  const reasons: string[] = [];
+
+  // Momentum: sweet-spot naik 5–20% (puncak di 12.5%), dikonfirmasi trend EMA
+  let momentum = Math.max(0, 100 - Math.abs(s.percentChange1D - 12.5) * 5);
+  if (!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50) {
+    momentum = Math.min(100, momentum + 15);
+    reasons.push('Trend EMA20 > EMA50 mengkonfirmasi momentum');
+  } else {
+    momentum = Math.max(0, momentum - 20);
+  }
+  if (!Number.isNaN(rsiLast) && rsiLast >= 80) {
+    momentum = Math.max(0, momentum - 25);
+    reasons.push(`RSI ${rsiLast.toFixed(1)} mendekati zona distribusi`);
+  }
+  momentum = Math.round(momentum);
+
+  // Volume: RVOL + akselerasi volume vs MA5
+  const rvolScore = Number.isNaN(rvol) ? 0 : Math.min(100, (rvol / 3) * 100);
+  const accelScore = Math.min(100, (todayVsMa5 / 2) * 100);
+  const volume = Math.round(rvolScore * 0.6 + accelScore * 0.4);
+  if (!Number.isNaN(rvol) && rvol > 2) reasons.push(`RVOL ${rvol.toFixed(2)}x di atas rata-rata`);
+
+  // Breakout: close dekat high hari ini + ruang ke resistance
+  const closePosScore = Math.round(closePos * 100);
+  const resistanceScore = Math.max(0, Math.min(100, resistancePct * 10));
+  const breakout = Math.round(closePosScore * 0.6 + resistanceScore * 0.4);
+  if (closePos >= 0.8) reasons.push(`Close di ${(closePos * 100).toFixed(0)}% range harian`);
+
+  // Liquidity: tier nilai transaksi
+  let liquidity = 30;
+  if (s.value > 50_000_000_000) liquidity = 100;
+  else if (s.value > 20_000_000_000) liquidity = 80;
+  else if (s.value > 5_000_000_000) liquidity = 55;
+  if (liquidity >= 80) reasons.push(`Nilai transaksi ${formatCompact(s.value)} — likuiditas memadai`);
+
+  const composite = Math.round(momentum * 0.3 + volume * 0.3 + breakout * 0.25 + liquidity * 0.15);
+
+  const freshness = computeDataFreshness(bars, new Date());
+  const freshnessCapped = freshness?.tier === 'stale';
+
+  let probability: 'HIGH' | 'MEDIUM' | 'LOW' = composite >= 80 ? 'HIGH' : composite >= 55 ? 'MEDIUM' : 'LOW';
+  if (freshnessCapped && freshness) {
+    probability = 'LOW';
+    reasons.unshift(`Data terakhir ${freshness.ageInTradingDays} hari bursa lalu — probabilitas diturunkan otomatis`);
+  }
+
+  return {
+    momentum,
+    volume,
+    breakout,
+    liquidity,
+    composite,
+    probability,
+    freshnessCapped: Boolean(freshnessCapped),
+    reasons,
+    disclaimer: 'Skor probabilitas momentum, bukan jaminan ARA. Selalu terapkan manajemen risiko.',
+  };
 }
 
 export interface ScreenerPreset {
@@ -926,53 +1032,42 @@ const swingHunterPreset: ScreenerPreset = {
 const araHunterPreset: ScreenerPreset = {
   id: 'araHunter',
   label: 'ARA Hunter',
-  description: 'Mencari saham bermomentum kuat yang berpotensi melanjutkan kenaikan keesokan hari (mendekati ARA). Target 10–25% dalam 1–3 hari.',
+  description: 'Mendeteksi momentum & probabilitas (bukan prediksi pasti) saham melanjutkan kenaikan menuju ARA. Skor 0-100 dari momentum, volume, breakout, dan likuiditas — otomatis diturunkan ke LOW bila data sudah tidak segar.',
   criteria: [
-    'Naik 5–10% hari ini — momentum kuat, belum habis',
-    'Belum ARA (< 20%) — masih ada ruang naik',
-    'EMA20 > EMA50 — trend naik terkonfirmasi',
-    'RVOL > 2 — volume jauh di atas rata-rata',
-    'Close dekat High hari ini (> 80% range)',
-    'Volume meningkat vs. rata-rata 5 hari terakhir',
-    'Resistance masih jauh (> 5% dari harga)',
-    'Nilai transaksi > Rp 20 miliar',
-    'Bukan saham distribusi (RSI < 80)',
+    'Momentum 30% — naik 5-20% sweet-spot, dikonfirmasi EMA20 > EMA50',
+    'Volume 30% — RVOL & akselerasi volume vs MA5',
+    'Breakout 25% — close dekat high hari ini + ruang ke resistance',
+    'Liquidity 15% — tier nilai transaksi',
+    'ARA Probability MEDIUM/HIGH (composite ≥ 55) — LOW otomatis tersaring',
+    'Data freshness — probability dipaksa ke LOW bila data 3+ hari bursa lalu',
   ],
   coarseFilter: (s) =>
     s.percentChange1D >= 5 &&
     s.percentChange1D < 20 &&
     s.value > 20_000_000_000,
   evaluate: (s, bars) => {
-    const closes = bars.map((b) => b.close);
-    const ema20 = lastValid(ema(closes, 20));
-    const ema50 = lastValid(ema(closes, 50));
-    const rvol = relativeVolume(bars, 20);
-    const rsiLast = lastValid(rsi(bars, 14));
-    const lastBar = bars[bars.length - 1];
-    const volMa5 = lastValid(sma(bars.map((b) => b.volume), 5));
-    const todayVsMa5 = !Number.isNaN(volMa5) && volMa5 > 0 ? s.volume / volMa5 : 1;
+    const araProbability = computeAraProbability(s, bars);
+    const passed = araProbability.probability !== 'LOW';
 
-    // Close position within today's range
-    const dayRange = lastBar ? lastBar.high - lastBar.low : 0;
-    const closePos = dayRange > 0 && lastBar ? (s.lastClose - lastBar.low) / dayRange : 0;
+    const reasons: string[] = [];
+    const failed: string[] = [];
 
-    // Resistance distance check (use 20-day high excl. today)
-    const prior20 = bars.slice(-21, -1);
-    const high20 = prior20.length > 0 ? Math.max(...prior20.map((b) => b.high)) : s.lastClose;
-    const resistancePct = high20 > s.lastClose ? ((high20 - s.lastClose) / s.lastClose) * 100 : 0;
-    const resistanceFar = resistancePct > 5 || high20 <= s.lastClose;
+    if (araProbability.composite >= 55) reasons.push(`ARA Probability Score ${araProbability.composite}/100`);
+    else failed.push(`ARA Probability Score lemah (${araProbability.composite}/100)`);
 
-    const result = verdict([
-      [s.percentChange1D >= 5 && s.percentChange1D < 20, `Naik ${s.percentChange1D.toFixed(1)}% (5–20%)`],
-      [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
-      [!Number.isNaN(rvol) && rvol > 2, `RVOL > 2 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
-      [closePos >= 0.8, `Close dekat High (${(closePos * 100).toFixed(0)}% range)`],
-      [todayVsMa5 >= 1.3, `Volume naik vs MA5 (${todayVsMa5.toFixed(2)}x)`],
-      [resistanceFar, 'Resistance masih jauh (> 5%)'],
-      [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
-      [!Number.isNaN(rsiLast) && rsiLast < 80, `Bukan distribusi (RSI ${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
-    ]);
-    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
+    if (araProbability.momentum >= 60) reasons.push(`Momentum ${araProbability.momentum}/100`);
+    else failed.push(`Momentum lemah (${araProbability.momentum}/100)`);
+
+    if (araProbability.volume >= 60) reasons.push(`Volume ${araProbability.volume}/100`);
+    else failed.push(`Volume lemah (${araProbability.volume}/100)`);
+
+    if (araProbability.breakout >= 60) reasons.push(`Breakout ${araProbability.breakout}/100`);
+    else failed.push(`Breakout lemah (${araProbability.breakout}/100)`);
+
+    reasons.push(`Liquidity ${araProbability.liquidity}/100`);
+    if (araProbability.freshnessCapped) failed.push('Data stale — probability dipaksa LOW');
+
+    return { passed, reasons, failed, araProbability };
   },
 };
 
@@ -1033,6 +1128,8 @@ const smartMoneyHunterPreset: ScreenerPreset = {
     const volumeRising =
       !Number.isNaN(volMa5) && !Number.isNaN(volMa20) && volMa5 > volMa20;
 
+    const freshness = computeDataFreshness(bars, new Date());
+
     const result = verdict([
       [isSideways, `Harga sideways (range ${rangePct.toFixed(1)}%)`],
       [emaUptrend, 'EMA20 mulai naik (mendekati atau di atas EMA50)'],
@@ -1042,6 +1139,7 @@ const smartMoneyHunterPreset: ScreenerPreset = {
       [!Number.isNaN(rsiLast) && rsiLast >= 50 && rsiLast <= 60, `RSI 50–60 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
       [Math.abs(s.percentChange1D) < 5, `Belum breakout besar (${s.percentChange1D.toFixed(1)}%)`],
       [s.value > 5_000_000_000, 'Nilai transaksi > Rp 5 miliar'],
+      [freshness?.tier !== 'stale', freshness ? `Data segar (H-${freshness.ageInTradingDays})` : 'Data tidak tersedia'],
     ]);
     return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
   },
@@ -1097,6 +1195,7 @@ const dayTradingPreset: ScreenerPreset = {
 
     // RVOL approx: volume hari ini vs MA5 volume
     const rvolApprox = !Number.isNaN(volMa5) && volMa5 > 0 ? s.volume / volMa5 : NaN;
+    const freshness = computeDataFreshness(bars, new Date());
 
     const result = verdict([
       [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
@@ -1105,6 +1204,7 @@ const dayTradingPreset: ScreenerPreset = {
       [macdBullish, macdGoldenCross ? 'MACD Golden Cross ✓' : 'MACD Bullish (MACD > Signal)'],
       [volIncreasing, `Volume meningkat (${Number.isNaN(volMa5) ? 'N/A' : (s.volume / volMa5).toFixed(2)}x MA5)`],
       [s.value > 10_000_000_000, 'Nilai transaksi > Rp 10 miliar'],
+      [freshness?.tier !== 'stale', freshness ? `Data segar (H-${freshness.ageInTradingDays})` : 'Data tidak tersedia'],
     ]);
     return { ...result, relativeVolume: Number.isNaN(rvolApprox) ? undefined : rvolApprox };
   },

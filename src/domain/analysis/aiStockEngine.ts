@@ -14,6 +14,7 @@ import { AiStockAdvisor, AiVerdict, NewsSentimentSummary } from '@/domain/models
 import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { BreakoutScores } from '@/domain/screener/presets';
+import { DataFreshness } from '@/domain/analysis/dataFreshness';
 import { formatCompact, formatRupiah } from '@/lib/format';
 
 export interface FundamentalScreeningResult {
@@ -267,7 +268,8 @@ export function computeAiStockAdvisor(
   summary: StockSummary,
   analysis: StockAnalysis,
   newsSummary: NewsSentimentSummary,
-  breakoutScores: BreakoutScores
+  breakoutScores: BreakoutScores,
+  freshness?: DataFreshness | null
 ): {
   advisor: AiStockAdvisor;
   fundamentalScreening: FundamentalScreeningResult;
@@ -406,6 +408,13 @@ export function computeAiStockAdvisor(
     avoidReasons.push('Tetap patuhi Stop Loss disiplin untuk mengantisipasi gejolak pasar atau pembalikan tren mendadak.');
   }
 
+  const isStaleData = freshness?.tier === 'stale';
+  if (isStaleData && freshness) {
+    avoidReasons.unshift(
+      `Data Tidak Real-time (Stale): Harga terakhir tercatat ${freshness.ageInTradingDays} hari bursa lalu — kondisi pasar saat ini bisa sudah jauh berbeda dari analisis di atas.`
+    );
+  }
+
   // Executive Summary
   const executiveSummary =
     `Berdasarkan kombinasi screening fundamental (Skor: ${fundScreening.score}/100), screening teknikal (Skor: ${techScreening.score}/100), sentimen berita pasar (${newsScore}%), dan Breakout Hunter Score (${breakoutScore}/100), emiten ${summary.ticker} memperoleh skor komposit ${compositeScore}/100. ` +
@@ -415,8 +424,9 @@ export function computeAiStockAdvisor(
         ? `Saham ini berada dalam kondisi sinyal campuran. Disarankan masuk watchlist dan menunggu konfirmasi breakout level resistance kunci atau kejelasan tren.`
         : `Saham ini memiliki risiko teknikal/fundamental yang perlu diwaspadai. Disarankan menunda keputusan entry hingga terbentuk pola pembalikan arah yang valid.`);
 
-  const tradingRecommendation =
-    verdict === 'SANGAT_BELI' || verdict === 'BELI'
+  const tradingRecommendation = isStaleData
+    ? `Data harga terakhir sudah ${freshness!.ageInTradingDays} hari bursa berlalu — jangan gunakan Entry/TP/SL di bawah ini untuk keputusan Day Trading atau ARA hari ini. Verifikasi harga & volume real-time terlebih dahulu sebelum bertindak; analisis ini hanya relevan untuk konteks Swing/Position.`
+    : verdict === 'SANGAT_BELI' || verdict === 'BELI'
       ? `Gunakan area Entry di sekitar ${formatRupiah(analysis.tradingPlan.bullish.entry)} dengan Target Profit 1 di ${formatRupiah(analysis.tradingPlan.bullish.tp1)} (+${(((analysis.tradingPlan.bullish.tp1 - summary.lastClose) / summary.lastClose) * 100).toFixed(1)}%) dan Stop Loss ketat di ${formatRupiah(analysis.tradingPlan.bullish.sl)}.`
       : verdict === 'TAHAN'
         ? `Pantau penembusan resistance ${formatRupiah(analysis.supportResistance.resistances[0]?.price || summary.lastClose * 1.05)} untuk konfirmasi sinyal beli.`

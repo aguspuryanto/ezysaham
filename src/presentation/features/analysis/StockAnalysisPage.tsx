@@ -50,6 +50,7 @@ import {
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
+import { computeDataFreshness } from '@/domain/analysis/dataFreshness';
 import { BreakoutScores, computeBreakoutScores } from '@/domain/screener/presets';
 import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
 import { getStockNews } from '@/data/repositories/newsRepository';
@@ -64,6 +65,7 @@ import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
 import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
+import { DataFreshnessPill, DataFreshnessStaleBanner } from './DataFreshnessBanner';
 import { OHLCVChart } from './OHLCVChart';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -862,7 +864,14 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       // Computations
       const computedAnalysis = computeStockAnalysis(found, bars);
       const computedBreakout = computeBreakoutScores(found, bars);
-      const computedAdvisor = computeAiStockAdvisor(found, computedAnalysis, newsData.summary, computedBreakout).advisor;
+      const computedFreshness = computeDataFreshness(bars, new Date());
+      const computedAdvisor = computeAiStockAdvisor(
+        found,
+        computedAnalysis,
+        newsData.summary,
+        computedBreakout,
+        computedFreshness
+      ).advisor;
 
       setAnalysis(computedAnalysis);
       setNewsItems(newsData.items);
@@ -893,12 +902,14 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     return computeBreakoutScores(summary, bars);
   }, [summary, bars]);
 
+  const freshness = useMemo(() => computeDataFreshness(bars, new Date()), [bars]);
+
   const { advisor, fundamentalScreening, technicalScreening } = useMemo(() => {
     if (!summary || !analysis || !breakoutScores) {
       return { advisor: null, fundamentalScreening: null, technicalScreening: null };
     }
-    return computeAiStockAdvisor(summary, analysis, newsSummary, breakoutScores);
-  }, [summary, analysis, newsSummary, breakoutScores]);
+    return computeAiStockAdvisor(summary, analysis, newsSummary, breakoutScores, freshness);
+  }, [summary, analysis, newsSummary, breakoutScores, freshness]);
 
   if (status === 'loading') {
     return (
@@ -992,6 +1003,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   {summary.name} ({summary.ticker})
                 </h1>
                 <Pill tone="zinc">{summary.sector || 'Sektor BEI'}</Pill>
+                {freshness && <DataFreshnessPill freshness={freshness} />}
               </div>
               <div className="flex flex-wrap gap-x-4 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
                 <span>Market Cap: <strong>{formatCompact(summary.capitalization)}</strong></span>
@@ -1026,6 +1038,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         {bars.length > 0 && (
           <OHLCVChart bars={bars} currentClose={summary.lastClose} />
         )}
+
+        {/* Data Freshness warning — shown only when the last available bar is 3+ trading days old */}
+        {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
 
         {/* 🤖 Top Hero Card: AI Stock Advisor (Penjelasan Alasan Beli vs Hindari) */}
         <AiStockAdvisorHero advisor={advisor} />

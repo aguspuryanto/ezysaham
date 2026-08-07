@@ -1,7 +1,7 @@
-import { Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket } from 'lucide-react';
+import { Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { StockSummary } from '@/domain/models/Stock';
-import { BreakoutScores, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
+import { AraProbabilityScore, BreakoutScores, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 
 export interface ScreenerResult {
@@ -222,6 +222,58 @@ function TradingPlanBadge({ plan }: { plan: TradingPlanScore }) {
   );
 }
 
+// ── ARA Probability badge ─────────────────────────────────────────────────────
+const ARA_PROBABILITY_STYLES: Record<AraProbabilityScore['probability'], string> = {
+  HIGH: 'bg-emerald-500 text-white dark:bg-emerald-600',
+  MEDIUM: 'bg-amber-400 text-white dark:bg-amber-500',
+  LOW: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+};
+
+function AraProbabilityBadge({ score }: { score: AraProbabilityScore }) {
+  return (
+    <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+      {/* Probability pill + composite */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide', ARA_PROBABILITY_STYLES[score.probability])}>
+          <Zap className="size-3" />
+          ARA Probability: {score.probability}
+        </span>
+        <span className="font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+          Score <span className="font-bold text-zinc-700 dark:text-zinc-200">{score.composite}</span>/100
+        </span>
+      </div>
+
+      {/* Mini score bars */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {([
+          { label: 'Momentum', value: score.momentum },
+          { label: 'Volume', value: score.volume },
+          { label: 'Breakout', value: score.breakout },
+          { label: 'Liquidity', value: score.liquidity },
+        ] as const).map(({ label, value }) => (
+          <div key={label}>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
+              <span className="text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300">{value}</span>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+              <div
+                className={cn('h-full rounded-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
+                style={{ width: `${value}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {score.freshnessCapped && (
+        <p className="text-[10px] text-rose-500 dark:text-rose-400">⚠️ Data stale — probability dipaksa turun ke LOW.</p>
+      )}
+      <p className="text-[10px] text-zinc-400 dark:text-zinc-500">{score.disclaimer}</p>
+    </div>
+  );
+}
+
 // ── Empty state ────────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
@@ -251,6 +303,7 @@ function StockCard({
   const positive = summary.percentChange1D >= 0;
   const bScores = evaluation.breakoutScores;
   const tradingPlan = evaluation.tradingPlan;
+  const araProbability = evaluation.araProbability;
 
   return (
     <Link
@@ -291,11 +344,13 @@ function StockCard({
         </div>
       </div>
 
-      {/* Extra scoring badge (only for the Breakout Hunter / Trading Plan presets) */}
+      {/* Extra scoring badge (only for the Breakout Hunter / Trading Plan / ARA Hunter presets) */}
       {bScores ? (
         <BreakoutBadge scores={bScores} />
       ) : tradingPlan ? (
         <TradingPlanBadge plan={tradingPlan} />
+      ) : araProbability ? (
+        <AraProbabilityBadge score={araProbability} />
       ) : (
         /* Footer meta — standard */
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
