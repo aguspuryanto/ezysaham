@@ -23,7 +23,7 @@ export function DataFreshnessPill({ freshness }: { freshness: DataFreshness }) {
       : `Data H-${freshness.ageInTradingDays} · ${formatId(freshness.lastBarDate)}`;
 
   return (
-    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', toneMap[freshness.tier])}>
+    <span className="inline-flex items-center text-sm font-medium">
       {label}
     </span>
   );

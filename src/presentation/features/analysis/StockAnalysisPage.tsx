@@ -1003,12 +1003,12 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   {summary.name} ({summary.ticker})
                 </h1>
                 <Pill tone="zinc">{summary.sector || 'Sektor BEI'}</Pill>
-                {freshness && <DataFreshnessPill freshness={freshness} />}
               </div>
               <div className="flex flex-wrap gap-x-4 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
                 <span>Market Cap: <strong>{formatCompact(summary.capitalization)}</strong></span>
                 <span>Avg Vol 20D: <strong>{formatCompact(volume.volumeMa20)} lembar</strong></span>
               </div>
+              {freshness && <DataFreshnessPill freshness={freshness} />}
             </div>
 
             <div className="flex items-center gap-2">
