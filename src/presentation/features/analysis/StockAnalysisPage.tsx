@@ -95,7 +95,7 @@ function Pill({
     zinc: 'bg-zinc-100 text-zinc-600 border border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700',
   };
   return (
-    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', map[tone])}>
+    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-medium', map[tone])}>
       {children}
     </span>
   );
@@ -289,12 +289,12 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
           </div>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <span className={cn('rounded-lg px-3 py-1 text-xs font-bold tracking-wide shadow-sm', badgeBgMap[advisor.verdictTone])}>
+          <span className={cn('rounded-lg px-3 py-1 text-sm font-bold tracking-wide shadow-sm', badgeBgMap[advisor.verdictTone])}>
             {advisor.verdictLabel}
           </span>
           <div className="text-right">
             <div className="text-[10px] text-zinc-400">Confidence</div>
-            <div className="font-mono text-xs font-bold text-zinc-800 dark:text-zinc-200">{advisor.confidenceScore}%</div>
+            <div className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-200">{advisor.confidenceScore}%</div>
           </div>
         </div>
         <div className="flex items-center justify-between text-[11px]">
@@ -315,7 +315,7 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
             <div className="flex justify-between items-baseline text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">
               <span className="truncate">{item.label} <span className="opacity-60">({item.weight})</span></span>
               <span className={cn(
-                'font-mono text-xs font-bold shrink-0',
+                'font-mono text-sm font-bold shrink-0',
                 item.score >= 70 ? 'text-emerald-600 dark:text-emerald-400' : item.score >= 45 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
               )}>
                 {item.score}/100
@@ -336,13 +336,13 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
 
       {/* Reasons to Buy */}
       <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/5 p-3 space-y-2">
-        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold text-xs">
+        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold text-sm">
           <CheckCircle2 className="size-3.5 shrink-0" />
           Alasan Membeli
         </div>
         <ul className="space-y-1.5">
           {advisor.buyReasons.map((reason, idx) => (
-            <li key={idx} className="flex items-start gap-1.5 text-xs text-zinc-700 dark:text-zinc-300 leading-snug">
+            <li key={idx} className="flex items-start gap-1.5 text-sm text-zinc-700 dark:text-zinc-300 leading-snug">
               <span className="shrink-0 text-emerald-600 dark:text-emerald-400 font-bold">✓</span>
               <span>{reason}</span>
             </li>
@@ -352,13 +352,13 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
 
       {/* Reasons to Avoid */}
       <div className="rounded-xl border border-rose-200 dark:border-rose-500/20 bg-rose-50/50 dark:bg-rose-500/5 p-3 space-y-2">
-        <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400 font-semibold text-xs">
+        <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400 font-semibold text-sm">
           <XCircle className="size-3.5 shrink-0" />
           Alasan Menghindari
         </div>
         <ul className="space-y-1.5">
           {advisor.avoidReasons.map((reason, idx) => (
-            <li key={idx} className="flex items-start gap-1.5 text-xs text-zinc-700 dark:text-zinc-300 leading-snug">
+            <li key={idx} className="flex items-start gap-1.5 text-sm text-zinc-700 dark:text-zinc-300 leading-snug">
               <span className="shrink-0 text-rose-600 dark:text-rose-400 font-bold">⚠️</span>
               <span>{reason}</span>
             </li>
@@ -371,12 +371,12 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
         <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           Rangkuman Eksekutif
         </p>
-        <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+        <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
           {advisor.executiveSummary}
         </p>
         <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-start gap-1.5">
           <Target className="size-3.5 text-emerald-500 mt-0.5 shrink-0" />
-          <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400 leading-relaxed">
+          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 leading-relaxed">
             {advisor.tradingRecommendation}
           </p>
         </div>
@@ -386,7 +386,7 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
         <button
           type="button"
           onClick={onViewDetails}
-          className="w-full text-center text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline"
+          className="w-full text-center text-sm font-medium text-emerald-700 dark:text-emerald-400 hover:underline"
         >
           Lihat detail lengkap di tab AI Summary →
         </button>
@@ -420,7 +420,7 @@ function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-xs">
+      <div className="grid grid-cols-2 gap-2 text-sm">
         <KV label="Entry" value={fmtRp(scenario.entry)} />
         {scenario.avgDown != null && (
           <KV label="Add / AVGD" value={fmtRp(scenario.avgDown)} valueClass="text-amber-600 dark:text-amber-400" />
@@ -440,7 +440,7 @@ function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
         </span>
       </div>
 
-      <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">{scenario.notes}</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">{scenario.notes}</p>
     </div>
   );
 }
@@ -467,11 +467,11 @@ function SimilarStocksSidebarCard({ stocks }: { stocks: StockSummary[] }) {
                 className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">{s.ticker}</div>
+                  <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{s.ticker}</div>
                   <div className="text-[10px] text-zinc-400 truncate">{s.name}</div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="font-mono text-xs text-zinc-700 dark:text-zinc-300">{formatRupiah(s.lastClose)}</div>
+                  <div className="font-mono text-sm text-zinc-700 dark:text-zinc-300">{formatRupiah(s.lastClose)}</div>
                   <div className={cn(
                     'text-[10px] font-mono',
                     up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
@@ -530,7 +530,7 @@ function FundamentalSection({
             <h3 className={cn('font-bold text-sm sm:text-base', screening.passed ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300')}>
               {screening.statusText}
             </h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
               Skor Kelayakan Fundamental: <strong>{screening.score}/100</strong>
             </p>
           </div>
@@ -546,19 +546,19 @@ function FundamentalSection({
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
         <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center border border-zinc-100 dark:border-zinc-800">
-          <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Market Cap</div>
+          <div className="text-sm text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Market Cap</div>
           <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{formatCompact(summary.capitalization)}</div>
         </div>
         <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center border border-zinc-100 dark:border-zinc-800">
-          <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">PER (Valuasi)</div>
+          <div className="text-sm text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">PER (Valuasi)</div>
           <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{per > 0 ? `${per.toFixed(1)}×` : '–'}</div>
         </div>
         <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center border border-zinc-100 dark:border-zinc-800">
-          <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">PBV (Rasio Aset)</div>
+          <div className="text-sm text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">PBV (Rasio Aset)</div>
           <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{pbv > 0 ? `${pbv.toFixed(2)}×` : '–'}</div>
         </div>
         <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center border border-zinc-100 dark:border-zinc-800">
-          <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">ROE (Profitabilitas)</div>
+          <div className="text-sm text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">ROE (Profitabilitas)</div>
           <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{roe !== 0 ? `${roe.toFixed(1)}%` : '–'}</div>
         </div>
       </div>
@@ -570,7 +570,7 @@ function FundamentalSection({
             <div className="flex justify-between items-center">
               <span className={cn('text-sm font-semibold', toneText[item.tone])}>{item.label}</span>
             </div>
-            <p className="text-xs mt-1 text-zinc-600 dark:text-zinc-400 leading-relaxed">{item.detail}</p>
+            <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400 leading-relaxed">{item.detail}</p>
           </div>
         ))}
       </div>
@@ -602,7 +602,7 @@ function NewsSection({
             <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200">
               Meteran Sentimen Publik & Berita
             </h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
               Berdasarkan {newsSummary.totalNews} artikel berita pasar modal terkini
             </p>
           </div>
@@ -626,15 +626,15 @@ function NewsSection({
         {/* News breakdown counts */}
         <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-200/60 dark:border-zinc-800 text-center">
           <div>
-            <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">🟢 Bullish</div>
+            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-semibold">🟢 Bullish</div>
             <div className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-200">{newsSummary.bullishCount} Artikel</div>
           </div>
           <div>
-            <div className="text-xs text-amber-600 dark:text-amber-400 font-semibold">🟡 Netral</div>
+            <div className="text-sm text-amber-600 dark:text-amber-400 font-semibold">🟡 Netral</div>
             <div className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-200">{newsSummary.neutralCount} Artikel</div>
           </div>
           <div>
-            <div className="text-xs text-rose-600 dark:text-rose-400 font-semibold">🔴 Bearish</div>
+            <div className="text-sm text-rose-600 dark:text-rose-400 font-semibold">🔴 Bearish</div>
             <div className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-200">{newsSummary.bearishCount} Artikel</div>
           </div>
         </div>
@@ -660,7 +660,7 @@ function NewsSection({
                     <Pill tone={item.sentiment === 'bullish' ? 'green' : item.sentiment === 'bearish' ? 'red' : 'amber'}>
                       {item.sentiment.toUpperCase()}
                     </Pill>
-                    <span className="text-xs text-zinc-400">{item.publisher} • {item.publishedAt}</span>
+                    <span className="text-sm text-zinc-400">{item.publisher} • {item.publishedAt}</span>
                   </div>
                   <a
                     href={item.url}
@@ -670,7 +670,7 @@ function NewsSection({
                   >
                     {item.title} <ExternalLink className="size-3.5 shrink-0 opacity-60" />
                   </a>
-                  <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">
+                  <p className="text-sm sm:text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">
                     {item.snippet}
                   </p>
                 </div>
@@ -698,7 +698,7 @@ function TrendEmaSection({ number, trendEma, isBullish, isBearish }: {
           { label: 'EMA 200', value: fmtRp(trendEma.ema200) },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
-            <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{label}</div>
+            <div className="text-sm text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{label}</div>
             <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}</div>
           </div>
         ))}
@@ -765,7 +765,7 @@ function VolumeSection({ number, volume }: { number: number; volume: VolumeAnaly
           { label: 'Tren Volume', value: volume.volumeTrend === 'increasing' ? '📈 Naik' : volume.volumeTrend === 'decreasing' ? '📉 Turun' : '➡️ Normal' },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-4 py-3 text-center">
-            <div className="text-xs text-zinc-400 dark:text-zinc-500 uppercase tracking-wide leading-tight">{label}</div>
+            <div className="text-sm text-zinc-400 dark:text-zinc-500 uppercase tracking-wide leading-tight">{label}</div>
             <div className="mt-1 font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">{value}</div>
           </div>
         ))}
@@ -819,15 +819,15 @@ function IndicatorsSection({ number, indicators }: { number: number; indicators:
           </div>
           <div className="grid grid-cols-3 gap-3 mb-2">
             <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
-              <div className="text-xs text-zinc-400 dark:text-zinc-500">MACD</div>
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">MACD</div>
               <div className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100 mt-0.5">{fmtN(indicators.macdValue)}</div>
             </div>
             <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
-              <div className="text-xs text-zinc-400 dark:text-zinc-500">Signal</div>
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">Signal</div>
               <div className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100 mt-0.5">{fmtN(indicators.macdSignal)}</div>
             </div>
             <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
-              <div className="text-xs text-zinc-400 dark:text-zinc-500">Histogram</div>
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">Histogram</div>
               <div className={cn(
                 'font-mono text-sm font-semibold mt-0.5',
                 indicators.macdHistogram >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
@@ -863,7 +863,7 @@ function BreakoutHunterSection({ ticker, scores }: { ticker: string; scores: Bre
         <span className="font-mono text-lg font-bold tabular-nums">Composite {scores.composite}/100</span>
       </div>
 
-      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <p className="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         8 Dimensi Skor AI Breakout
       </p>
       <div className="space-y-4 mb-5">
@@ -1111,7 +1111,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   </h1>
                   <Pill tone="zinc">{summary.sector || 'Sektor BEI'}</Pill>
                 </div>
-                <div className="flex flex-wrap gap-x-4 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                <div className="flex flex-wrap gap-x-4 text-sm sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
                   <span>Market Cap: <strong>{formatCompact(summary.capitalization)}</strong></span>
                   <span>Avg Vol 20D: <strong>{formatCompact(volume.volumeMa20)} lembar</strong></span>
                 </div>
@@ -1123,7 +1123,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   <button
                     type="button"
                     onClick={handleShare}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                   >
                     <Share2 className="size-3.5" /> {justCopied ? 'Tautan Disalin!' : 'Bagikan'}
                   </button>
@@ -1131,7 +1131,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                     type="button"
                     onClick={() => watchlist.toggle(summary.ticker)}
                     className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors border',
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors border',
                       isWatched ? 'bg-amber-50 text-amber-600 border-amber-200' : 'border-zinc-200 text-zinc-500 hover:bg-zinc-50'
                     )}
                   >
@@ -1171,7 +1171,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
                 className={cn(
-                  'flex-1 min-w-[120px] flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-medium transition-all',
+                  'flex-1 min-w-[120px] flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm sm:text-sm font-medium transition-all',
                   activeTab === tab.key
                     ? 'bg-emerald-600 text-white shadow-sm font-semibold'
                     : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -1195,12 +1195,12 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-indigo-400 transition-colors space-y-1"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-500">1. Screening Fundamental</span>
-                    <span className={cn('text-xs font-bold', fundamentalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
+                    <span className="text-sm font-semibold text-zinc-500">1. Screening Fundamental</span>
+                    <span className={cn('text-sm font-bold', fundamentalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
                       {fundamentalScreening.score}/100
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
                     {fundamentalScreening.statusText}
                   </p>
                 </button>
@@ -1210,12 +1210,12 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-emerald-400 transition-colors space-y-1"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-500">2. Screening Teknikal</span>
-                    <span className={cn('text-xs font-bold', technicalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
+                    <span className="text-sm font-semibold text-zinc-500">2. Screening Teknikal</span>
+                    <span className={cn('text-sm font-bold', technicalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
                       {technicalScreening.score}/100
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
                     {technicalScreening.statusText}
                   </p>
                 </button>
@@ -1225,12 +1225,12 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-blue-400 transition-colors space-y-1"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-500">3. Sentimen Berita</span>
-                    <span className="text-xs font-bold text-blue-600">
+                    <span className="text-sm font-semibold text-zinc-500">3. Sentimen Berita</span>
+                    <span className="text-sm font-bold text-blue-600">
                       {newsSummary.netSentimentScore}%
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
                     {newsSummary.totalNews} Artikel ({newsSummary.overallSentiment.toUpperCase()})
                   </p>
                 </button>
@@ -1252,7 +1252,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
                     {technicalScreening.statusText}
                   </h3>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
                     Evaluasi Tren, Momentum MACD/RSI, Price Action & Volume Akumulasi
                   </p>
                 </div>
@@ -1267,7 +1267,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               <SectionCard number={2} title="Level Penting (Resistance & Support)" icon={<Crosshair className="size-4" />} accentClass="bg-violet-500">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">
                       Resistance
                     </p>
                     {supportResistance.resistances.length > 0
@@ -1277,7 +1277,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                       : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
                   </div>
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-2">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-2">
                       Support
                     </p>
                     {supportResistance.supports.length > 0
@@ -1341,13 +1341,13 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           {/* Disclaimer */}
           <div className="flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" strokeWidth={2} />
-            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+            <p className="text-sm text-amber-700 dark:text-amber-300 leading-relaxed">
               <strong>Disclaimer:</strong> Analisis AI ini mengombinasikan screening fundamental, teknikal, dan berita untuk tujuan edukasi. <strong>Bukan merupakan rekomendasi finansial langsung.</strong> Selalu terapkan manajemen risiko ketat dan pertimbangkan kondisi pasar sebelum mengambil keputusan investasi.
             </p>
           </div>
 
           {/* Footer Links */}
-          <div className="flex items-center justify-center gap-3 pt-2 text-xs text-zinc-400 dark:text-zinc-600">
+          <div className="flex items-center justify-center gap-3 pt-2 text-sm text-zinc-400 dark:text-zinc-600">
             <a
               href={`https://finance.yahoo.com/quote/${summary.ticker}.JK`}
               target="_blank"
