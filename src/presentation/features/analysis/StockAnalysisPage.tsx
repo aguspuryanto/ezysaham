@@ -947,7 +947,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         setNewsItems(cached.newsItems);
         setNewsSummary(cached.newsSummary);
         setStatus('ready');
-        getStockSummaries().then(setAllSummaries).catch(() => {}); // cache-backed, non-blocking
+        getStockSummaries().then(setAllSummaries).catch(() => { }); // cache-backed, non-blocking
         return; // 0ms instant render!
       }
     } else {
@@ -1086,18 +1086,6 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </div>
 
           <div className="ml-auto flex items-center gap-3">
-            <div className="text-right">
-              <div className="font-mono text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
-                {formatRupiah(summary.lastClose)}
-              </div>
-              <span className={cn(
-                'inline-flex items-center gap-1 text-xs font-mono tabular-nums',
-                positiveDay ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-              )}>
-                {positiveDay ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-                {formatPercent(summary.percentChange1D)}
-              </span>
-            </div>
             <button
               type="button"
               onClick={() => load(true)}
@@ -1112,261 +1100,275 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
       {/* Main Content */}
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 pb-16 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:items-start">
-      <div className="space-y-5 min-w-0">
-        {/* Ticker Identity Card */}
-        <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-                  {summary.name} ({summary.ticker})
-                </h1>
-                <Pill tone="zinc">{summary.sector || 'Sektor BEI'}</Pill>
+        <div className="space-y-5 min-w-0">
+          {/* Ticker Identity Card */}
+          <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-5 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+                    {summary.name} ({summary.ticker})
+                  </h1>
+                  <Pill tone="zinc">{summary.sector || 'Sektor BEI'}</Pill>
+                </div>
+                <div className="flex flex-wrap gap-x-4 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                  <span>Market Cap: <strong>{formatCompact(summary.capitalization)}</strong></span>
+                  <span>Avg Vol 20D: <strong>{formatCompact(volume.volumeMa20)} lembar</strong></span>
+                </div>
+                {freshness && <DataFreshnessPill freshness={freshness} />}
               </div>
-              <div className="flex flex-wrap gap-x-4 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-                <span>Market Cap: <strong>{formatCompact(summary.capitalization)}</strong></span>
-                <span>Avg Vol 20D: <strong>{formatCompact(volume.volumeMa20)} lembar</strong></span>
-              </div>
-              {freshness && <DataFreshnessPill freshness={freshness} />}
-            </div>
 
-            <div className="flex items-center gap-2">
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <Share2 className="size-3.5" /> {justCopied ? 'Tautan Disalin!' : 'Bagikan'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => watchlist.toggle(summary.ticker)}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors border',
+                      isWatched ? 'bg-amber-50 text-amber-600 border-amber-200' : 'border-zinc-200 text-zinc-500 hover:bg-zinc-50'
+                    )}
+                  >
+                    {isWatched ? <BookmarkCheck className="size-3.5" /> : <Bookmark className="size-3.5" />}
+                    {isWatched ? 'Watching' : 'Watch'}
+                  </button>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-2xl sm:text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
+                    {formatRupiah(summary.lastClose)}
+                  </span>
+                  <span className={cn(
+                    'inline-flex items-center gap-1 text-base sm:text-lg font-mono tabular-nums font-semibold',
+                    positiveDay ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                  )}>
+                    {positiveDay ? <TrendingUp className="size-5" /> : <TrendingDown className="size-5" />}
+                    {formatPercent(summary.percentChange1D)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* OHLCV Chart */}
+          {bars.length > 0 && (
+            <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
+          )}
+
+          {/* Data Freshness warning — shown only when the last available bar is 3+ trading days old */}
+          {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
+
+          {/* Navigation Tabs */}
+          <div className="flex flex-wrap gap-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-1.5" role="tablist">
+            {ANALYSIS_TABS.map((tab) => (
               <button
+                key={tab.key}
                 type="button"
-                onClick={handleShare}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-              >
-                <Share2 className="size-3.5" /> {justCopied ? 'Tautan Disalin!' : 'Bagikan'}
-              </button>
-              <button
-                type="button"
-                onClick={() => watchlist.toggle(summary.ticker)}
+                onClick={() => setActiveTab(tab.key)}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors border',
-                  isWatched ? 'bg-amber-50 text-amber-600 border-amber-200' : 'border-zinc-200 text-zinc-500 hover:bg-zinc-50'
+                  'flex-1 min-w-[120px] flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-medium transition-all',
+                  activeTab === tab.key
+                    ? 'bg-emerald-600 text-white shadow-sm font-semibold'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                 )}
               >
-                {isWatched ? <BookmarkCheck className="size-3.5" /> : <Bookmark className="size-3.5" />}
-                {isWatched ? 'Watching' : 'Watch'}
+                {tab.icon}
+                {tab.label}
               </button>
-            </div>
+            ))}
           </div>
-        </div>
 
-        {/* OHLCV Chart */}
-        {bars.length > 0 && (
-          <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
-        )}
+          {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
 
-        {/* Data Freshness warning — shown only when the last available bar is 3+ trading days old */}
-        {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
+          {/* Tab 1: AI Summary & Buy/Avoid Advisor Details */}
+          {activeTab === 'ai_summary' && (
+            <div className="space-y-5">
+              {/* Quick Link to Deep Dive Tabs */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  onClick={() => setActiveTab('fundamental')}
+                  className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-indigo-400 transition-colors space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-500">1. Screening Fundamental</span>
+                    <span className={cn('text-xs font-bold', fundamentalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
+                      {fundamentalScreening.score}/100
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
+                    {fundamentalScreening.statusText}
+                  </p>
+                </button>
 
-        {/* Navigation Tabs */}
-        <div className="flex flex-wrap gap-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-1.5" role="tablist">
-          {ANALYSIS_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={cn(
-                'flex-1 min-w-[120px] flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-medium transition-all',
-                activeTab === tab.key
-                  ? 'bg-emerald-600 text-white shadow-sm font-semibold'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-              )}
+                <button
+                  onClick={() => setActiveTab('teknikal')}
+                  className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-emerald-400 transition-colors space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-500">2. Screening Teknikal</span>
+                    <span className={cn('text-xs font-bold', technicalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
+                      {technicalScreening.score}/100
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
+                    {technicalScreening.statusText}
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('berita')}
+                  className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-blue-400 transition-colors space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-500">3. Sentimen Berita</span>
+                    <span className="text-xs font-bold text-blue-600">
+                      {newsSummary.netSentimentScore}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
+                    {newsSummary.totalNews} Artikel ({newsSummary.overallSentiment.toUpperCase()})
+                  </p>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: Screening & Analisis Teknikal */}
+          {activeTab === 'teknikal' && (
+            <div className="space-y-5">
+              {/* Technical Screening Status Header */}
+              <div className={cn(
+                'rounded-xl border p-4 flex items-center justify-between gap-3',
+                technicalScreening.passed
+                  ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10'
+                  : 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10'
+              )}>
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
+                    {technicalScreening.statusText}
+                  </h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Evaluasi Tren, Momentum MACD/RSI, Price Action & Volume Akumulasi
+                  </p>
+                </div>
+                <span className="font-mono text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {technicalScreening.score}/100
+                </span>
+              </div>
+
+              <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} />
+
+              {/* Level Penting */}
+              <SectionCard number={2} title="Level Penting (Resistance & Support)" icon={<Crosshair className="size-4" />} accentClass="bg-violet-500">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">
+                      Resistance
+                    </p>
+                    {supportResistance.resistances.length > 0
+                      ? supportResistance.resistances.map((r) => (
+                        <LevelRow key={r.label} label={r.label} price={r.price} description={r.description} tone="red" />
+                      ))
+                      : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-2">
+                      Support
+                    </p>
+                    {supportResistance.supports.length > 0
+                      ? supportResistance.supports.map((s) => (
+                        <LevelRow key={s.label} label={s.label} price={s.price} description={s.description} tone="green" />
+                      ))
+                      : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
+                  </div>
+                </div>
+              </SectionCard>
+
+              <PriceActionSection number={3} priceAction={priceAction} />
+              <VolumeSection number={4} volume={volume} />
+              <IndicatorsSection number={5} indicators={indicators} />
+
+              {/* Rencana Trading */}
+              <SectionCard number={6} title="Rencana Trading" icon={<Target className="size-4" />} accentClass="bg-rose-500">
+                <div className="grid gap-4 sm:grid-cols-2 mb-4">
+                  <ScenarioCard
+                    type="bullish"
+                    entry={tradingPlan.bullish.entry}
+                    avgDown={tradingPlan.bullish.avgDown}
+                    tp1={tradingPlan.bullish.tp1}
+                    tp2={tradingPlan.bullish.tp2}
+                    sl={tradingPlan.bullish.sl}
+                    rr={tradingPlan.bullish.riskRewardRatio}
+                    notes={tradingPlan.bullish.notes}
+                  />
+                  <ScenarioCard
+                    type="bearish"
+                    entry={tradingPlan.bearish.entry}
+                    tp1={tradingPlan.bearish.tp1}
+                    tp2={tradingPlan.bearish.tp2}
+                    sl={tradingPlan.bearish.sl}
+                    rr={tradingPlan.bearish.riskRewardRatio}
+                    notes={tradingPlan.bearish.notes}
+                  />
+                </div>
+              </SectionCard>
+            </div>
+          )}
+
+          {/* Tab 3: Screening & Analisis Fundamental */}
+          {activeTab === 'fundamental' && (
+            <FundamentalSection summary={summary} screening={fundamentalScreening} />
+          )}
+
+          {/* Tab 4: Analisis Berita & Sentimen */}
+          {activeTab === 'berita' && (
+            <NewsSection newsItems={newsItems} newsSummary={newsSummary} loading={newsLoading} />
+          )}
+
+          {/* Tab 5: Breakout Hunter AI */}
+          {activeTab === 'breakout' && (
+            <BreakoutHunterSection ticker={summary.ticker} scores={breakoutScores} />
+          )}
+
+          {/* Philosophy Banner */}
+          <PhilosophyBanner />
+
+          {/* Disclaimer */}
+          <div className="flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" strokeWidth={2} />
+            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+              <strong>Disclaimer:</strong> Analisis AI ini mengombinasikan screening fundamental, teknikal, dan berita untuk tujuan edukasi. <strong>Bukan merupakan rekomendasi finansial langsung.</strong> Selalu terapkan manajemen risiko ketat dan pertimbangkan kondisi pasar sebelum mengambil keputusan investasi.
+            </p>
+          </div>
+
+          {/* Footer Links */}
+          <div className="flex items-center justify-center gap-3 pt-2 text-xs text-zinc-400 dark:text-zinc-600">
+            <a
+              href={`https://finance.yahoo.com/quote/${summary.ticker}.JK`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors"
             >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
-
-        {/* Tab 1: AI Summary & Buy/Avoid Advisor Details */}
-        {activeTab === 'ai_summary' && (
-          <div className="space-y-5">
-            {/* Quick Link to Deep Dive Tabs */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                onClick={() => setActiveTab('fundamental')}
-                className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-indigo-400 transition-colors space-y-1"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-500">1. Screening Fundamental</span>
-                  <span className={cn('text-xs font-bold', fundamentalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
-                    {fundamentalScreening.score}/100
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
-                  {fundamentalScreening.statusText}
-                </p>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('teknikal')}
-                className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-emerald-400 transition-colors space-y-1"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-500">2. Screening Teknikal</span>
-                  <span className={cn('text-xs font-bold', technicalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
-                    {technicalScreening.score}/100
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
-                  {technicalScreening.statusText}
-                </p>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('berita')}
-                className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-blue-400 transition-colors space-y-1"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-500">3. Sentimen Berita</span>
-                  <span className="text-xs font-bold text-blue-600">
-                    {newsSummary.netSentimentScore}%
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
-                  {newsSummary.totalNews} Artikel ({newsSummary.overallSentiment.toUpperCase()})
-                </p>
-              </button>
-            </div>
+              Yahoo Finance <ExternalLink className="size-3" />
+            </a>
+            <span>·</span>
+            <a
+              href={`https://www.idx.co.id/id/data-pasar/data-saham/daftar-saham/?kodeEmiten=${summary.ticker}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors"
+            >
+              IDX.co.id <ExternalLink className="size-3" />
+            </a>
+            <span>·</span>
+            <span>{SITE_NAME}</span>
           </div>
-        )}
-
-        {/* Tab 2: Screening & Analisis Teknikal */}
-        {activeTab === 'teknikal' && (
-          <div className="space-y-5">
-            {/* Technical Screening Status Header */}
-            <div className={cn(
-              'rounded-xl border p-4 flex items-center justify-between gap-3',
-              technicalScreening.passed
-                ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10'
-                : 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10'
-            )}>
-              <div>
-                <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
-                  {technicalScreening.statusText}
-                </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Evaluasi Tren, Momentum MACD/RSI, Price Action & Volume Akumulasi
-                </p>
-              </div>
-              <span className="font-mono text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                {technicalScreening.score}/100
-              </span>
-            </div>
-
-            <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} />
-
-            {/* Level Penting */}
-            <SectionCard number={2} title="Level Penting (Resistance & Support)" icon={<Crosshair className="size-4" />} accentClass="bg-violet-500">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">
-                    Resistance
-                  </p>
-                  {supportResistance.resistances.length > 0
-                    ? supportResistance.resistances.map((r) => (
-                      <LevelRow key={r.label} label={r.label} price={r.price} description={r.description} tone="red" />
-                    ))
-                    : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-2">
-                    Support
-                  </p>
-                  {supportResistance.supports.length > 0
-                    ? supportResistance.supports.map((s) => (
-                      <LevelRow key={s.label} label={s.label} price={s.price} description={s.description} tone="green" />
-                    ))
-                    : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
-                </div>
-              </div>
-            </SectionCard>
-
-            <PriceActionSection number={3} priceAction={priceAction} />
-            <VolumeSection number={4} volume={volume} />
-            <IndicatorsSection number={5} indicators={indicators} />
-
-            {/* Rencana Trading */}
-            <SectionCard number={6} title="Rencana Trading" icon={<Target className="size-4" />} accentClass="bg-rose-500">
-              <div className="grid gap-4 sm:grid-cols-2 mb-4">
-                <ScenarioCard
-                  type="bullish"
-                  entry={tradingPlan.bullish.entry}
-                  avgDown={tradingPlan.bullish.avgDown}
-                  tp1={tradingPlan.bullish.tp1}
-                  tp2={tradingPlan.bullish.tp2}
-                  sl={tradingPlan.bullish.sl}
-                  rr={tradingPlan.bullish.riskRewardRatio}
-                  notes={tradingPlan.bullish.notes}
-                />
-                <ScenarioCard
-                  type="bearish"
-                  entry={tradingPlan.bearish.entry}
-                  tp1={tradingPlan.bearish.tp1}
-                  tp2={tradingPlan.bearish.tp2}
-                  sl={tradingPlan.bearish.sl}
-                  rr={tradingPlan.bearish.riskRewardRatio}
-                  notes={tradingPlan.bearish.notes}
-                />
-              </div>
-            </SectionCard>
-          </div>
-        )}
-
-        {/* Tab 3: Screening & Analisis Fundamental */}
-        {activeTab === 'fundamental' && (
-          <FundamentalSection summary={summary} screening={fundamentalScreening} />
-        )}
-
-        {/* Tab 4: Analisis Berita & Sentimen */}
-        {activeTab === 'berita' && (
-          <NewsSection newsItems={newsItems} newsSummary={newsSummary} loading={newsLoading} />
-        )}
-
-        {/* Tab 5: Breakout Hunter AI */}
-        {activeTab === 'breakout' && (
-          <BreakoutHunterSection ticker={summary.ticker} scores={breakoutScores} />
-        )}
-
-        {/* Philosophy Banner */}
-        <PhilosophyBanner />
-
-        {/* Disclaimer */}
-        <div className="flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5 px-4 py-3">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" strokeWidth={2} />
-          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-            <strong>Disclaimer:</strong> Analisis AI ini mengombinasikan screening fundamental, teknikal, dan berita untuk tujuan edukasi. <strong>Bukan merupakan rekomendasi finansial langsung.</strong> Selalu terapkan manajemen risiko ketat dan pertimbangkan kondisi pasar sebelum mengambil keputusan investasi.
-          </p>
         </div>
-
-        {/* Footer Links */}
-        <div className="flex items-center justify-center gap-3 pt-2 text-xs text-zinc-400 dark:text-zinc-600">
-          <a
-            href={`https://finance.yahoo.com/quote/${summary.ticker}.JK`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors"
-          >
-            Yahoo Finance <ExternalLink className="size-3" />
-          </a>
-          <span>·</span>
-          <a
-            href={`https://www.idx.co.id/id/data-pasar/data-saham/daftar-saham/?kodeEmiten=${summary.ticker}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors"
-          >
-            IDX.co.id <ExternalLink className="size-3" />
-          </a>
-          <span>·</span>
-          <span>{SITE_NAME}</span>
-        </div>
-      </div>
 
         {/* Right Sidebar: AI Stock Advisor, Trading Plan Summary, Similar Stocks */}
         <aside className="space-y-5 lg:sticky lg:top-20">

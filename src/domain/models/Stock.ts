@@ -22,6 +22,7 @@ export interface StockSummary {
   per: number;
   pbv: number;
   roe: number;
+  freeFloat: number;
   annualHigh: number;
   annualLow: number;
 }

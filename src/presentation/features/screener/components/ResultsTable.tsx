@@ -539,7 +539,7 @@ function StockTableRow({
       </td>
 
       {/* Sektor */}
-      {/* <td className="px-4 py-3">
+      <td className="px-4 py-3">
         {summary.sector ? (
           <span className="inline-block max-w-[9rem] truncate rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
             {summary.sector}
@@ -547,10 +547,10 @@ function StockTableRow({
         ) : (
           <span className="text-zinc-300 dark:text-zinc-700">—</span>
         )}
-      </td> */}
+      </td>
 
       {/* Detail */}
-      <td className="px-4 py-3">
+      {/* <td className="px-4 py-3">
         <Link
           href={`/screener/${summary.ticker}`}
           className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:border-emerald-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
@@ -558,7 +558,7 @@ function StockTableRow({
         >
           Analisis <ChevronRight className="size-3" />
         </Link>
-      </td>
+      </td> */}
     </tr>
   );
 }
@@ -590,8 +590,8 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
   return (
     <>
       {/* Desktop / tablet: table */}
-      <div className="hidden overflow-hidden rounded-2xl border border-zinc-200 md:block dark:border-zinc-800">
-        <table className="w-full text-sm">
+      <div className="hidden overflow-x-auto overflow-hidden rounded-2xl border border-zinc-200 md:block dark:border-zinc-800">
+        <table className="w-full min-w-[700px] text-sm">
           <thead className="bg-zinc-50 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-900/60 dark:text-zinc-400">
             <tr>
               <th className="w-9 px-3 py-3" />
@@ -604,8 +604,8 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
               </th> */}
               <th className="px-4 py-3">Kap pasar</th>
               <th className="px-4 py-3">P/E</th>
-              {/* <th className="px-4 py-3">Sektor</th> */}
-              <th className="px-4 py-3">Detail</th>
+              <th className="px-4 py-3">Sektor</th>
+              {/* <th className="px-4 py-3">Detail</th> */}
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
