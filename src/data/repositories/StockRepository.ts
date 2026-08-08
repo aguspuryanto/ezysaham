@@ -31,8 +31,40 @@ export async function getStockSummaries(): Promise<StockSummary[]> {
 }
 
 /**
- * Pasardana's payload has no per-item freshness field, so "last updated" is the
- * time our own /api/stocks route fetched it (X-Fetched-At), not upstream data.
+ * Returns the last IDX market close time: 15:00 WIB (UTC+7) on the most recent
+ * trading day (Monday–Friday). If today is a weekday and market has already
+ * closed (≥ 15:00 WIB), today is used; otherwise we step back to the previous
+ * trading day. Weekends are skipped automatically.
+ */
+function getLastIdxCloseTime(): Date {
+  // Current time in WIB (UTC+7)
+  const nowUtc = new Date();
+  const wibOffsetMs = 7 * 60 * 60 * 1000;
+  const nowWib = new Date(nowUtc.getTime() + wibOffsetMs);
+
+  // Build a candidate: today at 15:00 WIB expressed as UTC
+  const candidate = new Date(
+    Date.UTC(nowWib.getUTCFullYear(), nowWib.getUTCMonth(), nowWib.getUTCDate(), 15, 0, 0, 0) -
+      wibOffsetMs
+  );
+
+  // Step back until we land on a weekday where market has already closed
+  let closeTime = new Date(candidate);
+  while (true) {
+    const dayOfWeek = new Date(closeTime.getTime() + wibOffsetMs).getUTCDay(); // 0=Sun, 6=Sat
+    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+    const marketClosed = closeTime <= nowUtc;
+    if (isWeekday && marketClosed) break;
+    // Go back one day
+    closeTime = new Date(closeTime.getTime() - 24 * 60 * 60 * 1000);
+  }
+
+  return closeTime;
+}
+
+/**
+ * Fetches stock summaries and pairs them with the last IDX end-of-day close
+ * time (15:00 WIB on the most recent trading day), not the fetch timestamp.
  */
 export async function getStockSummariesWithTimestamp(): Promise<{
   summaries: StockSummary[];
@@ -42,8 +74,7 @@ export async function getStockSummariesWithTimestamp(): Promise<{
   if (!response.ok) {
     throw new Error('Failed to fetch stock list');
   }
-  const fetchedAtHeader = response.headers.get('X-Fetched-At');
-  const lastUpdatedAt = fetchedAtHeader ? new Date(fetchedAtHeader) : new Date();
+  const lastUpdatedAt = getLastIdxCloseTime();
   const data: PasardanaStockItem[] = await response.json();
   const summaries = data.filter((item) => item.Code && item.Last > 0).map(mapToStockSummary);
   return { summaries, lastUpdatedAt };

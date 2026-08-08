@@ -54,9 +54,13 @@ export function AppHeader({
           />
         </div>
 
+        {/*  EOD • Jum, 08 Agu • 15:00 */}
         {lastUpdatedAt && (
           <span className="hidden shrink-0 text-xs text-zinc-400 md:inline dark:text-zinc-500">
-            Update {lastUpdatedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+            EOD •{' '}
+            {lastUpdatedAt.toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: 'short' })}
+            {' • '}
+            {lastUpdatedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
 
