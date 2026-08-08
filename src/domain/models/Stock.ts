@@ -13,6 +13,13 @@ export interface StockSummary {
   percentChange1D: number;
   percentChange1W: number;
   percentChange1M: number;
+  percentChange3M: number;
+  percentChange6M: number;
+  percentChangeYtd: number;
+  percentChange1Y: number;
+  percentChange3Y: number;
+  percentChange5Y: number;
+  percentChange10Y: number;
   high: number;
   low: number;
   volume: number;

@@ -73,6 +73,13 @@ export interface PasardanaStockItem {
   OneDay: number;
   OneWeek: number;
   OneMonth: number;
+  ThreeMonth: number;
+  SixMonth: number;
+  Ytd: number;
+  OneYear: number;
+  ThreeYear: number;
+  FiveYear: number;
+  TenYear: number;
   Per: number;
   Pbr: number;
   Roe: number;
@@ -93,6 +100,13 @@ export function mapToStockSummary(item: PasardanaStockItem): StockSummary {
     percentChange1D: (item.OneDay || 0) * 100,
     percentChange1W: (item.OneWeek || 0) * 100,
     percentChange1M: (item.OneMonth || 0) * 100,
+    percentChange3M: (item.ThreeMonth || 0) * 100,
+    percentChange6M: (item.SixMonth || 0) * 100,
+    percentChangeYtd: (item.Ytd || 0) * 100,
+    percentChange1Y: (item.OneYear || 0) * 100,
+    percentChange3Y: (item.ThreeYear || 0) * 100,
+    percentChange5Y: (item.FiveYear || 0) * 100,
+    percentChange10Y: (item.TenYear || 0) * 100,
     high: item.AdjustedHighPrice || last,
     low: item.AdjustedLowPrice || last,
     volume: item.Volume || 0,
