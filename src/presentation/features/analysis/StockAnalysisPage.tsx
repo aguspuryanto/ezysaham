@@ -46,6 +46,7 @@ import {
   IndicatorAnalysis,
   PriceActionAnalysis,
   StockAnalysis,
+  TradingPlanAnalysis,
   TrendEmaAnalysis,
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
@@ -250,7 +251,7 @@ function ScenarioCard({ type, entry, avgDown, tp1, tp2, sl, rr, notes }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // 🤖 AI STOCK ADVISOR HERO CARD (Penjelasan Alasan Beli vs Hindari)
 // ─────────────────────────────────────────────────────────────────────────────
-function AiStockAdvisorHero({ advisor }: { advisor: AiStockAdvisor }) {
+function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdvisor; onViewDetails?: () => void }) {
   const verdictBgMap = {
     green: 'border-emerald-300 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent dark:border-emerald-500/30',
     amber: 'border-amber-300 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent dark:border-amber-500/30',
@@ -265,67 +266,62 @@ function AiStockAdvisorHero({ advisor }: { advisor: AiStockAdvisor }) {
     blue: 'bg-blue-600 text-white',
   };
 
+  const scoreItems = [
+    { label: 'Fundamental', score: advisor.fundamentalScore, weight: '30%' },
+    { label: 'Teknikal', score: advisor.technicalScore, weight: '35%' },
+    { label: 'Sentimen Berita', score: advisor.newsScore, weight: '15%' },
+    { label: 'Breakout Hunter', score: advisor.breakoutScore, weight: '20%' },
+  ];
+
   return (
-    <div className={cn('rounded-2xl border p-5 sm:p-6 space-y-5 transition-all shadow-sm', verdictBgMap[advisor.verdictTone])}>
-      {/* Top Title & Verdict Badge */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200/80 dark:border-zinc-800 pb-4">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
-            <Sparkles className="size-5" />
+    <div className={cn('rounded-2xl border p-4 space-y-4 transition-all shadow-sm', verdictBgMap[advisor.verdictTone])}>
+      {/* Header & Verdict Badge */}
+      <div className="space-y-2.5 border-b border-zinc-200/80 dark:border-zinc-800 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="flex size-8 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm shrink-0">
+            <Sparkles className="size-4" />
           </span>
-          <div>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              AI Decision & Stock Advisor
-            </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Sintesis Multi-Dimensi: Fundamental, Teknikal, Berita & Breakout Hunter
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 leading-tight">AI Stock Advisor</h2>
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight truncate">
+              Fundamental · Teknikal · Berita · Breakout
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className={cn('rounded-xl px-4 py-1.5 text-xs sm:text-sm font-bold tracking-wide shadow-sm', badgeBgMap[advisor.verdictTone])}>
+        <div className="flex items-center justify-between gap-2">
+          <span className={cn('rounded-lg px-3 py-1 text-xs font-bold tracking-wide shadow-sm', badgeBgMap[advisor.verdictTone])}>
             {advisor.verdictLabel}
           </span>
           <div className="text-right">
-            <div className="text-xs text-zinc-400">Risk Score</div>
-            <div className={cn(
-              'font-mono text-sm font-bold',
-              advisor.riskLevel === 'HIGH' ? 'text-rose-600 dark:text-rose-400' : advisor.riskLevel === 'MEDIUM' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
-            )}>
-              {advisor.riskScore}/100 · {advisor.riskLevel}
-            </div>
+            <div className="text-[10px] text-zinc-400">Confidence</div>
+            <div className="font-mono text-xs font-bold text-zinc-800 dark:text-zinc-200">{advisor.confidenceScore}%</div>
           </div>
-          <div className="text-right hidden sm:block">
-            <div className="text-xs text-zinc-400">AI Confidence</div>
-            <div className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-200">
-              {advisor.confidenceScore}%
-            </div>
-          </div>
+        </div>
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-zinc-400">Risk Score</span>
+          <span className={cn(
+            'font-mono font-bold',
+            advisor.riskLevel === 'HIGH' ? 'text-rose-600 dark:text-rose-400' : advisor.riskLevel === 'MEDIUM' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+          )}>
+            {advisor.riskScore}/100 · {advisor.riskLevel}
+          </span>
         </div>
       </div>
 
-      {/* 4 Scores Breakdown Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Screening Fundamental', score: advisor.fundamentalScore, weight: '30%' },
-          { label: 'Screening Teknikal', score: advisor.technicalScore, weight: '35%' },
-          { label: 'Sentimen Berita', score: advisor.newsScore, weight: '15%' },
-          { label: 'Breakout Hunter AI', score: advisor.breakoutScore, weight: '20%' },
-        ].map((item) => (
-          <div key={item.label} className="rounded-xl bg-white/80 dark:bg-zinc-900/70 border border-zinc-200/60 dark:border-zinc-800 p-3">
-            <div className="flex justify-between items-center text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-              <span className="truncate">{item.label}</span>
-              <span className="text-[10px] opacity-70">({item.weight})</span>
-            </div>
-            <div className="flex items-baseline justify-between">
+      {/* Scores Breakdown, stacked */}
+      <div className="space-y-2.5">
+        {scoreItems.map((item) => (
+          <div key={item.label}>
+            <div className="flex justify-between items-baseline text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">
+              <span className="truncate">{item.label} <span className="opacity-60">({item.weight})</span></span>
               <span className={cn(
-                'font-mono text-lg font-bold',
+                'font-mono text-xs font-bold shrink-0',
                 item.score >= 70 ? 'text-emerald-600 dark:text-emerald-400' : item.score >= 45 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
               )}>
-                {item.score}<span className="text-xs text-zinc-400 font-normal">/100</span>
+                {item.score}/100
               </span>
             </div>
-            <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden mt-1.5">
+            <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
               <div
                 className={cn(
                   'h-full rounded-full transition-all',
@@ -338,56 +334,156 @@ function AiStockAdvisorHero({ advisor }: { advisor: AiStockAdvisor }) {
         ))}
       </div>
 
-      {/* 2-Column: Reasons to Buy vs Reasons to Avoid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Reasons to Buy */}
-        <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/5 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-semibold text-sm border-b border-emerald-200/60 dark:border-emerald-500/20 pb-2">
-            <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            Alasan Mengapa Harus Membeli (Buy Catalysts)
-          </div>
-          <ul className="space-y-2">
-            {advisor.buyReasons.map((reason, idx) => (
-              <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                <span className="shrink-0 text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">✓</span>
-                <span>{reason}</span>
-              </li>
-            ))}
-          </ul>
+      {/* Reasons to Buy */}
+      <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/5 p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold text-xs">
+          <CheckCircle2 className="size-3.5 shrink-0" />
+          Alasan Membeli
         </div>
+        <ul className="space-y-1.5">
+          {advisor.buyReasons.map((reason, idx) => (
+            <li key={idx} className="flex items-start gap-1.5 text-xs text-zinc-700 dark:text-zinc-300 leading-snug">
+              <span className="shrink-0 text-emerald-600 dark:text-emerald-400 font-bold">✓</span>
+              <span>{reason}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
-        {/* Reasons to Avoid */}
-        <div className="rounded-xl border border-rose-200 dark:border-rose-500/20 bg-rose-50/50 dark:bg-rose-500/5 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-semibold text-sm border-b border-rose-200/60 dark:border-rose-500/20 pb-2">
-            <XCircle className="size-4 shrink-0 text-rose-600 dark:text-rose-400" />
-            Alasan Mengapa Harus Menghindari (Bearish Risks)
-          </div>
-          <ul className="space-y-2">
-            {advisor.avoidReasons.map((reason, idx) => (
-              <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                <span className="shrink-0 text-rose-600 dark:text-rose-400 font-bold mt-0.5">⚠️</span>
-                <span>{reason}</span>
-              </li>
-            ))}
-          </ul>
+      {/* Reasons to Avoid */}
+      <div className="rounded-xl border border-rose-200 dark:border-rose-500/20 bg-rose-50/50 dark:bg-rose-500/5 p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400 font-semibold text-xs">
+          <XCircle className="size-3.5 shrink-0" />
+          Alasan Menghindari
         </div>
+        <ul className="space-y-1.5">
+          {advisor.avoidReasons.map((reason, idx) => (
+            <li key={idx} className="flex items-start gap-1.5 text-xs text-zinc-700 dark:text-zinc-300 leading-snug">
+              <span className="shrink-0 text-rose-600 dark:text-rose-400 font-bold">⚠️</span>
+              <span>{reason}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* Executive Summary & Actionable Trade Plan */}
-      <div className="rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 p-4 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Rangkuman Eksekutif & Rekomendasi Eksekusi
+      <div className="rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 p-3 space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          Rangkuman Eksekutif
         </p>
-        <p className="text-xs sm:text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
+        <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
           {advisor.executiveSummary}
         </p>
-        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-start gap-2">
-          <Target className="size-4 text-emerald-500 mt-0.5 shrink-0" />
-          <p className="text-xs sm:text-sm font-medium text-emerald-700 dark:text-emerald-400 leading-relaxed">
+        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-start gap-1.5">
+          <Target className="size-3.5 text-emerald-500 mt-0.5 shrink-0" />
+          <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400 leading-relaxed">
             {advisor.tradingRecommendation}
           </p>
         </div>
       </div>
+
+      {onViewDetails && (
+        <button
+          type="button"
+          onClick={onViewDetails}
+          className="w-full text-center text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline"
+        >
+          Lihat detail lengkap di tab AI Summary →
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🎯 TRADING PLAN SUMMARY (sidebar, compact single-column version of ScenarioCard)
+// ─────────────────────────────────────────────────────────────────────────────
+function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
+  const bias = plan.recommendedBias === 'bearish' ? 'bearish' : 'bullish';
+  const scenario = plan[bias];
+  const isBull = bias === 'bullish';
+  const Icon = isBull ? TrendingUp : TrendingDown;
+
+  return (
+    <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+          <Crosshair className="size-4 text-zinc-400" />
+          Trading Plan
+        </h3>
+        <span className={cn(
+          'inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold',
+          isBull ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'
+        )}>
+          <Icon className="size-3" />
+          {plan.recommendedBias === 'neutral' ? 'Netral' : isBull ? 'Bullish' : 'Bearish'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <KV label="Entry" value={fmtRp(scenario.entry)} />
+        {scenario.avgDown != null && (
+          <KV label="Add / AVGD" value={fmtRp(scenario.avgDown)} valueClass="text-amber-600 dark:text-amber-400" />
+        )}
+        <KV label="TP 1" value={fmtRp(scenario.tp1)} valueClass="text-emerald-600 dark:text-emerald-400" />
+        <KV label="TP 2" value={fmtRp(scenario.tp2)} valueClass="text-emerald-600 dark:text-emerald-400" />
+        <KV label="Stop Loss" value={fmtRp(scenario.sl)} valueClass="text-rose-600 dark:text-rose-400" />
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg bg-zinc-50 dark:bg-zinc-800/60 px-3 py-2">
+        <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Risk / Reward</span>
+        <span className={cn(
+          'font-mono text-sm font-bold',
+          scenario.riskRewardRatio >= 2 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+        )}>
+          1 : {fmtN(scenario.riskRewardRatio, 1)}
+        </span>
+      </div>
+
+      <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">{scenario.notes}</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🧭 SIMILAR STOCKS (sidebar) — same sector, ranked by closest market cap
+// ─────────────────────────────────────────────────────────────────────────────
+function SimilarStocksSidebarCard({ stocks }: { stocks: StockSummary[] }) {
+  if (stocks.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-4 space-y-2">
+      <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+        <PieChart className="size-4 text-zinc-400" />
+        Saham Sejenis
+      </h3>
+      <ul className="space-y-1">
+        {stocks.map((s) => {
+          const up = s.percentChange1D >= 0;
+          return (
+            <li key={s.ticker}>
+              <Link
+                href={`/screener/${s.ticker}`}
+                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">{s.ticker}</div>
+                  <div className="text-[10px] text-zinc-400 truncate">{s.name}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="font-mono text-xs text-zinc-700 dark:text-zinc-300">{formatRupiah(s.lastClose)}</div>
+                  <div className={cn(
+                    'text-[10px] font-mono',
+                    up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                  )}>
+                    {formatPercent(s.percentChange1D)}
+                  </div>
+                </div>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -820,6 +916,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const [newsLoading, setNewsLoading] = useState(false);
   const [justCopied, setJustCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<AnalysisTab>('ai_summary');
+  const [allSummaries, setAllSummaries] = useState<StockSummary[]>([]);
   const watchlist = useWatchlist();
 
   const handleShare = useCallback(async () => {
@@ -850,6 +947,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         setNewsItems(cached.newsItems);
         setNewsSummary(cached.newsSummary);
         setStatus('ready');
+        getStockSummaries().then(setAllSummaries).catch(() => {}); // cache-backed, non-blocking
         return; // 0ms instant render!
       }
     } else {
@@ -870,6 +968,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
       setSummary(found);
       setBars(bars);
+      setAllSummaries(summaries);
 
       // Computations
       const computedAnalysis = computeStockAnalysis(found, bars);
@@ -921,6 +1020,15 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     return computeAiStockAdvisor(summary, analysis, newsSummary, breakoutScores, freshness);
   }, [summary, analysis, newsSummary, breakoutScores, freshness]);
 
+  // Saham lain di sektor yang sama, diurutkan berdasarkan kapitalisasi pasar paling mendekati
+  const similarStocks = useMemo(() => {
+    if (!summary || allSummaries.length === 0) return [];
+    return allSummaries
+      .filter((s) => s.ticker !== summary.ticker && s.sector === summary.sector)
+      .sort((a, b) => Math.abs(a.capitalization - summary.capitalization) - Math.abs(b.capitalization - summary.capitalization))
+      .slice(0, 5);
+  }, [allSummaries, summary]);
+
   if (status === 'loading') {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white dark:bg-zinc-950">
@@ -960,7 +1068,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Header Bar */}
       <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
           <Link
             href="/screener"
             className="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
@@ -1003,7 +1111,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 space-y-5 pb-16">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 pb-16 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:items-start">
+      <div className="space-y-5 min-w-0">
         {/* Ticker Identity Card */}
         <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1051,9 +1160,6 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
         {/* Data Freshness warning — shown only when the last available bar is 3+ trading days old */}
         {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
-
-        {/* 🤖 Top Hero Card: AI Stock Advisor (Penjelasan Alasan Beli vs Hindari) */}
-        <AiStockAdvisorHero advisor={advisor} />
 
         {/* Navigation Tabs */}
         <div className="flex flex-wrap gap-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-1.5" role="tablist">
@@ -1260,6 +1366,14 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           <span>·</span>
           <span>{SITE_NAME}</span>
         </div>
+      </div>
+
+        {/* Right Sidebar: AI Stock Advisor, Trading Plan Summary, Similar Stocks */}
+        <aside className="space-y-5 lg:sticky lg:top-20">
+          <AiStockAdvisorSidebar advisor={advisor} onViewDetails={() => setActiveTab('ai_summary')} />
+          <TradingPlanSidebarCard plan={tradingPlan} />
+          <SimilarStocksSidebarCard stocks={similarStocks} />
+        </aside>
       </main>
     </div>
   );

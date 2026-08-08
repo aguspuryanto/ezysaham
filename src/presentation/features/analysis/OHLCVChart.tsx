@@ -31,18 +31,17 @@ import { useMemo, useState } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
 import { ema } from '@/domain/indicators/movingAverages';
 import { cn } from '@/lib/format';
-import { IntradayChart } from './IntradayChart';
 
 // ─── Period selector ──────────────────────────────────────────────────────────
 const PERIODS = [
-  { key: '1D', bars: 1 },
-  { key: '1W', bars: 5 },
-  { key: '1M', bars: 22 },
-  { key: '3M', bars: 66 },
-  { key: '6M', bars: 132 },
+  // { key: '1D', bars: 1 },
+  // { key: '1W', bars: 5 },
+  // { key: '1M', bars: 22 },
+  // { key: '3M', bars: 66 },
+  // { key: '6M', bars: 132 },
   { key: '1Y', bars: 252 },
-  { key: '3Y', bars: 756 },
-  { key: '5Y', bars: 1260 },
+  // { key: '3Y', bars: 756 },
+  // { key: '5Y', bars: 1260 },
 ] as const;
 type Period = (typeof PERIODS)[number]['key'];
 
@@ -185,7 +184,7 @@ interface OHLCVChartProps {
 }
 
 export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChartProps) {
-  const [period, setPeriod] = useState<Period>('3M');
+  const [period, setPeriod] = useState<Period>('1Y');
 
   const chartData = useMemo(() => {
     const periodBars = PERIODS.find((p) => p.key === period)?.bars ?? 66;
@@ -219,6 +218,9 @@ export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChart
   const priceMax = useMemo(() => Math.max(...chartData.map((d) => d.high)) * 1.005, [chartData]);
   const volMax = useMemo(() => Math.max(...chartData.map((d) => d.volume)), [chartData]);
 
+  // 1Y view: plain price line + EMA overlays instead of candlesticks (less clutter over a long range)
+  const isLineStyle = period === '1Y';
+
   return (
     <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 overflow-hidden">
       {/* Header */}
@@ -227,17 +229,16 @@ export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChart
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Grafik Harga
           </p>
-          {period !== '1D' && (
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-amber-400" />EMA20</span>
-              <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-blue-500" />EMA50</span>
-              <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-purple-500" />EMA200</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-green-400" />Harga (Close)</span>
+            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-amber-400" />EMA20</span>
+            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-blue-500" />EMA50</span>
+            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-purple-500" />EMA200</span>
+          </div>
         </div>
         {/* Period tabs */}
         <div className="flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5">
-          {PERIODS.map(({ key }) => (
+          {/* {PERIODS.map(({ key }) => (
             <button
               key={key}
               type="button"
@@ -251,142 +252,160 @@ export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChart
             >
               {key}
             </button>
-          ))}
+          ))} */}
         </div>
       </div>
 
-      {period === '1D' ? (
-        <IntradayChart ticker={ticker} fallbackPrevClose={prevClose} />
-      ) : (
       <>
-      {/* Chart */}
-      <div className="px-2 pt-2 pb-1">
-        <ResponsiveContainer width="100%" height={320}>
-          <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="rgba(113,113,122,0.12)"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 10, fill: '#71717a' }}
-              tickLine={false}
-              axisLine={false}
-              interval={Math.floor(chartData.length / 6)}
-            />
-            {/* Price Y axis (left) */}
-            <YAxis
-              yAxisId="price"
-              orientation="left"
-              domain={[priceMin, priceMax]}
-              tick={{ fontSize: 10, fill: '#71717a' }}
-              tickLine={false}
-              axisLine={false}
-              width={62}
-              tickFormatter={(v) =>
-                new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 0 }).format(v)
-              }
-            />
-            {/* Volume Y axis (right, hidden ticks) */}
-            <YAxis
-              yAxisId="vol"
-              orientation="right"
-              domain={[0, volMax * 4]} // scale down volume bars to ~25% chart height
-              hide
-            />
-            <Tooltip
-              content={<OHLCVTooltip />}
-              cursor={{ stroke: 'rgba(113,113,122,0.3)', strokeWidth: 1, strokeDasharray: '4 2' }}
-            />
+          {/* Chart */}
+          <div className="px-2 pt-2 pb-1">
+            <ResponsiveContainer width="100%" height={320}>
+              <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="rgba(113,113,122,0.12)"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: '#71717a' }}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={Math.floor(chartData.length / 6)}
+                />
+                {/* Price Y axis (left) */}
+                <YAxis
+                  yAxisId="price"
+                  orientation="left"
+                  domain={[priceMin, priceMax]}
+                  tick={{ fontSize: 10, fill: '#71717a' }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={62}
+                  tickFormatter={(v) =>
+                    new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 0 }).format(v)
+                  }
+                />
+                {/* Volume Y axis (right, hidden ticks) */}
+                <YAxis
+                  yAxisId="vol"
+                  orientation="right"
+                  domain={[0, volMax * 4]} // scale down volume bars to ~25% chart height
+                  hide
+                />
+                <Tooltip
+                  content={<OHLCVTooltip />}
+                  cursor={{ stroke: 'rgba(113,113,122,0.3)', strokeWidth: 1, strokeDasharray: '4 2' }}
+                />
 
-            {/* Volume bars (background, right axis) */}
-            <Bar
-              yAxisId="vol"
-              dataKey="volume"
-              name="volume"
-              maxBarSize={16}
-              isAnimationActive={false}
-              opacity={0.35}
-            >
-              {chartData.map((d, i) => (
-                <Cell key={i} fill={d.close >= d.open ? '#10b981' : '#f43f5e'} />
-              ))}
-            </Bar>
+                {/* Volume bars (background, right axis) */}
+                <Bar
+                  yAxisId="vol"
+                  dataKey="volume"
+                  name="volume"
+                  maxBarSize={16}
+                  isAnimationActive={false}
+                  opacity={0.35}
+                >
+                  {chartData.map((d, i) => (
+                    <Cell key={i} fill={d.close >= d.open ? '#10b981' : '#f43f5e'} />
+                  ))}
+                </Bar>
 
-            {/* Candlestick bars (custom shape, price axis) */}
-            <Bar
-              yAxisId="price"
-              dataKey="candleRange"
-              name="price"
-              maxBarSize={14}
-              isAnimationActive={false}
-              shape={<CandleShape />}
-            >
-              {chartData.map((_, i) => (
-                <Cell key={i} fill="transparent" />
-              ))}
-            </Bar>
+                {/* Candlestick bars (custom shape, price axis) — replaced by a plain price line for 1Y */}
+                {!isLineStyle && (
+                  <Bar
+                    yAxisId="price"
+                    dataKey="candleRange"
+                    name="price"
+                    maxBarSize={14}
+                    isAnimationActive={false}
+                    shape={<CandleShape />}
+                  >
+                    {chartData.map((_, i) => (
+                      <Cell key={i} fill="transparent" />
+                    ))}
+                  </Bar>
+                )}
 
-            {/* Hidden bars for OHLCV tooltip data */}
-            {(['open', 'high', 'low', 'close'] as const).map((k) => (
-              <Bar key={k} yAxisId="price" dataKey={k} name={k} hide isAnimationActive={false} />
-            ))}
+                {/* Hidden bars for OHLCV tooltip data (close is rendered visibly below for 1Y) */}
+                {(['open', 'high', 'low'] as const).map((k) => (
+                  <Bar key={k} yAxisId="price" dataKey={k} name={k} hide isAnimationActive={false} />
+                ))}
+                {!isLineStyle && (
+                  <Bar yAxisId="price" dataKey="close" name="close" hide isAnimationActive={false} />
+                )}
 
-            {/* EMA overlays */}
-            <Line
-              yAxisId="price"
-              type="monotone"
-              dataKey="ema20"
-              name="ema20"
-              stroke="#f59e0b"
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-              connectNulls
-            />
-            <Line
-              yAxisId="price"
-              type="monotone"
-              dataKey="ema50"
-              name="ema50"
-              stroke="#3b82f6"
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-              connectNulls
-            />
-            <Line
-              yAxisId="price"
-              type="monotone"
-              dataKey="ema200"
-              name="ema200"
-              stroke="#a855f7"
-              strokeWidth={1.5}
-              dot={false}
-              strokeDasharray="4 3"
-              isAnimationActive={false}
-              connectNulls
-            />
+                {/* Plain price line (1Y) */}
+                {isLineStyle && (
+                  <Line
+                    yAxisId="price"
+                    type="monotone"
+                    dataKey="close"
+                    name="close"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                    connectNulls
+                  />
+                )}
 
-            {/* Current price reference line */}
-            <ReferenceLine
-              yAxisId="price"
-              y={currentClose}
-              stroke="rgba(16,185,129,0.5)"
-              strokeDasharray="3 3"
-              strokeWidth={1}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
+                {/* EMA overlays */}
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="ema20"
+                  name="ema20"
+                  stroke="#f59e0b"
+                  strokeWidth={1.5}
+                  dot={false}
+                  isAnimationActive={false}
+                  connectNulls
+                />
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="ema50"
+                  name="ema50"
+                  stroke="#3b82f6"
+                  strokeWidth={1.5}
+                  dot={false}
+                  isAnimationActive={false}
+                  connectNulls
+                />
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="ema200"
+                  name="ema200"
+                  stroke="#a855f7"
+                  strokeWidth={1.5}
+                  dot={false}
+                  strokeDasharray="4 3"
+                  isAnimationActive={false}
+                  connectNulls
+                />
 
-      {/* Footer caption */}
-      <p className="px-4 pb-3 text-[10px] text-zinc-400 dark:text-zinc-600">
-        Data EOD (End-of-Day). Candle hijau = close {'>'} open. Garis unuh = EMA200 (long-term trend).
-      </p>
-      </>
-      )}
+                {/* Current price reference line */}
+                <ReferenceLine
+                  yAxisId="price"
+                  y={currentClose}
+                  stroke="rgba(16,185,129,0.5)"
+                  strokeDasharray="3 3"
+                  strokeWidth={1}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Footer caption */}
+          <p className="px-4 pb-3 text-[10px] text-zinc-400 dark:text-zinc-600">
+            {isLineStyle
+              ? 'Data EOD (End-of-Day). Garis hijau = harga penutupan (close). Garis ungu putus-putus = EMA200 (tren jangka panjang).'
+              : <>Data EOD (End-of-Day). Candle hijau = close {'>'} open. Garis unuh = EMA200 (long-term trend).</>}
+          </p>
+        </>
     </div>
   );
 }
