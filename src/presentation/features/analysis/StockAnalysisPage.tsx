@@ -892,11 +892,9 @@ type PageStatus = 'loading' | 'ready' | 'error';
 type AnalysisTab = 'ai_summary' | 'teknikal' | 'fundamental' | 'berita' | 'breakout';
 
 const ANALYSIS_TABS: { key: AnalysisTab; label: string; icon: React.ReactNode }[] = [
-  { key: 'ai_summary', label: 'AI Buy/Avoid Advisor', icon: <Sparkles className="size-4" /> },
-  { key: 'teknikal', label: 'Screening Teknikal', icon: <TrendingUp className="size-4" /> },
-  { key: 'fundamental', label: 'Screening Fundamental', icon: <PieChart className="size-4" /> },
   { key: 'berita', label: 'Analisis Berita', icon: <Newspaper className="size-4" /> },
-  { key: 'breakout', label: 'Breakout Hunter', icon: <Rocket className="size-4" /> },
+  { key: 'fundamental', label: 'Screening Fundamental', icon: <PieChart className="size-4" /> },
+  { key: 'teknikal', label: 'Screening Teknikal', icon: <TrendingUp className="size-4" /> },
 ];
 
 export function StockAnalysisPage({ ticker }: { ticker: string }) {
@@ -915,7 +913,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   });
   const [newsLoading, setNewsLoading] = useState(false);
   const [justCopied, setJustCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<AnalysisTab>('ai_summary');
+  const [activeTab, setActiveTab] = useState<AnalysisTab>('berita');
   const [allSummaries, setAllSummaries] = useState<StockSummary[]>([]);
   const watchlist = useWatchlist();
 
@@ -1163,6 +1161,56 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           {/* Data Freshness warning — shown only when the last available bar is 3+ trading days old */}
           {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
 
+          <div className="space-y-5">
+            {/* Quick Link to Deep Dive Tabs */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => setActiveTab('berita')}
+                className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-blue-400 transition-colors space-y-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-zinc-500">1. Analisis Berita</span>
+                  <span className="text-sm font-bold text-blue-600">
+                    {newsSummary.netSentimentScore}%
+                  </span>
+                </div>
+                <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
+                  {newsSummary.totalNews} Artikel ({newsSummary.overallSentiment.toUpperCase()})
+                </p>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('fundamental')}
+                className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-indigo-400 transition-colors space-y-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-zinc-500">2. Screening Fundamental</span>
+                  <span className={cn('text-sm font-bold', fundamentalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
+                    {fundamentalScreening.score}/100
+                  </span>
+                </div>
+                <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
+                  {fundamentalScreening.statusText}
+                </p>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('teknikal')}
+                className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-emerald-400 transition-colors space-y-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-zinc-500">3. Screening Teknikal</span>
+                  <span className={cn('text-sm font-bold', technicalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
+                    {technicalScreening.score}/100
+                  </span>
+                </div>
+                <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
+                  {technicalScreening.statusText}
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* Navigation Tabs */}
           <div className="flex flex-wrap gap-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-1.5" role="tablist">
             {ANALYSIS_TABS.map((tab) => (
@@ -1184,59 +1232,6 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </div>
 
           {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
-
-          {/* Tab 1: AI Summary & Buy/Avoid Advisor Details */}
-          {activeTab === 'ai_summary' && (
-            <div className="space-y-5">
-              {/* Quick Link to Deep Dive Tabs */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <button
-                  onClick={() => setActiveTab('fundamental')}
-                  className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-indigo-400 transition-colors space-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-zinc-500">1. Screening Fundamental</span>
-                    <span className={cn('text-sm font-bold', fundamentalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
-                      {fundamentalScreening.score}/100
-                    </span>
-                  </div>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
-                    {fundamentalScreening.statusText}
-                  </p>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('teknikal')}
-                  className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-emerald-400 transition-colors space-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-zinc-500">2. Screening Teknikal</span>
-                    <span className={cn('text-sm font-bold', technicalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
-                      {technicalScreening.score}/100
-                    </span>
-                  </div>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
-                    {technicalScreening.statusText}
-                  </p>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('berita')}
-                  className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 text-left hover:border-blue-400 transition-colors space-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-zinc-500">3. Sentimen Berita</span>
-                    <span className="text-sm font-bold text-blue-600">
-                      {newsSummary.netSentimentScore}%
-                    </span>
-                  </div>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
-                    {newsSummary.totalNews} Artikel ({newsSummary.overallSentiment.toUpperCase()})
-                  </p>
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Tab 2: Screening & Analisis Teknikal */}
           {activeTab === 'teknikal' && (
