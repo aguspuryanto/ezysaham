@@ -1,4 +1,5 @@
 import { HistoryResponse, OHLCVBar } from '@/domain/models/History';
+import { IntradayResponse } from '@/domain/models/Intraday';
 import { StockSummary } from '@/domain/models/Stock';
 import { mapToStockSummary, PasardanaStockItem } from '@/data/external/pasardana';
 import { AnalysisCacheManager } from '@/data/cache/analysisCache';
@@ -53,4 +54,14 @@ export async function getStockHistory(ticker: string, range = '6mo'): Promise<OH
   if (!response.ok) return [];
   const data: HistoryResponse = await response.json();
   return data.ok ? data.bars : [];
+}
+
+export async function getStockIntraday(ticker: string): Promise<IntradayResponse> {
+  try {
+    const response = await fetch(`/api/stocks/${ticker}/intraday`);
+    if (!response.ok) return { code: ticker, ok: false, bars: [], reason: 'error' };
+    return await response.json();
+  } catch {
+    return { code: ticker, ok: false, bars: [], reason: 'error' };
+  }
 }

@@ -31,6 +31,7 @@ import { useMemo, useState } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
 import { ema } from '@/domain/indicators/movingAverages';
 import { cn } from '@/lib/format';
+import { IntradayChart } from './IntradayChart';
 
 // ─── Period selector ──────────────────────────────────────────────────────────
 const PERIODS = [
@@ -179,9 +180,11 @@ function CandleShape(props: {
 interface OHLCVChartProps {
   bars: OHLCVBar[];
   currentClose: number;
+  ticker: string;
+  prevClose?: number;
 }
 
-export function OHLCVChart({ bars, currentClose }: OHLCVChartProps) {
+export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChartProps) {
   const [period, setPeriod] = useState<Period>('3M');
 
   const chartData = useMemo(() => {
@@ -224,11 +227,13 @@ export function OHLCVChart({ bars, currentClose }: OHLCVChartProps) {
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Grafik Harga
           </p>
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-amber-400" />EMA20</span>
-            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-blue-500" />EMA50</span>
-            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-purple-500" />EMA200</span>
-          </div>
+          {period !== '1D' && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-amber-400" />EMA20</span>
+              <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-blue-500" />EMA50</span>
+              <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-purple-500" />EMA200</span>
+            </div>
+          )}
         </div>
         {/* Period tabs */}
         <div className="flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5">
@@ -250,6 +255,10 @@ export function OHLCVChart({ bars, currentClose }: OHLCVChartProps) {
         </div>
       </div>
 
+      {period === '1D' ? (
+        <IntradayChart ticker={ticker} fallbackPrevClose={prevClose} />
+      ) : (
+      <>
       {/* Chart */}
       <div className="px-2 pt-2 pb-1">
         <ResponsiveContainer width="100%" height={320}>
@@ -376,6 +385,8 @@ export function OHLCVChart({ bars, currentClose }: OHLCVChartProps) {
       <p className="px-4 pb-3 text-[10px] text-zinc-400 dark:text-zinc-600">
         Data EOD (End-of-Day). Candle hijau = close {'>'} open. Garis unuh = EMA200 (long-term trend).
       </p>
+      </>
+      )}
     </div>
   );
 }

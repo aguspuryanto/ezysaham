@@ -28,6 +28,8 @@ export interface NewsSentimentSummary {
 
 export type AiVerdict = 'SANGAT_BELI' | 'BELI' | 'TAHAN' | 'HINDARI';
 
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
 export interface AiStockAdvisor {
   verdict: AiVerdict;
   verdictLabel: string;
@@ -38,6 +40,9 @@ export interface AiStockAdvisor {
   technicalScore: number; // 0 to 100
   newsScore: number; // 0 to 100
   breakoutScore: number; // 0 to 100
+  /** 0-100, higher = riskier (RSI overbought, distribution flags, dsb). Score ≠ signal — lihat verdict untuk keputusan. */
+  riskScore: number;
+  riskLevel: RiskLevel;
   buyReasons: string[];
   avoidReasons: string[];
   executiveSummary: string;

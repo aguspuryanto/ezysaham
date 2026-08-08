@@ -374,6 +374,9 @@ function buildTradingPlan(
   const bullTp1 = r1;
   const bullTp2 = r2;
   const bullRR = round2((bullTp1 - bullEntry) / Math.max(bullEntry - bullSl, 1));
+  // Average-down zone: halfway between entry and stop loss — a level to add to
+  // the position if price dips before invalidating the setup, tightening cost basis.
+  const bullAvgDown = round2((bullEntry + bullSl) / 2);
 
   // Bearish scenario
   const bearEntry = round2(r1 * 1.001);
@@ -387,7 +390,7 @@ function buildTradingPlan(
 
   return {
     bullish: {
-      entry: bullEntry, tp1: bullTp1, tp2: bullTp2, sl: bullSl,
+      entry: bullEntry, avgDown: bullAvgDown, tp1: bullTp1, tp2: bullTp2, sl: bullSl,
       riskRewardRatio: bullRR,
       notes: `Entry buy saat pullback ke area ${bullEntry.toLocaleString('id-ID')} – ${round2(price * 1.002).toLocaleString('id-ID')}. Konfirmasi: volume > MA20.`,
     },

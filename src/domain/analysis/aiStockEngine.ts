@@ -10,7 +10,7 @@
  * Synthesizes clear AI Verdict, Confidence Score, "Reasons to Buy", and "Reasons to Avoid".
  */
 
-import { AiStockAdvisor, AiVerdict, NewsSentimentSummary } from '@/domain/models/News';
+import { AiStockAdvisor, AiVerdict, NewsSentimentSummary, RiskLevel } from '@/domain/models/News';
 import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { BreakoutScores } from '@/domain/screener/presets';
@@ -279,6 +279,11 @@ export function computeAiStockAdvisor(
   const techScreening = evaluateTechnicalScreening(analysis, summary);
   const newsScore = newsSummary.netSentimentScore;
   const breakoutScore = breakoutScores.composite;
+  // Risk Score: reuses the Breakout Hunter's distribution-risk dimension (RSI/Stochastic
+  // overbought, big one-day gain, near annual high, upper-wick dominance). Shown standalone
+  // so a high Technical/Breakout score is never mistaken for "safe to buy" — score ≠ signal.
+  const riskScore = breakoutScores.distributionRisk;
+  const riskLevel: RiskLevel = riskScore > 60 ? 'HIGH' : riskScore > 30 ? 'MEDIUM' : 'LOW';
 
   // Composite Score weighting: Technical 35%, Fundamental 30%, Breakout 20%, News 15%
   const compositeScore = Math.round(
@@ -292,7 +297,7 @@ export function computeAiStockAdvisor(
   let verdict: AiVerdict = 'TAHAN';
   let verdictLabel = 'TAHAN / WATCHLIST';
   let verdictTone: 'green' | 'amber' | 'red' | 'blue' = 'amber';
-  let confidenceScore = Math.min(95, Math.max(55, compositeScore + 10));
+  const confidenceScore = Math.min(95, Math.max(55, compositeScore + 10));
 
   if (compositeScore >= 78) {
     verdict = 'SANGAT_BELI';
@@ -442,6 +447,8 @@ export function computeAiStockAdvisor(
     technicalScore: techScreening.score,
     newsScore,
     breakoutScore,
+    riskScore,
+    riskLevel,
     buyReasons,
     avoidReasons,
     executiveSummary,

@@ -43,12 +43,12 @@ const FILTER_ITEMS: FilterChipItem[] = [
   { id: 'dayTrading', label: 'Day Trading', icon: Zap },
   { id: 'swingHunter', label: 'Swing Hunter', icon: Crosshair },
   { id: 'araHunter', label: 'ARA Hunter', icon: Flame },
-  { id: 'smartMoneyHunter', label: 'Smart Money', icon: Eye },
+  { id: 'smartMoneyHunter', label: 'Early Accumulation', icon: Eye },
   { id: 'tradingPlan', label: 'Trading Plan', icon: Target },
+  { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
   // { id: 'ara', label: 'ARA', icon: Flame },
   // { id: 'bpjs', label: 'BPJS', icon: Zap },
   // { id: 'momentum', label: 'Momentum', icon: TrendingUp },
-  // { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
 ];
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [

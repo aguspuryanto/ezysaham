@@ -5,7 +5,7 @@ import { macd } from '@/domain/indicators/macd';
 import { rsi } from '@/domain/indicators/rsi';
 import { relativeVolume, volumeMA } from '@/domain/indicators/volume';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
-import { computeDataFreshness } from '@/domain/analysis/dataFreshness';
+import { computeDataFreshness, DataFreshness } from '@/domain/analysis/dataFreshness';
 import { formatCompact } from '@/lib/format';
 
 /** IDX board lot size: 1 lot = 100 shares. */
@@ -56,6 +56,8 @@ export interface TradingPlanScore {
   /** Area harga yang disarankan untuk entry */
   buyAreaLow: number;
   buyAreaHigh: number;
+  /** Area harga untuk menambah posisi (average down) jika entry awal belum konfirmasi */
+  avgDown: number;
   /** Batas keluar jika setup gagal */
   stopLoss: number;
   /** Target profit bertingkat */
@@ -94,6 +96,8 @@ export interface PresetEvaluation {
   araProbability?: AraProbabilityScore;
   /** Relative volume (volume hari ini / volume MA20) — diisi oleh preset yang menghitungnya */
   relativeVolume?: number;
+  /** Usia data OHLCV terakhir. Tier "stale" berarti data 3+ hari bursa lalu — jangan dipakai untuk keputusan Day Trading/ARA hari ini. */
+  freshness?: DataFreshness;
 }
 
 // ── ARA Probability scoring ────────────────────────────────────────────────────
@@ -232,12 +236,13 @@ const araPreset: ScreenerPreset = {
     const volumes = bars.map((b) => b.volume);
     const volMa5 = lastValid(sma(volumes, 5));
     const volMa20 = lastValid(sma(volumes, 20));
-    return verdict([
+    const result = verdict([
       [s.lastClose > 100, 'Harga > 100'],
       [s.percentChange1D > 10, 'Return 1 hari > 10%'],
       [s.volume > 20_000 * LOT_SIZE, 'Volume > 20.000 lot'],
       [!Number.isNaN(volMa5) && !Number.isNaN(volMa20) && volMa5 > volMa20, 'Volume MA5 > Volume MA20'],
     ]);
+    return { ...result, freshness: computeDataFreshness(bars, new Date()) ?? undefined };
   },
 };
 
@@ -257,13 +262,14 @@ const bpjsPreset: ScreenerPreset = {
     const lastBar = bars[bars.length - 1];
     const prevBar = bars[bars.length - 2];
     const ma5 = lastValid(sma(bars.map((b) => b.close), 5));
-    return verdict([
+    const result = verdict([
       [!Number.isNaN(ma5) && s.lastClose > ma5, 'Harga > MA5'],
       [s.lastClose > s.prevClose * 1.05, 'Close > Prev Close x 1.05'],
       [!!lastBar && s.lastClose > lastBar.open, 'Close > Open'],
       [!!prevBar && s.volume > prevBar.volume * 1.2, 'Volume > 120% volume hari sebelumnya'],
       [s.value > 5_000_000_000, 'Nilai transaksi > Rp 5 miliar'],
     ]);
+    return { ...result, freshness: computeDataFreshness(bars, new Date()) ?? undefined };
   },
 };
 
@@ -298,7 +304,11 @@ const momentumPreset: ScreenerPreset = {
       [!Number.isNaN(rvol) && rvol > 2, 'RVOL > 2'],
       [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
     ]);
-    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
+    return {
+      ...result,
+      relativeVolume: Number.isNaN(rvol) ? undefined : rvol,
+      freshness: computeDataFreshness(bars, new Date()) ?? undefined,
+    };
   },
 };
 
@@ -732,7 +742,7 @@ const breakoutPreset: ScreenerPreset = {
     reasons.push(`📈 Prob Naik >10%: ${scores.probUp}%`);
     reasons.push(`📉 Prob Turun >3%: ${scores.probDown}%`);
 
-    return { passed, reasons, failed, breakoutScores: scores };
+    return { passed, reasons, failed, breakoutScores: scores, freshness: computeDataFreshness(bars, new Date()) ?? undefined };
   },
 };
 
@@ -850,6 +860,7 @@ export function computeTradingPlanScore(s: StockSummary, bars: OHLCVBar[]): Trad
   const bullish = tradingPlan.bullish;
   const buyAreaLow = bullish.entry;
   const buyAreaHigh = round2(price * 1.002);
+  const avgDown = bullish.avgDown ?? round2((bullish.entry + bullish.sl) / 2);
   const stopLoss = bullish.sl;
   const tp1 = bullish.tp1;
   const tp2 = bullish.tp2;
@@ -861,6 +872,7 @@ export function computeTradingPlanScore(s: StockSummary, bars: OHLCVBar[]): Trad
     momentumStars,
     buyAreaLow,
     buyAreaHigh,
+    avgDown,
     stopLoss,
     tp1,
     tp2,
@@ -927,7 +939,7 @@ const tradingPlanPreset: ScreenerPreset = {
     reasons.push(`RSI skor ${plan.breakdown.rsi}/100`);
     reasons.push(`Momentum 1W skor ${plan.breakdown.momentum1W}/100`);
 
-    return { passed, reasons, failed, tradingPlan: plan };
+    return { passed, reasons, failed, tradingPlan: plan, freshness: computeDataFreshness(bars, new Date()) ?? undefined };
   },
 };
 
@@ -1020,7 +1032,11 @@ const swingHunterPreset: ScreenerPreset = {
       [!Number.isNaN(rvol) && rvol > 1.5, `RVOL > 1.5 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
       [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
     ]);
-    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
+    return {
+      ...result,
+      relativeVolume: Number.isNaN(rvol) ? undefined : rvol,
+      freshness: computeDataFreshness(bars, new Date()) ?? undefined,
+    };
   },
 };
 
@@ -1067,7 +1083,7 @@ const araHunterPreset: ScreenerPreset = {
     reasons.push(`Liquidity ${araProbability.liquidity}/100`);
     if (araProbability.freshnessCapped) failed.push('Data stale — probability dipaksa LOW');
 
-    return { passed, reasons, failed, araProbability };
+    return { passed, reasons, failed, araProbability, freshness: computeDataFreshness(bars, new Date()) ?? undefined };
   },
 };
 
@@ -1078,8 +1094,8 @@ const araHunterPreset: ScreenerPreset = {
 
 const smartMoneyHunterPreset: ScreenerPreset = {
   id: 'smartMoneyHunter',
-  label: 'Smart Money Hunter',
-  description: 'Mendeteksi saham yang mulai diakumulasi institusi sebelum ramai. Harga masih sideways tapi ada tanda-tanda inflow bertahap. Target 5–15% dalam 5–20 hari.',
+  label: 'Early Accumulation',
+  description: 'Mendeteksi pola teknikal awal akumulasi — harga masih sideways tapi EMA & volume mulai naik bertahap. Berbasis OHLCV saja, bukan data transaksi broker/institusi asli. Target 5–15% dalam 5–20 hari.',
   criteria: [
     'Harga sideways (range 20 hari < 15%)',
     'EMA20 mulai naik (EMA20 > EMA50 atau mendekati)',
@@ -1141,7 +1157,7 @@ const smartMoneyHunterPreset: ScreenerPreset = {
       [s.value > 5_000_000_000, 'Nilai transaksi > Rp 5 miliar'],
       [freshness?.tier !== 'stale', freshness ? `Data segar (H-${freshness.ageInTradingDays})` : 'Data tidak tersedia'],
     ]);
-    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol };
+    return { ...result, relativeVolume: Number.isNaN(rvol) ? undefined : rvol, freshness: freshness ?? undefined };
   },
 };
 
@@ -1206,7 +1222,7 @@ const dayTradingPreset: ScreenerPreset = {
       [s.value > 10_000_000_000, 'Nilai transaksi > Rp 10 miliar'],
       [freshness?.tier !== 'stale', freshness ? `Data segar (H-${freshness.ageInTradingDays})` : 'Data tidak tersedia'],
     ]);
-    return { ...result, relativeVolume: Number.isNaN(rvolApprox) ? undefined : rvolApprox };
+    return { ...result, relativeVolume: Number.isNaN(rvolApprox) ? undefined : rvolApprox, freshness: freshness ?? undefined };
   },
 };
 

@@ -205,9 +205,9 @@ function RsiBar({ value }: { value: number }) {
 }
 
 // ─── Scenario Card ────────────────────────────────────────────────────────────
-function ScenarioCard({ type, entry, tp1, tp2, sl, rr, notes }: {
+function ScenarioCard({ type, entry, avgDown, tp1, tp2, sl, rr, notes }: {
   type: 'bullish' | 'bearish';
-  entry: number; tp1: number; tp2: number; sl: number; rr: number; notes: string;
+  entry: number; avgDown?: number; tp1: number; tp2: number; sl: number; rr: number; notes: string;
 }) {
   const isBull = type === 'bullish';
   const Icon = isBull ? TrendingUp : TrendingDown;
@@ -225,6 +225,7 @@ function ScenarioCard({ type, entry, tp1, tp2, sl, rr, notes }: {
       <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
         <div className="grid grid-cols-2 gap-x-6 px-4 py-3">
           <KV label="Entry" value={fmtRp(entry)} />
+          {avgDown != null && <KV label="Add / AVGD" value={fmtRp(avgDown)} valueClass="text-amber-600 dark:text-amber-400" />}
           <KV label="TP 1" value={fmtRp(tp1)} valueClass="text-emerald-600 dark:text-emerald-400" />
           <KV label="TP 2" value={fmtRp(tp2)} valueClass="text-emerald-600 dark:text-emerald-400" />
           <KV label="Stop Loss" value={fmtRp(sl)} valueClass="text-rose-600 dark:text-rose-400" />
@@ -285,6 +286,15 @@ function AiStockAdvisorHero({ advisor }: { advisor: AiStockAdvisor }) {
           <span className={cn('rounded-xl px-4 py-1.5 text-xs sm:text-sm font-bold tracking-wide shadow-sm', badgeBgMap[advisor.verdictTone])}>
             {advisor.verdictLabel}
           </span>
+          <div className="text-right">
+            <div className="text-xs text-zinc-400">Risk Score</div>
+            <div className={cn(
+              'font-mono text-sm font-bold',
+              advisor.riskLevel === 'HIGH' ? 'text-rose-600 dark:text-rose-400' : advisor.riskLevel === 'MEDIUM' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+            )}>
+              {advisor.riskScore}/100 · {advisor.riskLevel}
+            </div>
+          </div>
           <div className="text-right hidden sm:block">
             <div className="text-xs text-zinc-400">AI Confidence</div>
             <div className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-200">
@@ -1036,7 +1046,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
         {/* OHLCV Chart */}
         {bars.length > 0 && (
-          <OHLCVChart bars={bars} currentClose={summary.lastClose} />
+          <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
         )}
 
         {/* Data Freshness warning — shown only when the last available bar is 3+ trading days old */}
@@ -1181,6 +1191,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 <ScenarioCard
                   type="bullish"
                   entry={tradingPlan.bullish.entry}
+                  avgDown={tradingPlan.bullish.avgDown}
                   tp1={tradingPlan.bullish.tp1}
                   tp2={tradingPlan.bullish.tp2}
                   sl={tradingPlan.bullish.sl}

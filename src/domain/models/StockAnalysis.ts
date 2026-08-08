@@ -84,6 +84,8 @@ export interface IndicatorAnalysis {
 // ── 6. Rencana Trading ────────────────────────────────────────────────────────
 export interface TradeScenario {
   entry: number;
+  /** Area harga untuk menambah posisi (average down) jika entry awal belum konfirmasi — hanya diisi untuk skenario bullish. */
+  avgDown?: number;
   tp1: number;
   tp2: number;
   sl: number;

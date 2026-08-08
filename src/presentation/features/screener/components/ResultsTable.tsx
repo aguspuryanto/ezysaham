@@ -2,6 +2,7 @@ import { Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, 
 import Link from 'next/link';
 import { StockSummary } from '@/domain/models/Stock';
 import { AraProbabilityScore, BreakoutScores, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
+import { DataFreshness } from '@/domain/analysis/dataFreshness';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 
 export interface ScreenerResult {
@@ -87,6 +88,65 @@ function ChangeBadge({ value }: { value: number }) {
       <Icon className="size-3.5" strokeWidth={2.5} />
       {formatPercent(value)}
     </span>
+  );
+}
+
+// ── Data Freshness badge ──────────────────────────────────────────────────────
+// Honest EOD age indicator — never labeled "LIVE" since this app has no real-time
+// tick feed, only daily EOD bars (see docs/feasibility-features-update-plan2.md).
+const FRESHNESS_STYLES: Record<DataFreshness['tier'], string> = {
+  fresh: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300',
+  aging: 'bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300',
+  stale: 'bg-rose-50 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300',
+};
+
+function FreshnessBadge({ freshness }: { freshness: DataFreshness }) {
+  const label =
+    freshness.tier === 'fresh'
+      ? 'EOD terkini'
+      : freshness.tier === 'stale'
+        ? `EOD stale (H-${freshness.ageInTradingDays})`
+        : `EOD H-${freshness.ageInTradingDays}`;
+  return (
+    <span className={cn('inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap', FRESHNESS_STYLES[freshness.tier])}>
+      {label}
+    </span>
+  );
+}
+
+// ── Trigger checklist ─────────────────────────────────────────────────────────
+// Surfaces the per-condition reasons[]/failed[] every preset already computes,
+// as an explicit "X/Y kondisi terpenuhi" checklist instead of a single opaque score.
+function TriggerChecklist({ reasons, failed }: { reasons: string[]; failed: string[] }) {
+  const total = reasons.length + failed.length;
+  if (total === 0) return null;
+  return (
+    <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="font-semibold text-zinc-500 dark:text-zinc-400">Trigger</span>
+        <span className="font-mono font-semibold text-zinc-600 dark:text-zinc-300">
+          {reasons.length}/{total} terpenuhi
+        </span>
+      </div>
+      <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+        <div
+          className={cn('h-full rounded-full', reasons.length === total ? 'bg-emerald-500' : 'bg-amber-400')}
+          style={{ width: `${(reasons.length / total) * 100}%` }}
+        />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {reasons.slice(0, 3).map((r) => (
+          <span key={r} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+            ✓ {r}
+          </span>
+        ))}
+        {failed.slice(0, 3).map((f) => (
+          <span key={f} className="inline-flex items-center gap-1 rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+            ✕ {f}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -196,6 +256,10 @@ function TradingPlanBadge({ plan }: { plan: TradingPlanScore }) {
           <span className="font-mono font-semibold text-zinc-700 dark:text-zinc-200">
             {formatRupiah(plan.buyAreaLow)}–{formatRupiah(plan.buyAreaHigh)}
           </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-400 dark:text-zinc-500">AVGD</span>
+          <span className="font-mono font-semibold text-amber-600 dark:text-amber-400">{formatRupiah(plan.avgDown)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-zinc-400 dark:text-zinc-500">Stop Loss</span>
@@ -339,6 +403,11 @@ function StockCard({
               {formatRupiah(summary.lastClose)}
             </div>
             <ChangeBadge value={summary.percentChange1D} />
+            {evaluation.freshness && (
+              <div className="mt-0.5 flex justify-end">
+                <FreshnessBadge freshness={evaluation.freshness} />
+              </div>
+            )}
           </div>
           <WatchlistStar active={isWatchlisted} onToggle={onToggleWatchlist} ticker={summary.ticker} />
         </div>
@@ -351,8 +420,10 @@ function StockCard({
         <TradingPlanBadge plan={tradingPlan} />
       ) : araProbability ? (
         <AraProbabilityBadge score={araProbability} />
+      ) : evaluation.reasons.length + evaluation.failed.length > 0 ? (
+        <TriggerChecklist reasons={evaluation.reasons} failed={evaluation.failed} />
       ) : (
-        /* Footer meta — standard */
+        /* Footer meta — standard (only for the unfiltered "Semua" view, no reasons computed) */
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
           <span>Nilai {formatCompact(summary.value)}</span>
           {summary.per > 0 && <span>P/E {summary.per.toFixed(1)}</span>}
@@ -425,6 +496,11 @@ function StockTableRow({
       {/* Harga */}
       <td className="px-4 py-3 font-mono tabular-nums text-zinc-800 dark:text-zinc-200">
         {formatRupiah(summary.lastClose)}
+        {evaluation.freshness && (
+          <div className="mt-0.5">
+            <FreshnessBadge freshness={evaluation.freshness} />
+          </div>
+        )}
       </td>
 
       {/* Vol (lembar) */}
