@@ -19,7 +19,7 @@ export function DataFreshnessPill({ freshness }: { freshness: DataFreshness }) {
   } as const;
   const label =
     freshness.tier === 'fresh'
-      ? `Data terkini · ${formatId(freshness.lastBarDate)}`
+      ? `Data Update · ${formatId(freshness.lastBarDate)}`
       : `Data H-${freshness.ageInTradingDays} · ${formatId(freshness.lastBarDate)}`;
 
   return (

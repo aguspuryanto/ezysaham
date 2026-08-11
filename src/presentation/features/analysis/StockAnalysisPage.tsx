@@ -382,7 +382,7 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
         </div>
       </div>
 
-      {onViewDetails && (
+      {/* {onViewDetails && (
         <button
           type="button"
           onClick={onViewDetails}
@@ -390,7 +390,7 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
         >
           Lihat detail lengkap di tab AI Summary →
         </button>
-      )}
+      )} */}
     </div>
   );
 }
@@ -963,6 +963,15 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
       const found = summaries.find((s) => s.ticker === code);
       if (!found) throw new Error('Ticker tidak ditemukan');
+
+      // ✅ Sync lastClose & prevClose dari bar terakhir history EOD
+      // supaya konsisten dengan nilai yang tampil di OHLCV Chart
+      if (bars.length > 0) {
+        const lastBar = bars[bars.length - 1];
+        const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
+        found.lastClose = lastBar.close;
+        if (prevBar) found.prevClose = prevBar.close;
+      }
 
       setSummary(found);
       setBars(bars);
