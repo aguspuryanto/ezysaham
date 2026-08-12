@@ -964,13 +964,21 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       const found = summaries.find((s) => s.ticker === code);
       if (!found) throw new Error('Ticker tidak ditemukan');
 
-      // ✅ Sync lastClose & prevClose dari bar terakhir history EOD
-      // supaya konsisten dengan nilai yang tampil di OHLCV Chart
+      // Pasardana dipakai di Screener untuk daftar ~1000 saham sekaligus, tapi
+      // datanya kadang stale untuk ticker tertentu. Yahoo (via history bars)
+      // lebih akurat/live per-ticker, jadi halaman detail ini memakainya
+      // sebagai acuan harga — sinkronkan juga percentChange1D dari bar yang
+      // sama supaya harga & persentase di header tetap konsisten satu sama
+      // lain (harga dan persentase boleh beda dari Screener bila Pasardana
+      // sedang stale untuk ticker ini).
       if (bars.length > 0) {
         const lastBar = bars[bars.length - 1];
         const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
         found.lastClose = lastBar.close;
-        if (prevBar) found.prevClose = prevBar.close;
+        if (prevBar) {
+          found.prevClose = prevBar.close;
+          found.percentChange1D = ((lastBar.close - prevBar.close) / prevBar.close) * 100;
+        }
       }
 
       setSummary(found);
