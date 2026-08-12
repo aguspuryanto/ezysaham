@@ -27,10 +27,12 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import { History } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
 import { ema } from '@/domain/indicators/movingAverages';
 import { cn } from '@/lib/format';
+import Link from 'next/link';
 
 // ─── Period selector ──────────────────────────────────────────────────────────
 const PERIODS = [
@@ -237,8 +239,8 @@ export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChart
           </div>
         </div>
         {/* Period tabs */}
-        <div className="flex w-fit max-w-full gap-0.5 overflow-x-auto neo-border p-0.5">
-          {/* {PERIODS.map(({ key }) => (
+        {/* <div className="flex w-fit max-w-full gap-0.5 overflow-x-auto neo-border p-0.5"> */}
+        {/* {PERIODS.map(({ key }) => (
             <button
               key={key}
               type="button"
@@ -253,7 +255,13 @@ export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChart
               {key}
             </button>
           ))} */}
-        </div>
+        <Link
+          href={`/history/${ticker}`}
+          className="neo-press flex items-center gap-1.5 px-3 py-1.5 neo-border neo-shadow-sm bg-white text-sm font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+        >
+          <History className="size-3.5" strokeWidth={2.5} />
+        </Link>
+        {/* </div> */}
       </div>
 
       <>

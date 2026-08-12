@@ -23,6 +23,7 @@ import {
   Crosshair,
   ExternalLink,
   HelpCircle,
+  History,
   Loader2,
   Newspaper,
   PieChart,
@@ -1132,6 +1133,12 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
               <div className="flex flex-col items-end gap-2 shrink-0">
                 <div className="flex items-center gap-2">
+                  {/* <Link
+                    href={`/history/${summary.ticker}`}
+                    className="neo-press flex items-center gap-1.5 px-3 py-1.5 neo-border neo-shadow-sm bg-white text-sm font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+                  >
+                    <History className="size-3.5" strokeWidth={2.5} /> Riwayat Teknikal
+                  </Link> */}
                   <button
                     type="button"
                     onClick={handleShare}
