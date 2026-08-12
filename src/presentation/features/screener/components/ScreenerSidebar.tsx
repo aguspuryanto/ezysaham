@@ -12,9 +12,9 @@ export function FilterInfoCard({
   criteria: string[];
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-      <div className="flex items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-        <ListFilter className="size-4 text-emerald-600 dark:text-emerald-400" />
+    <div className="neo-border neo-shadow bg-white p-4 dark:bg-zinc-900">
+      <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">
+        <ListFilter className="size-4 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
         Filter Aktif — {label}
       </div>
       <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">{description}</p>
@@ -22,7 +22,7 @@ export function FilterInfoCard({
         <ul className="mt-3 space-y-1.5">
           {criteria.map((c) => (
             <li key={c} className="flex items-start gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
-              <span className="mt-1 size-1 shrink-0 rounded-full bg-emerald-500" />
+              <span className="mt-1 size-1.5 shrink-0 border border-(--neo-line) bg-emerald-400" />
               {c}
             </li>
           ))}
@@ -46,8 +46,8 @@ export function WatchlistCard({
     .filter((s): s is StockSummary => !!s);
 
   return (
-    <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-      <div className="flex items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+    <div className="neo-border neo-shadow bg-white p-4 dark:bg-zinc-900">
+      <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">
         <Star className="size-4 text-amber-500" fill="currentColor" strokeWidth={0} />
         Daftar Pantau ({items.length})
       </div>
@@ -56,16 +56,16 @@ export function WatchlistCard({
           Klik ikon bintang pada saham untuk menambahkannya ke daftar pantau.
         </p>
       ) : (
-        <ul className="mt-3 max-h-72 space-y-0.5 overflow-y-auto">
+        <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto">
           {items.map((s) => (
             <li
               key={s.ticker}
-              className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              className="flex items-center justify-between gap-2 border-2 border-(--neo-line) px-2 py-1.5 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800"
             >
-              <span className="font-semibold text-zinc-700 dark:text-zinc-200">{s.ticker}</span>
+              <span className="font-bold text-zinc-700 dark:text-zinc-200">{s.ticker}</span>
               <span
                 className={cn(
-                  'font-mono tabular-nums',
+                  'font-mono font-bold tabular-nums',
                   s.percentChange1D >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                 )}
               >
@@ -75,7 +75,7 @@ export function WatchlistCard({
                 type="button"
                 onClick={() => onRemove(s.ticker)}
                 aria-label={`Hapus ${s.ticker} dari daftar pantau`}
-                className="text-zinc-400 hover:text-rose-500"
+                className="font-bold text-zinc-400 hover:text-rose-500"
               >
                 ×
               </button>

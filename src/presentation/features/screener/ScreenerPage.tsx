@@ -221,7 +221,7 @@ export function ScreenerPage() {
       <div className="w-full flex flex-1 flex-col gap-6 px-4 pt-6 pb-24 sm:px-6 lg:flex-row lg:items-start lg:gap-8 lg:pb-6">
         {drawerOpen && (
           <div
-            className="fixed inset-0 z-[35] bg-zinc-900/40 backdrop-blur-[2px] lg:hidden"
+            className="fixed inset-0 z-[35] bg-zinc-900/50 lg:hidden"
             onClick={() => setDrawerOpen(false)}
             aria-hidden="true"
           />
@@ -232,22 +232,22 @@ export function ScreenerPage() {
           aria-modal={drawerOpen}
           aria-label="Filter dan daftar pantau"
           className={cn(
-            'fixed top-0 bottom-0 left-0 z-40 flex w-64 max-w-[85vw] flex-col gap-4 overflow-y-auto border-r border-zinc-200 bg-white p-4 shadow-xl transition-transform duration-300 ease-out',
-            'dark:border-zinc-800 dark:bg-zinc-950',
-            drawerOpen ? 'translate-x-0' : '-translate-x-full',
+            'fixed top-0 bottom-0 left-0 z-40 flex w-64 max-w-[85vw] flex-col gap-4 overflow-y-auto neo-border border-y-0 border-l-0 bg-white p-4 transition-transform duration-300 ease-out',
+            'dark:bg-zinc-950',
+            drawerOpen ? 'translate-x-0 neo-shadow-lg' : '-translate-x-full',
             'lg:sticky lg:top-20 lg:bottom-auto lg:left-auto lg:z-auto lg:w-52 lg:max-w-none lg:shrink-0',
             'lg:translate-x-0 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none'
           )}
         >
           <div className="flex items-center justify-between lg:hidden">
-            <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Filter & Pantauan</span>
+            <span className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Filter & Pantauan</span>
             <button
               type="button"
               onClick={() => setDrawerOpen(false)}
               aria-label="Tutup"
-              className="flex size-8 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900"
+              className="neo-press flex size-8 items-center justify-center neo-border bg-white text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
             >
-              <X className="size-4.5" />
+              <X className="size-4.5" strokeWidth={2.5} />
             </button>
           </div>
           <FilterInfoCard
@@ -271,26 +271,26 @@ export function ScreenerPage() {
           </div>
 
           {status === 'loading-summary' && (
-            <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-              <Loader2 className="size-4 animate-spin" />
+            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
+              <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />
               Memuat daftar saham dari bursa...
             </div>
           )}
 
           {status === 'scanning' && (
             <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between text-sm text-zinc-500 dark:text-zinc-400">
+              <div className="flex items-center justify-between text-sm font-semibold text-zinc-600 dark:text-zinc-400">
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin text-emerald-600 dark:text-emerald-400" />
+                  <Loader2 className="size-4 animate-spin text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
                   Menganalisis kandidat...
                 </span>
                 <span className="font-mono tabular-nums">
                   {progress.checked}/{progress.total}
                 </span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+              <div className="h-3 w-full overflow-hidden neo-border bg-zinc-100 dark:bg-zinc-800">
                 <div
-                  className="h-full rounded-full bg-emerald-500 transition-[width] duration-300 ease-out"
+                  className="h-full bg-emerald-400 transition-[width] duration-300 ease-out"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
@@ -298,18 +298,18 @@ export function ScreenerPage() {
           )}
 
           {status === 'error' && errorMessage && (
-            <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/15 dark:bg-rose-400/10 dark:text-rose-300 dark:ring-rose-400/20">
-              <AlertCircle className="size-4 shrink-0" />
+            <div className="flex items-center gap-2 neo-border neo-shadow-sm bg-rose-100 px-3.5 py-2.5 text-sm font-semibold text-rose-800 dark:bg-rose-400/10 dark:text-rose-300">
+              <AlertCircle className="size-4 shrink-0" strokeWidth={2.5} />
               {errorMessage}
             </div>
           )}
 
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+              <h1 className="text-xl font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-50">
                 Hasil Screening
               </h1>
-              <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="mt-0.5 text-sm font-medium text-zinc-500 dark:text-zinc-400">
                 {hasMoreResults
                   ? `Menampilkan ${visibleResults.length} dari ${displayedResults.length} saham ditemukan`
                   : `${displayedResults.length} saham ditemukan`}{' '}
@@ -321,7 +321,7 @@ export function ScreenerPage() {
               <select
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 outline-none focus:border-emerald-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                className="neo-border neo-shadow-sm bg-white px-3 py-2 text-sm font-semibold text-zinc-700 outline-none dark:bg-zinc-900 dark:text-zinc-200"
               >
                 {SORT_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -330,20 +330,20 @@ export function ScreenerPage() {
                 ))}
               </select>
 
-              <div className="flex items-center gap-1 rounded-xl border border-zinc-200 p-1 dark:border-zinc-800">
+              <div className="flex items-center gap-1 neo-border neo-shadow-sm bg-white p-1 dark:bg-zinc-900">
                 <button
                   type="button"
                   onClick={() => setView('table')}
                   aria-label="Tampilan tabel"
                   aria-pressed={view === 'table'}
                   className={cn(
-                    'rounded-lg p-1.5 transition-colors',
+                    'p-1.5 transition-colors',
                     view === 'table'
-                      ? 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100'
+                      ? 'bg-(--neo-accent) text-black'
                       : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
                   )}
                 >
-                  <Table2 className="size-4" />
+                  <Table2 className="size-4" strokeWidth={2.5} />
                 </button>
                 <button
                   type="button"
@@ -351,13 +351,13 @@ export function ScreenerPage() {
                   aria-label="Tampilan grid"
                   aria-pressed={view === 'grid'}
                   className={cn(
-                    'rounded-lg p-1.5 transition-colors',
+                    'p-1.5 transition-colors',
                     view === 'grid'
-                      ? 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100'
+                      ? 'bg-(--neo-accent) text-black'
                       : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
                   )}
                 >
-                  <LayoutGrid className="size-4" />
+                  <LayoutGrid className="size-4" strokeWidth={2.5} />
                 </button>
               </div>
 
@@ -369,9 +369,9 @@ export function ScreenerPage() {
                 }}
                 disabled={!summaries || isBusy}
                 aria-label="Pindai ulang"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 p-2 text-zinc-700 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                className="neo-press inline-flex items-center justify-center gap-2 neo-border neo-shadow-sm bg-white p-2 text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-300"
               >
-                <RefreshCw className={cn('size-4', status === 'scanning' && 'animate-spin')} />
+                <RefreshCw className={cn('size-4', status === 'scanning' && 'animate-spin')} strokeWidth={2.5} />
               </button>
             </div>
           </div>
@@ -387,7 +387,7 @@ export function ScreenerPage() {
             <button
               type="button"
               onClick={() => setVisibleCount((count) => count + RESULTS_LIMIT)}
-              className="mt-1 rounded-xl border border-zinc-200 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              className="neo-press mt-1 neo-border neo-shadow-sm bg-white py-2.5 text-sm font-bold uppercase tracking-wide text-zinc-700 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               Muat {Math.min(RESULTS_LIMIT, displayedResults.length - visibleResults.length)} lagi
             </button>

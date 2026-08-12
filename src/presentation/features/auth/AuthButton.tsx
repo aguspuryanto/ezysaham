@@ -56,7 +56,7 @@ export function AuthButton() {
   }, [menuOpen]);
 
   if (loading) {
-    return <div className="size-9 shrink-0 animate-pulse rounded-full bg-zinc-100 dark:bg-zinc-800" />;
+    return <div className="size-9 shrink-0 animate-pulse neo-border bg-zinc-100 dark:bg-zinc-800" />;
   }
 
   if (!user) {
@@ -64,7 +64,7 @@ export function AuthButton() {
       <button
         type="button"
         onClick={signInWithGoogle}
-        className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+        className="neo-press inline-flex shrink-0 items-center gap-2 neo-border neo-shadow-sm bg-white px-3 py-2 text-sm font-bold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
       >
         <GoogleIcon />
         <span className="hidden sm:inline">Masuk dengan Google</span>
@@ -82,7 +82,7 @@ export function AuthButton() {
         onClick={() => setMenuOpen((open) => !open)}
         aria-label="Menu akun"
         aria-expanded={menuOpen}
-        className="flex size-9 items-center justify-center overflow-hidden rounded-full border border-zinc-200 text-sm font-semibold text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+        className="neo-press flex size-9 items-center justify-center overflow-hidden neo-border neo-shadow-sm bg-white text-sm font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
       >
         {avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -93,10 +93,10 @@ export function AuthButton() {
       </button>
 
       {menuOpen && (
-        <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
-          <div className="flex items-center gap-2 border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
-            <UserIcon className="size-4 shrink-0 text-zinc-400" />
-            <span className="truncate text-sm text-zinc-700 dark:text-zinc-200">{displayName}</span>
+        <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden neo-border neo-shadow bg-white py-1 dark:bg-zinc-950">
+          <div className="flex items-center gap-2 border-b-2 border-(--neo-line) px-3 py-2">
+            <UserIcon className="size-4 shrink-0 text-zinc-400" strokeWidth={2.5} />
+            <span className="truncate text-sm font-semibold text-zinc-700 dark:text-zinc-200">{displayName}</span>
           </div>
           <button
             type="button"
@@ -104,9 +104,9 @@ export function AuthButton() {
               setMenuOpen(false);
               signOut();
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-zinc-600 transition-colors hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-900"
           >
-            <LogOut className="size-4" />
+            <LogOut className="size-4" strokeWidth={2.5} />
             Keluar
           </button>
         </div>

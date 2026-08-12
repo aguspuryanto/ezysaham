@@ -42,10 +42,8 @@ const EXAMPLE_POINTS = [
 ];
 
 const TONE_STYLES = {
-  green:
-    'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5',
-  amber:
-    'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5',
+  green: 'bg-emerald-50 dark:bg-emerald-400/10',
+  amber: 'bg-amber-50 dark:bg-amber-400/10',
 };
 
 const TEXT_TONE = {
@@ -62,45 +60,45 @@ export function PhilosophyBanner() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="mb-4 overflow-hidden rounded-2xl border border-blue-200/70 bg-gradient-to-br from-blue-50 to-indigo-50/60 dark:border-blue-400/15 dark:from-blue-950/40 dark:to-indigo-950/30">
+    <div className="mb-4 overflow-hidden neo-border neo-shadow bg-blue-50 dark:bg-blue-950/60">
       {/* ── Collapsed header (always visible) ───────────────────────── */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-blue-100/50 dark:hover:bg-blue-900/20"
+        className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-blue-100 dark:hover:bg-blue-900/40"
         aria-expanded={open}
         id="philosophy-banner-toggle"
       >
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-600 dark:bg-blue-500">
-          <Sparkles className="size-3.5 text-white" strokeWidth={2} />
+        <span className="flex size-8 shrink-0 items-center justify-center neo-border bg-blue-500 dark:bg-blue-500">
+          <Sparkles className="size-4 text-white" strokeWidth={2.5} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+          <p className="text-sm font-bold text-blue-900 dark:text-blue-100">
             Filosofi EzySaham — satu pertanyaan yang penting
           </p>
-          <p className="mt-0.5 truncate text-xs text-blue-600 dark:text-blue-400">
+          <p className="mt-0.5 truncate text-xs font-medium text-blue-700 dark:text-blue-400">
             "Apakah saham ini layak dibeli hari ini?" — dijawab dalam bahasa manusia, bukan 50 indikator
           </p>
         </div>
-        <span className="shrink-0 text-blue-400 dark:text-blue-500">
-          {open ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+        <span className="shrink-0 text-blue-500 dark:text-blue-400">
+          {open ? <ChevronUp className="size-4" strokeWidth={2.5} /> : <ChevronDown className="size-4" strokeWidth={2.5} />}
         </span>
       </button>
 
       {/* ── Expanded body ────────────────────────────────────────────── */}
       {open && (
-        <div className="border-t border-blue-200/60 dark:border-blue-400/10 px-5 pb-5 pt-4 space-y-4">
+        <div className="neo-border border-x-0 border-b-0 px-5 pb-5 pt-4 space-y-4">
           {/* Headline */}
           <div>
             <h3 className="text-base font-bold text-blue-900 dark:text-blue-100">
               "Apakah saham ini layak dibeli hari ini?"
             </h3>
-            <p className="mt-1 text-sm text-blue-700/80 dark:text-blue-300/80 leading-relaxed">
+            <p className="mt-1 text-sm text-blue-800/80 dark:text-blue-300/80 leading-relaxed">
               Kebanyakan aplikasi saham menampilkan puluhan indikator hingga membingungkan pemula.
               EzySaham menjawab satu pertanyaan sederhana tersebut dengan bahasa yang mudah
               dipahami — bukan angka-angka mentah.
             </p>
-            <p className="mt-2.5 text-sm text-blue-700/80 dark:text-blue-300/80 leading-relaxed">
+            <p className="mt-2.5 text-sm text-blue-800/80 dark:text-blue-300/80 leading-relaxed">
               Setiap kali Anda membuka EzySaham, AI menganalisis hampir 1.000 saham di Bursa Efek
               Indonesia dan memilih sekitar 20–30 saham dengan setup terbaik untuk dipantau. Untuk
               tiap pilihan, AI menjelaskan alasan pemilihannya, level support–resistance, potensi
@@ -111,7 +109,7 @@ export function PhilosophyBanner() {
 
           {/* Example output */}
           <div>
-            <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-blue-500 dark:text-blue-400">
+            <p className="mb-2.5 text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
               Contoh Analisis AI
             </p>
             <div className="space-y-2">
@@ -119,13 +117,13 @@ export function PhilosophyBanner() {
                 <div
                   key={pt.text}
                   className={cn(
-                    'flex items-start gap-3 rounded-xl border px-3.5 py-2.5',
+                    'flex items-start gap-3 border-2 border-(--neo-line) px-3.5 py-2.5',
                     TONE_STYLES[pt.tone]
                   )}
                 >
                   <span className="mt-0.5 shrink-0 text-base leading-none">{pt.icon}</span>
                   <div>
-                    <span className={cn('text-sm font-semibold', TEXT_TONE[pt.tone])}>
+                    <span className={cn('text-sm font-bold', TEXT_TONE[pt.tone])}>
                       {pt.text}
                     </span>
                     <span className={cn('ml-1.5 text-sm', SUB_TONE[pt.tone])}>
@@ -138,7 +136,7 @@ export function PhilosophyBanner() {
 
             {/* Conclusion chip */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-blue-200 dark:border-blue-400/20 bg-white dark:bg-blue-900/30 px-3 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300">
+              <span className="border-2 border-(--neo-line) bg-(--neo-accent) px-3 py-1 text-xs font-bold uppercase text-black">
                 💬 Kesimpulan
               </span>
               <span className="text-sm text-blue-800 dark:text-blue-200">

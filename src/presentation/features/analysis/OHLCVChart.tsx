@@ -88,8 +88,8 @@ function OHLCVTooltip({ active, payload, label }: {
   const isGreen = close >= open;
 
   return (
-    <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3 shadow-xl text-xs space-y-1.5 min-w-[180px]">
-      <p className="font-semibold text-zinc-700 dark:text-zinc-200 pb-1 border-b border-zinc-100 dark:border-zinc-800">{label}</p>
+    <div className="neo-border neo-shadow-sm bg-white dark:bg-zinc-900 p-3 text-xs space-y-1.5 min-w-[180px]">
+      <p className="font-bold text-zinc-700 dark:text-zinc-200 pb-1 border-b-2 border-(--neo-line)">{label}</p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         {[
           { key: 'high', label: 'High' },
@@ -160,16 +160,16 @@ function CandleShape(props: {
   return (
     <g>
       {/* Wick */}
-      <line x1={cx} x2={cx} y1={yHigh} y2={yLow} stroke={color} strokeWidth={1} />
+      <line x1={cx} x2={cx} y1={yHigh} y2={yLow} stroke="#0a0a0a" strokeWidth={1.5} />
       {/* Body */}
       <rect
         x={x + 1}
         y={bodyTop}
         width={Math.max(width - 2, 2)}
         height={bodyH}
-        fill={isGreen ? color : color}
-        fillOpacity={isGreen ? 1 : 0.85}
-        rx={1}
+        fill={color}
+        stroke="#0a0a0a"
+        strokeWidth={1}
       />
     </g>
   );
@@ -222,22 +222,22 @@ export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChart
   const isLineStyle = period === '1Y';
 
   return (
-    <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 overflow-hidden">
+    <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b-[3px] border-(--neo-line)">
         <div className="flex items-center gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          <p className="text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Grafik Harga
           </p>
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-green-400" />Harga (Close)</span>
-            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-amber-400" />EMA20</span>
-            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-blue-500" />EMA50</span>
-            <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-purple-500" />EMA200</span>
+          <div className="flex items-center gap-2 text-[11px] font-semibold">
+            <span className="flex items-center gap-1"><span className="inline-block size-2 border border-(--neo-line) bg-green-400" />Harga (Close)</span>
+            <span className="flex items-center gap-1"><span className="inline-block size-2 border border-(--neo-line) bg-amber-400" />EMA20</span>
+            <span className="flex items-center gap-1"><span className="inline-block size-2 border border-(--neo-line) bg-blue-500" />EMA50</span>
+            <span className="flex items-center gap-1"><span className="inline-block size-2 border border-(--neo-line) bg-purple-500" />EMA200</span>
           </div>
         </div>
         {/* Period tabs */}
-        <div className="flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5">
+        <div className="flex w-fit max-w-full gap-0.5 overflow-x-auto neo-border p-0.5">
           {/* {PERIODS.map(({ key }) => (
             <button
               key={key}

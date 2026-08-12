@@ -135,15 +135,15 @@ export function IntradayChart({ ticker, fallbackPrevClose }: IntradayChartProps)
               )}
             </div>
           ) : (
-            <div className="h-8 w-40 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" />
+            <div className="h-8 w-40 animate-pulse bg-zinc-100 dark:bg-zinc-800" />
           )}
           {lastBar && (
-            <p className="mt-0.5 text-[11px] text-zinc-400 dark:text-zinc-500">
+            <p className="mt-0.5 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500">
               Sesi {sessionDateLabel(lastBar.time)}
             </p>
           )}
         </div>
-        <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400">
           <span className="size-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />
           {SESSION_LABEL[state]}
         </span>
@@ -152,26 +152,20 @@ export function IntradayChart({ ticker, fallbackPrevClose }: IntradayChartProps)
       {/* Chart */}
       <div className="px-2 pt-1 pb-1">
         {loading && chartData.length === 0 ? (
-          <div className="flex h-72 items-center justify-center text-sm text-zinc-400 dark:text-zinc-500">
+          <div className="flex h-72 items-center justify-center text-sm font-semibold text-zinc-400 dark:text-zinc-500">
             Memuat data intraday...
           </div>
         ) : !hasData ? (
-          <div className="flex h-72 flex-col items-center justify-center gap-1 text-center text-sm text-zinc-400 dark:text-zinc-500">
+          <div className="flex h-72 flex-col items-center justify-center gap-1 text-center text-sm font-semibold text-zinc-400 dark:text-zinc-500">
             <p>Data intraday tidak tersedia saat ini.</p>
             <p className="text-xs">Coba beberapa saat lagi, atau gunakan tab 1W/1M untuk riwayat harian.</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={320}>
             <AreaChart data={chartData} margin={{ top: 4, right: 84, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="intradayFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={lineColor} stopOpacity={0.25} />
-                  <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
-                </linearGradient>
-              </defs>
               <XAxis
                 dataKey="time"
-                tick={{ fontSize: 10, fill: '#71717a' }}
+                tick={{ fontSize: 10, fill: '#71717a', fontWeight: 600 }}
                 tickLine={false}
                 axisLine={false}
                 interval={Math.max(Math.floor(chartData.length / 6), 0)}
@@ -180,8 +174,8 @@ export function IntradayChart({ ticker, fallbackPrevClose }: IntradayChartProps)
               <YAxis domain={[domainMin, domainMax]} hide />
               <Tooltip
                 formatter={(value) => [formatRupiah(Number(value)), 'Harga']}
-                labelStyle={{ fontSize: 11 }}
-                contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                labelStyle={{ fontSize: 11, fontWeight: 700 }}
+                contentStyle={{ fontSize: 11, borderRadius: 0, border: '2px solid #0a0a0a', boxShadow: '3px 3px 0 0 #0a0a0a' }}
               />
               {previousClose != null && (
                 <ReferenceLine
@@ -196,8 +190,9 @@ export function IntradayChart({ ticker, fallbackPrevClose }: IntradayChartProps)
                 type="monotone"
                 dataKey="price"
                 stroke={lineColor}
-                strokeWidth={2}
-                fill="url(#intradayFill)"
+                strokeWidth={3}
+                fill={lineColor}
+                fillOpacity={0.18}
                 isAnimationActive={false}
                 dot={false}
               />
@@ -207,7 +202,7 @@ export function IntradayChart({ ticker, fallbackPrevClose }: IntradayChartProps)
       </div>
 
       {/* Footer caption */}
-      <p className="px-4 pb-3 text-[10px] text-zinc-400 dark:text-zinc-600">
+      <p className="px-4 pb-3 text-[10px] font-semibold text-zinc-400 dark:text-zinc-600">
         Data intraday 1 menit dari Yahoo Finance — kuotasi tertunda (delayed quote), bukan real-time. Diperbarui otomatis setiap ±60 detik.
       </p>
     </div>

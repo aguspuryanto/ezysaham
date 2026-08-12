@@ -28,10 +28,10 @@ export function PresetTabs({
             onClick={() => onSelect(item.id)}
             aria-pressed={isSelected}
             className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium transition-colors',
+              'neo-press inline-flex shrink-0 items-center gap-1.5 neo-border px-3.5 py-2 text-sm font-bold uppercase tracking-wide transition-colors',
               isSelected
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800'
+                ? 'bg-emerald-400 text-black neo-shadow-sm dark:bg-emerald-400'
+                : 'bg-white text-zinc-600 hover:bg-zinc-100 neo-shadow-sm dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800'
             )}
           >
             <Icon className="size-3.5" strokeWidth={2.25} />

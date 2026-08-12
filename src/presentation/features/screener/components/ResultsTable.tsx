@@ -38,7 +38,7 @@ function TickerAvatar({ ticker, size = 'md' }: { ticker: string; size?: 'sm' | '
   return (
     <span
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-full font-semibold tracking-tight',
+        'flex shrink-0 items-center justify-center border-2 border-(--neo-line) font-bold tracking-tight',
         size === 'md' ? 'size-9 text-xs' : 'size-7 text-[10px]',
         avatarTone(ticker)
       )}
@@ -108,7 +108,7 @@ function FreshnessBadge({ freshness }: { freshness: DataFreshness }) {
         ? `EOD stale (H-${freshness.ageInTradingDays})`
         : `EOD H-${freshness.ageInTradingDays}`;
   return (
-    <span className={cn('inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap', FRESHNESS_STYLES[freshness.tier])}>
+    <span className={cn('inline-flex items-center border border-(--neo-line) px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', FRESHNESS_STYLES[freshness.tier])}>
       {label}
     </span>
   );
@@ -121,27 +121,27 @@ function TriggerChecklist({ reasons, failed }: { reasons: string[]; failed: stri
   const total = reasons.length + failed.length;
   if (total === 0) return null;
   return (
-    <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+    <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
       <div className="flex items-center justify-between text-[11px]">
-        <span className="font-semibold text-zinc-500 dark:text-zinc-400">Trigger</span>
-        <span className="font-mono font-semibold text-zinc-600 dark:text-zinc-300">
+        <span className="font-bold uppercase text-zinc-500 dark:text-zinc-400">Trigger</span>
+        <span className="font-mono font-bold text-zinc-600 dark:text-zinc-300">
           {reasons.length}/{total} terpenuhi
         </span>
       </div>
-      <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+      <div className="h-1.5 w-full overflow-hidden border border-(--neo-line) bg-zinc-100 dark:bg-zinc-800">
         <div
-          className={cn('h-full rounded-full', reasons.length === total ? 'bg-emerald-500' : 'bg-amber-400')}
+          className={cn('h-full', reasons.length === total ? 'bg-emerald-500' : 'bg-amber-400')}
           style={{ width: `${(reasons.length / total) * 100}%` }}
         />
       </div>
       <div className="flex flex-wrap gap-1.5">
         {reasons.slice(0, 3).map((r) => (
-          <span key={r} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+          <span key={r} className="inline-flex items-center gap-1 border border-(--neo-line) bg-emerald-50 dark:bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
             ✓ {r}
           </span>
         ))}
         {failed.slice(0, 3).map((f) => (
-          <span key={f} className="inline-flex items-center gap-1 rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+          <span key={f} className="inline-flex items-center gap-1 border border-(--neo-line) bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 text-[10px] font-bold text-zinc-500 dark:text-zinc-400">
             ✕ {f}
           </span>
         ))}
@@ -159,10 +159,10 @@ const STATUS_STYLES: Record<BreakoutScores['status'], string> = {
 
 function BreakoutBadge({ scores }: { scores: BreakoutScores }) {
   return (
-    <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+    <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
       {/* Status pill + composite */}
       <div className="flex items-center justify-between gap-2">
-        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide', STATUS_STYLES[scores.status])}>
+        <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2.5 py-1 text-[11px] font-bold tracking-wide', STATUS_STYLES[scores.status])}>
           <Rocket className="size-3" />
           {scores.status === 'BUY_WATCH' ? 'BUY WATCH' : scores.status}
         </span>
@@ -184,9 +184,9 @@ function BreakoutBadge({ scores }: { scores: BreakoutScores }) {
               <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
               <span className="text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300">{value}</span>
             </div>
-            <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+            <div className="h-1.5 w-full overflow-hidden border border-(--neo-line) bg-zinc-100 dark:bg-zinc-800">
               <div
-                className={cn('h-full rounded-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
+                className={cn('h-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
                 style={{ width: `${value}%` }}
               />
             </div>
@@ -239,10 +239,10 @@ function StarRating({ count }: { count: number }) {
 
 function TradingPlanBadge({ plan }: { plan: TradingPlanScore }) {
   return (
-    <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+    <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
       {/* Status pill + momentum stars */}
       <div className="flex items-center justify-between gap-2">
-        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide', TRADING_PLAN_STATUS_STYLES[plan.status])}>
+        <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2.5 py-1 text-[11px] font-bold tracking-wide', TRADING_PLAN_STATUS_STYLES[plan.status])}>
           <Target className="size-3" />
           {TRADING_PLAN_STATUS_LABEL[plan.status]}
         </span>
@@ -295,10 +295,10 @@ const ARA_PROBABILITY_STYLES: Record<AraProbabilityScore['probability'], string>
 
 function AraProbabilityBadge({ score }: { score: AraProbabilityScore }) {
   return (
-    <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+    <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
       {/* Probability pill + composite */}
       <div className="flex items-center justify-between gap-2">
-        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide', ARA_PROBABILITY_STYLES[score.probability])}>
+        <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2.5 py-1 text-[11px] font-bold tracking-wide', ARA_PROBABILITY_STYLES[score.probability])}>
           <Zap className="size-3" />
           ARA Probability: {score.probability}
         </span>
@@ -320,9 +320,9 @@ function AraProbabilityBadge({ score }: { score: AraProbabilityScore }) {
               <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
               <span className="text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300">{value}</span>
             </div>
-            <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+            <div className="h-1.5 w-full overflow-hidden border border-(--neo-line) bg-zinc-100 dark:bg-zinc-800">
               <div
-                className={cn('h-full rounded-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
+                className={cn('h-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
                 style={{ width: `${value}%` }}
               />
             </div>
@@ -341,10 +341,10 @@ function AraProbabilityBadge({ score }: { score: AraProbabilityScore }) {
 // ── Empty state ────────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center dark:border-zinc-800">
-      <SearchX className="size-6 text-zinc-400 dark:text-zinc-600" strokeWidth={1.5} />
-      <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Belum ada saham yang lolos</p>
-      <p className="max-w-xs text-sm text-zinc-400 dark:text-zinc-500">
+    <div className="flex flex-col items-center gap-2 neo-border border-dashed px-6 py-14 text-center">
+      <SearchX className="size-7 text-zinc-500 dark:text-zinc-400" strokeWidth={2} />
+      <p className="text-sm font-bold uppercase text-zinc-700 dark:text-zinc-200">Belum ada saham yang lolos</p>
+      <p className="max-w-xs text-sm font-medium text-zinc-400 dark:text-zinc-500">
         Tidak ada saham yang memenuhi kriteria preset ini hari ini. Coba preset lain atau pindai ulang besok.
       </p>
     </div>
@@ -373,33 +373,25 @@ function StockCard({
     <Link
       href={`/screener/${summary.ticker}`}
       className={cn(
-        'group relative flex flex-col rounded-2xl border bg-white p-4 transition-all duration-200',
-        bScores?.status === 'BUY_WATCH'
-          ? 'border-emerald-300 dark:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/15'
-          : 'border-zinc-200 dark:border-zinc-800',
-        'hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-500/10 hover:-translate-y-0.5',
-        'dark:bg-zinc-900/30 dark:hover:border-emerald-500/40 dark:hover:shadow-emerald-400/10'
+        'group relative flex flex-col neo-border neo-shadow bg-white p-4 transition-transform duration-150',
+        'hover:-translate-x-0.5 hover:-translate-y-0.5 hover:neo-shadow-lg',
+        bScores?.status === 'BUY_WATCH' ? 'bg-emerald-50 dark:bg-emerald-400/10' : 'dark:bg-zinc-900'
       )}
     >
-      {/* BUY_WATCH glow border */}
-      {bScores?.status === 'BUY_WATCH' && (
-        <div className="absolute inset-0 rounded-2xl ring-2 ring-emerald-400/30 dark:ring-emerald-500/20 pointer-events-none" />
-      )}
-
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <TickerAvatar ticker={summary.ticker} />
           <div>
-            <div className="font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
+            <div className="font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
               {summary.ticker}
             </div>
-            <div className="max-w-[9rem] truncate text-xs text-zinc-500 dark:text-zinc-400">{summary.name}</div>
+            <div className="max-w-[9rem] truncate text-xs font-medium text-zinc-500 dark:text-zinc-400">{summary.name}</div>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <div className="text-right">
-            <div className="font-mono text-sm tabular-nums text-zinc-800 dark:text-zinc-200">
+            <div className="font-mono text-sm font-bold tabular-nums text-zinc-800 dark:text-zinc-200">
               {formatRupiah(summary.lastClose)}
             </div>
             <ChangeBadge value={summary.percentChange1D} />
@@ -424,11 +416,11 @@ function StockCard({
         <TriggerChecklist reasons={evaluation.reasons} failed={evaluation.failed} />
       ) : (
         /* Footer meta — standard (only for the unfiltered "Semua" view, no reasons computed) */
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+        <div className="mt-3 flex items-center justify-between gap-2 border-t-2 border-(--neo-line) pt-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500">
           <span>Nilai {formatCompact(summary.value)}</span>
           {summary.per > 0 && <span>P/E {summary.per.toFixed(1)}</span>}
-          <span className="ml-auto flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-            Analisis <ChevronRight className="size-3.5" />
+          <span className="ml-auto flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity font-bold">
+            Analisis <ChevronRight className="size-3.5" strokeWidth={2.5} />
           </span>
         </div>
       )}
@@ -436,7 +428,7 @@ function StockCard({
       {/* Accent bar */}
       <div
         className={cn(
-          'absolute bottom-0 left-4 right-4 h-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity',
+          'absolute bottom-0 left-4 right-4 h-1 opacity-0 group-hover:opacity-100 transition-opacity',
           positive ? 'bg-emerald-400' : 'bg-rose-400'
         )}
       />
@@ -541,7 +533,7 @@ function StockTableRow({
       {/* Sektor */}
       <td className="px-4 py-3">
         {summary.sector ? (
-          <span className="inline-block max-w-[9rem] truncate rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+          <span className="inline-block max-w-[9rem] truncate border border-(--neo-line) bg-zinc-100 px-2 py-0.5 text-[11px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
             {summary.sector}
           </span>
         ) : (
@@ -590,9 +582,9 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
   return (
     <>
       {/* Desktop / tablet: table */}
-      <div className="hidden overflow-x-auto overflow-hidden rounded-2xl border border-zinc-200 md:block dark:border-zinc-800">
+      <div className="hidden overflow-x-auto overflow-hidden neo-border neo-shadow md:block">
         <table className="w-full min-w-[700px] text-sm">
-          <thead className="bg-zinc-50 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-900/60 dark:text-zinc-400">
+          <thead className="border-b-[3px] border-(--neo-line) bg-(--neo-accent) text-left text-xs font-bold uppercase tracking-wide text-black">
             <tr>
               <th className="w-9 px-3 py-3" />
               <th className="px-4 py-3">Simbol</th>
@@ -608,7 +600,7 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
               {/* <th className="px-4 py-3">Detail</th> */}
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <tbody className="divide-y-2 divide-(--neo-line) bg-white dark:bg-zinc-900">
             {results.map((result) => (
               <StockTableRow
                 key={result.summary.ticker}

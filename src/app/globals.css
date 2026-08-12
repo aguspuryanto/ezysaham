@@ -64,6 +64,51 @@
   }
 }
 
+/* ── Neobrutalism system ──────────────────────────────────────────────
+   One hard-edged line color drives both borders and offset shadows, so
+   flipping --neo-line in .dark re-themes every bordered surface at once.
+   No blur, no gradients — shadows are flat, solid offsets only. */
+:root {
+  --neo-line: #0a0a0a;
+  --neo-shadow-sm: 2px 2px 0 0 var(--neo-line);
+  --neo-shadow: 4px 4px 0 0 var(--neo-line);
+  --neo-shadow-lg: 6px 6px 0 0 var(--neo-line);
+  --neo-accent: #ffd60a;
+}
+
+.dark {
+  --neo-line: #f5f0e6;
+  --neo-shadow-sm: 2px 2px 0 0 var(--neo-line);
+  --neo-shadow: 4px 4px 0 0 var(--neo-line);
+  --neo-shadow-lg: 6px 6px 0 0 var(--neo-line);
+  --neo-accent: #ffd60a;
+}
+
+@utility neo-border {
+  border-width: 3px;
+  border-color: var(--neo-line);
+}
+
+@utility neo-shadow-sm {
+  box-shadow: var(--neo-shadow-sm);
+}
+
+@utility neo-shadow {
+  box-shadow: var(--neo-shadow);
+}
+
+@utility neo-shadow-lg {
+  box-shadow: var(--neo-shadow-lg);
+}
+
+@utility neo-press {
+  transition: transform 100ms ease, box-shadow 100ms ease;
+  &:active {
+    transform: translate(3px, 3px);
+    box-shadow: 0 0 0 0 var(--neo-line);
+  }
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -88,7 +133,7 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --radius: 0px;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);

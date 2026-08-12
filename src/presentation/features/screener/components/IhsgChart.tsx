@@ -143,17 +143,17 @@ export function IhsgChart() {
   );
 
   return (
-    <div className="mb-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
+    <div className="mb-4 neo-border neo-shadow bg-white p-4 dark:bg-zinc-900">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            <p className="text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
               IHSG: {last?.date ? new Date(last.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'}
             </p>
             {/* Market status badge */}
             <span
               className={cn(
-                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                'inline-flex items-center gap-1 border border-(--neo-line) px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
                 marketOpen
                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
                   : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
@@ -177,7 +177,7 @@ export function IhsgChart() {
               </span>
               <span
                 className={cn(
-                  'text-sm font-semibold tabular-nums',
+                  'text-sm font-bold tabular-nums',
                   isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                 )}
               >
@@ -186,20 +186,20 @@ export function IhsgChart() {
               </span>
             </div>
           ) : (
-            <div className="mt-1 h-8 w-40 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" />
+            <div className="mt-1 h-8 w-40 animate-pulse bg-zinc-100 dark:bg-zinc-800" />
           )}
         </div>
 
-        <div className="flex gap-0.5 rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-700">
+        <div className="flex gap-1 neo-border neo-shadow-sm bg-white p-1 dark:bg-zinc-900">
           {RANGES.map(({ key, label }) => (
             <button
               key={key}
               type="button"
               onClick={() => setRange(key)}
               className={cn(
-                'rounded-md px-2.5 py-1 text-xs font-semibold transition-colors',
+                'px-2.5 py-1 text-xs font-bold transition-colors',
                 range === key
-                  ? 'bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                  ? 'bg-(--neo-accent) text-black'
                   : 'text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300'
               )}
             >
@@ -211,25 +211,19 @@ export function IhsgChart() {
 
       <div className="mt-3">
         {error ? (
-          <div className="flex h-56 items-center justify-center text-sm text-zinc-400 dark:text-zinc-500">
+          <div className="flex h-56 items-center justify-center text-sm font-semibold text-zinc-400 dark:text-zinc-500">
             Gagal memuat data IHSG.
           </div>
         ) : loading && chartData.length === 0 ? (
-          <div className="flex h-56 items-center justify-center text-sm text-zinc-400 dark:text-zinc-500">
+          <div className="flex h-56 items-center justify-center text-sm font-semibold text-zinc-400 dark:text-zinc-500">
             Memuat grafik...
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={224}>
             <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="ihsgFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={lineColor} stopOpacity={0.25} />
-                  <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
-                </linearGradient>
-              </defs>
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 10, fill: '#71717a' }}
+                tick={{ fontSize: 10, fill: '#71717a', fontWeight: 600 }}
                 tickLine={false}
                 axisLine={false}
                 interval={Math.max(Math.floor(chartData.length / 6), 0)}
@@ -238,15 +232,16 @@ export function IhsgChart() {
               <YAxis domain={[domainMin, domainMax]} hide />
               <Tooltip
                 formatter={(value) => [fmtIndex(Number(value)), 'IHSG']}
-                labelStyle={{ fontSize: 11 }}
-                contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                labelStyle={{ fontSize: 11, fontWeight: 700 }}
+                contentStyle={{ fontSize: 11, borderRadius: 0, border: '2px solid #0a0a0a', boxShadow: '3px 3px 0 0 #0a0a0a' }}
               />
               <Area
                 type="monotone"
                 dataKey="close"
                 stroke={lineColor}
-                strokeWidth={2}
-                fill="url(#ihsgFill)"
+                strokeWidth={3}
+                fill={lineColor}
+                fillOpacity={0.18}
                 isAnimationActive={true}
                 dot={false}
               />
