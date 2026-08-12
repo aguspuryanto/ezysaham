@@ -43,7 +43,8 @@ export function WatchlistCard({
 }) {
   const items = tickers
     .map((t) => summaries.find((s) => s.ticker === t))
-    .filter((s): s is StockSummary => !!s);
+    .filter((s): s is StockSummary => !!s)
+    .sort((a, b) => b.percentChange1D - a.percentChange1D);
 
   return (
     <div className="neo-border neo-shadow bg-white p-4 dark:bg-zinc-900">

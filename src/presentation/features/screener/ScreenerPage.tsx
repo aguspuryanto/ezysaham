@@ -232,7 +232,7 @@ export function ScreenerPage() {
           aria-modal={drawerOpen}
           aria-label="Filter dan daftar pantau"
           className={cn(
-            'fixed top-0 bottom-0 left-0 z-40 flex w-64 max-w-[85vw] flex-col gap-4 overflow-y-auto neo-border border-y-0 border-l-0 bg-white p-4 transition-transform duration-300 ease-out',
+            'fixed top-0 bottom-0 left-0 z-40 flex w-64 max-w-[85vw] flex-col gap-4 overflow-y-auto neo-border border-y-0 border-l-0 bg-white p-2 transition-transform duration-300 ease-out',
             'dark:bg-zinc-950',
             drawerOpen ? 'translate-x-0 neo-shadow-lg' : '-translate-x-full',
             'lg:sticky lg:top-20 lg:bottom-auto lg:left-auto lg:z-auto lg:w-52 lg:max-w-none lg:shrink-0',
