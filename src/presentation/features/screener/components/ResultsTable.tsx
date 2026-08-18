@@ -1,4 +1,4 @@
-import { Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap } from 'lucide-react';
+import { GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { StockSummary } from '@/domain/models/Stock';
 import { AraProbabilityScore, BreakoutScores, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
@@ -17,6 +17,8 @@ interface ResultsTableProps {
   view: ResultsView;
   isWatchlisted: (ticker: string) => boolean;
   onToggleWatchlist: (ticker: string) => void;
+  isCompareSelected: (ticker: string) => boolean;
+  onToggleCompare: (ticker: string) => void;
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
@@ -70,6 +72,33 @@ function WatchlistStar({
       )}
     >
       <Star className="size-4" fill={active ? 'currentColor' : 'none'} strokeWidth={2} />
+    </button>
+  );
+}
+
+// ── Compare toggle ────────────────────────────────────────────────────────────
+function CompareToggle({
+  active,
+  onToggle,
+  ticker,
+}: {
+  active: boolean;
+  onToggle: () => void;
+  ticker: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
+      aria-label={active ? `Hapus ${ticker} dari pilihan bandingkan` : `Pilih ${ticker} untuk dibandingkan`}
+      aria-pressed={active}
+      title="Bandingkan"
+      className={cn(
+        'flex size-7 shrink-0 items-center justify-center rounded-full transition-colors',
+        active ? 'text-blue-500' : 'text-zinc-300 hover:text-blue-400 dark:text-zinc-700'
+      )}
+    >
+      <GitCompare className="size-4" strokeWidth={2.5} />
     </button>
   );
 }
@@ -358,10 +387,14 @@ function StockCard({
   result,
   isWatchlisted,
   onToggleWatchlist,
+  isCompareSelected,
+  onToggleCompare,
 }: {
   result: ScreenerResult;
   isWatchlisted: boolean;
   onToggleWatchlist: () => void;
+  isCompareSelected: boolean;
+  onToggleCompare: () => void;
 }) {
   const { summary, evaluation } = result;
   const positive = summary.percentChange1D >= 0;
@@ -401,6 +434,7 @@ function StockCard({
               </div>
             )}
           </div>
+          <CompareToggle active={isCompareSelected} onToggle={onToggleCompare} ticker={summary.ticker} />
           <WatchlistStar active={isWatchlisted} onToggle={onToggleWatchlist} ticker={summary.ticker} />
         </div>
       </div>
@@ -443,10 +477,14 @@ function StockTableRow({
   result,
   isWatchlisted,
   onToggleWatchlist,
+  isCompareSelected,
+  onToggleCompare,
 }: {
   result: ScreenerResult;
   isWatchlisted: boolean;
   onToggleWatchlist: () => void;
+  isCompareSelected: boolean;
+  onToggleCompare: () => void;
 }) {
   const { summary, evaluation } = result;
   const rvol = evaluation.relativeVolume;
@@ -456,13 +494,20 @@ function StockTableRow({
     <tr className={cn(
       'group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/40',
     )}>
-      {/* ★ Watchlist */}
+      {/* ★ Watchlist + ⇄ Compare */}
       <td className="px-3 py-3">
-        <WatchlistStar
-          active={isWatchlisted}
-          onToggle={onToggleWatchlist}
-          ticker={summary.ticker}
-        />
+        <div className="flex items-center gap-0.5">
+          <CompareToggle
+            active={isCompareSelected}
+            onToggle={onToggleCompare}
+            ticker={summary.ticker}
+          />
+          <WatchlistStar
+            active={isWatchlisted}
+            onToggle={onToggleWatchlist}
+            ticker={summary.ticker}
+          />
+        </div>
       </td>
 
       {/* Simbol + Nama */}
@@ -559,7 +604,7 @@ function StockTableRow({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────────────────────────────────────────
-export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }: ResultsTableProps) {
+export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist, isCompareSelected, onToggleCompare }: ResultsTableProps) {
   if (results.length === 0) return <EmptyState />;
 
 
@@ -572,6 +617,8 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
             result={result}
             isWatchlisted={isWatchlisted(result.summary.ticker)}
             onToggleWatchlist={() => onToggleWatchlist(result.summary.ticker)}
+            isCompareSelected={isCompareSelected(result.summary.ticker)}
+            onToggleCompare={() => onToggleCompare(result.summary.ticker)}
           />
         ))}
       </div>
@@ -586,7 +633,7 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
         <table className="w-full min-w-[700px] text-sm">
           <thead className="border-b-[3px] border-(--neo-line) bg-(--neo-accent) text-left text-xs font-bold uppercase tracking-wide text-black">
             <tr>
-              <th className="w-9 px-3 py-3" />
+              <th className="w-16 px-3 py-3" />
               <th className="px-4 py-3">Simbol</th>
               <th className="px-4 py-3">Perubahan</th>
               <th className="px-4 py-3">Harga</th>
@@ -607,6 +654,8 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
                 result={result}
                 isWatchlisted={isWatchlisted(result.summary.ticker)}
                 onToggleWatchlist={() => onToggleWatchlist(result.summary.ticker)}
+                isCompareSelected={isCompareSelected(result.summary.ticker)}
+                onToggleCompare={() => onToggleCompare(result.summary.ticker)}
               />
             ))}
           </tbody>
@@ -622,6 +671,8 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist }
             result={result}
             isWatchlisted={isWatchlisted(result.summary.ticker)}
             onToggleWatchlist={() => onToggleWatchlist(result.summary.ticker)}
+            isCompareSelected={isCompareSelected(result.summary.ticker)}
+            onToggleCompare={() => onToggleCompare(result.summary.ticker)}
           />
         ))}
       </div>

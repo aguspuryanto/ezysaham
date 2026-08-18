@@ -1,6 +1,7 @@
 'use client';
 
-import { Search, SlidersHorizontal, TrendingUp } from 'lucide-react';
+import { GitCompare, Search, SlidersHorizontal, TrendingUp } from 'lucide-react';
+import Link from 'next/link';
 import { SITE_NAME, SITE_SLOGAN } from '@/lib/site';
 import { AuthButton } from '@/presentation/features/auth/AuthButton';
 
@@ -53,6 +54,15 @@ export function AppHeader({
             className="w-full neo-border bg-white py-2 pl-9 pr-3 text-sm font-medium text-zinc-900 outline-none transition-shadow placeholder:text-zinc-400 focus:shadow-(--neo-shadow-sm) dark:bg-zinc-900 dark:text-zinc-100"
           />
         </div>
+
+        <Link
+          href="/compare"
+          aria-label="Bandingkan saham"
+          title="Bandingkan Saham"
+          className="neo-press flex size-9 shrink-0 items-center justify-center neo-border bg-white text-zinc-900 neo-shadow-sm dark:bg-zinc-900 dark:text-zinc-100"
+        >
+          <GitCompare className="size-4" strokeWidth={2.5} />
+        </Link>
 
         {/*  EOD • Jum, 08 Agu • 15:00 */}
         {lastUpdatedAt && (

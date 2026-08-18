@@ -5,6 +5,7 @@ import {
   Crosshair,
   Eye,
   Flame,
+  GitCompare,
   LayoutGrid,
   Loader2,
   RefreshCw,
@@ -15,6 +16,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
 import { StockSummary } from '@/domain/models/Stock';
@@ -71,7 +73,17 @@ export function ScreenerPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(RESULTS_LIMIT);
+  const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const watchlist = useWatchlist();
+
+  const toggleCompare = useCallback((ticker: string) => {
+    setCompareSelection((prev) => {
+      if (prev.includes(ticker)) return prev.filter((t) => t !== ticker);
+      if (prev.length >= 2) return [prev[1], ticker]; // drop the oldest, keep the newest 2
+      return [...prev, ticker];
+    });
+  }, []);
+  const isCompareSelected = useCallback((ticker: string) => compareSelection.includes(ticker), [compareSelection]);
 
   // Mobile sidebar drawer: lock body scroll and allow Escape to close while open.
   useEffect(() => {
@@ -381,6 +393,8 @@ export function ScreenerPage() {
             view={view}
             isWatchlisted={watchlist.has}
             onToggleWatchlist={watchlist.toggle}
+            isCompareSelected={isCompareSelected}
+            onToggleCompare={toggleCompare}
           />
 
           {hasMoreResults && (
@@ -396,6 +410,35 @@ export function ScreenerPage() {
       </div>
 
       <BottomNav items={FILTER_ITEMS} selected={filterId} onSelect={handleSelectFilter} />
+
+      {compareSelection.length > 0 && (
+        <div className="fixed inset-x-0 bottom-16 z-40 flex justify-center px-4 lg:bottom-4">
+          <div className="flex items-center gap-3 neo-border neo-shadow-lg bg-white px-4 py-2.5 dark:bg-zinc-900">
+            <GitCompare className="size-4 shrink-0 text-blue-500" strokeWidth={2.5} />
+            <span className="text-sm font-bold text-zinc-700 dark:text-zinc-200">
+              {compareSelection.length === 2
+                ? `${compareSelection[0]} vs ${compareSelection[1]}`
+                : `${compareSelection[0]} dipilih — pilih 1 saham lagi`}
+            </span>
+            {compareSelection.length === 2 && (
+              <Link
+                href={`/compare?a=${compareSelection[0]}&b=${compareSelection[1]}`}
+                className="neo-press neo-border neo-shadow-sm bg-(--neo-accent) px-3 py-1.5 text-sm font-bold text-black"
+              >
+                Bandingkan →
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => setCompareSelection([])}
+              aria-label="Batalkan pilihan bandingkan"
+              className="flex size-7 shrink-0 items-center justify-center text-zinc-400 hover:text-rose-500"
+            >
+              <X className="size-4" strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
