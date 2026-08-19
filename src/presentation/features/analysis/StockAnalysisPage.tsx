@@ -20,6 +20,7 @@ import {
   BookmarkCheck,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   Crosshair,
   ExternalLink,
   HelpCircle,
@@ -240,6 +241,9 @@ function ScenarioCard({ type, entry, avgDown, tp1, tp2, sl, rr, notes }: {
 // 🤖 AI STOCK ADVISOR HERO CARD (Penjelasan Alasan Beli vs Hindari)
 // ─────────────────────────────────────────────────────────────────────────────
 function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdvisor; onViewDetails?: () => void }) {
+  const [showBuyReasons, setShowBuyReasons] = useState(false);
+  const [showAvoidReasons, setShowAvoidReasons] = useState(false);
+  const [showExecutiveSummary, setShowExecutiveSummary] = useState(false);
   const verdictBgMap = {
     green: 'bg-emerald-50 dark:bg-emerald-500/10',
     amber: 'bg-amber-50 dark:bg-amber-500/10',
@@ -322,52 +326,84 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
         ))}
       </div>
 
-      {/* Reasons to Buy */}
+      {/* Reasons to Buy (collapsible, default hidden) */}
       <div className="neo-border bg-emerald-50 dark:bg-emerald-500/10 p-3 space-y-2">
-        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold uppercase text-sm">
-          <CheckCircle2 className="size-3.5 shrink-0" strokeWidth={2.5} />
-          Alasan Membeli
-        </div>
-        <ul className="space-y-1.5">
-          {advisor.buyReasons.map((reason, idx) => (
-            <li key={idx} className="flex items-start gap-1.5 text-sm text-zinc-700 dark:text-zinc-300 leading-snug">
-              <span className="shrink-0 text-emerald-600 dark:text-emerald-400 font-bold">✓</span>
-              <span>{reason}</span>
-            </li>
-          ))}
-        </ul>
+        <button
+          type="button"
+          onClick={() => setShowBuyReasons((v) => !v)}
+          aria-expanded={showBuyReasons}
+          className="flex w-full items-center justify-between gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold uppercase text-sm"
+        >
+          <span className="flex items-center gap-1.5">
+            <CheckCircle2 className="size-3.5 shrink-0" strokeWidth={2.5} />
+            Alasan Membeli
+          </span>
+          <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', showBuyReasons && 'rotate-180')} strokeWidth={2.5} />
+        </button>
+        {showBuyReasons && (
+          <ul className="space-y-1.5">
+            {advisor.buyReasons.map((reason, idx) => (
+              <li key={idx} className="flex items-start gap-1.5 text-sm text-zinc-700 dark:text-zinc-300 leading-snug">
+                <span className="shrink-0 text-emerald-600 dark:text-emerald-400 font-bold">✓</span>
+                <span>{reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      {/* Reasons to Avoid */}
+      {/* Reasons to Avoid (collapsible, default hidden) */}
       <div className="neo-border bg-rose-50 dark:bg-rose-500/10 p-3 space-y-2">
-        <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400 font-bold uppercase text-sm">
-          <XCircle className="size-3.5 shrink-0" strokeWidth={2.5} />
-          Alasan Menghindari
-        </div>
-        <ul className="space-y-1.5">
-          {advisor.avoidReasons.map((reason, idx) => (
-            <li key={idx} className="flex items-start gap-1.5 text-sm text-zinc-700 dark:text-zinc-300 leading-snug">
-              <span className="shrink-0 text-rose-600 dark:text-rose-400 font-bold">⚠️</span>
-              <span>{reason}</span>
-            </li>
-          ))}
-        </ul>
+        <button
+          type="button"
+          onClick={() => setShowAvoidReasons((v) => !v)}
+          aria-expanded={showAvoidReasons}
+          className="flex w-full items-center justify-between gap-1.5 text-rose-700 dark:text-rose-400 font-bold uppercase text-sm"
+        >
+          <span className="flex items-center gap-1.5">
+            <XCircle className="size-3.5 shrink-0" strokeWidth={2.5} />
+            Alasan Menghindari
+          </span>
+          <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', showAvoidReasons && 'rotate-180')} strokeWidth={2.5} />
+        </button>
+        {showAvoidReasons && (
+          <ul className="space-y-1.5">
+            {advisor.avoidReasons.map((reason, idx) => (
+              <li key={idx} className="flex items-start gap-1.5 text-sm text-zinc-700 dark:text-zinc-300 leading-snug">
+                <span className="shrink-0 text-rose-600 dark:text-rose-400 font-bold">⚠️</span>
+                <span>{reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      {/* Executive Summary & Actionable Trade Plan */}
+      {/* Executive Summary & Actionable Trade Plan (collapsible, default hidden) */}
       <div className="neo-border bg-white dark:bg-zinc-900 p-3 space-y-2">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Rangkuman Eksekutif
-        </p>
-        <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
-          {advisor.executiveSummary}
-        </p>
-        <div className="pt-2 border-t-2 border-(--neo-line) flex items-start gap-1.5">
-          <Target className="size-3.5 text-emerald-500 mt-0.5 shrink-0" strokeWidth={2.5} />
-          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 leading-relaxed">
-            {advisor.tradingRecommendation}
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowExecutiveSummary((v) => !v)}
+          aria-expanded={showExecutiveSummary}
+          className="flex w-full items-center justify-between gap-1.5"
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Rangkuman Eksekutif
+          </span>
+          <ChevronDown className={cn('size-3.5 shrink-0 text-zinc-400 transition-transform', showExecutiveSummary && 'rotate-180')} strokeWidth={2.5} />
+        </button>
+        {showExecutiveSummary && (
+          <>
+            <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
+              {advisor.executiveSummary}
+            </p>
+            <div className="pt-2 border-t-2 border-(--neo-line) flex items-start gap-1.5">
+              <Target className="size-3.5 text-emerald-500 mt-0.5 shrink-0" strokeWidth={2.5} />
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                {advisor.tradingRecommendation}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* {onViewDetails && (
@@ -379,6 +415,199 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
           Lihat detail lengkap di tab AI Summary →
         </button>
       )} */}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 📐 SCORING CARD — Sistem Scoring "7-Confirmation IDX" (EMA200/50/20, RSI, MACD, Volume)
+// ─────────────────────────────────────────────────────────────────────────────
+interface ScoringFactor {
+  label: string;
+  detail: string;
+  score: number;
+  max: number;
+}
+
+function ScoringCard({
+  price,
+  trendEma,
+  indicators,
+  volume,
+}: {
+  price: number;
+  trendEma: TrendEmaAnalysis;
+  indicators: IndicatorAnalysis;
+  volume: VolumeAnalysis;
+}) {
+  const priceAboveEma200 = price > trendEma.ema200;
+  const ema200Rising = trendEma.trend === 'bullish';
+  const ema50Rising = trendEma.trend !== 'bearish';
+  const ema50AboveEma200 = trendEma.ema50 > trendEma.ema200;
+  const momentumStackBullish = trendEma.priceVsEma20 === 'above' && trendEma.higherLows;
+
+  const factors: ScoringFactor[] = useMemo(() => {
+    // 1. EMA 200 — filter tren utama (maks 25)
+    const ema200Score = (priceAboveEma200 ? 15 : 0) + (ema200Rising ? 10 : 0);
+
+    // 2. EMA 50 — struktur tren menengah (maks 15)
+    const ema50Score =
+      (ema50Rising ? 5 : 0) +
+      (trendEma.priceVsEma50 === 'above' ? 5 : 0) +
+      (ema50AboveEma200 ? 5 : 0);
+
+    // 3. EMA 9/21 — area pullback & momentum (maks 10, proxy: EMA20 + higher-low structure)
+    const emaFastScore = momentumStackBullish ? 10 : trendEma.priceVsEma20 === 'above' ? 5 : 0;
+
+    // 4. RSI 14 — zona favorit 50–65 (maks 10)
+    const rsi = indicators.rsi14;
+    const rsiScore = rsi >= 50 && rsi <= 65 ? 10 : rsi > 65 && rsi <= 70 ? 5 : 0;
+
+    // 5. MACD — konfirmasi momentum (maks 15, minus jika bearish)
+    const macdScore =
+      indicators.macdSignalType === 'bullish_crossover' || (indicators.macdSignalType === 'bullish' && indicators.macdValue > 0)
+        ? 15
+        : indicators.macdSignalType === 'bullish'
+          ? 7
+          : indicators.macdSignalType === 'bearish_crossover' || indicators.macdSignalType === 'bearish'
+            ? -10
+            : 0;
+
+    // 6. Volume — konfirmasi transaksi (maks 10)
+    const rvol = volume.relativeVolume;
+    const volumeScore = rvol >= 2 ? 10 : rvol >= 1.5 ? 7 : rvol >= 1 ? 3 : 0;
+
+    return [
+      {
+        label: 'EMA 200',
+        detail: priceAboveEma200 ? (ema200Rising ? 'Harga di atas & EMA200 menanjak' : 'Harga di atas EMA200') : 'Harga di bawah EMA200 — hindari agresif',
+        score: ema200Score,
+        max: 25,
+      },
+      {
+        label: 'EMA 50',
+        detail: ema50AboveEma200 && trendEma.priceVsEma50 === 'above' ? 'Struktur menengah sehat (>EMA50>EMA200)' : 'Struktur menengah belum ideal',
+        score: ema50Score,
+        max: 15,
+      },
+      {
+        label: 'EMA 9/21',
+        detail: momentumStackBullish ? 'Momentum & higher-low bullish' : trendEma.priceVsEma20 === 'above' ? 'Harga di atas EMA20' : 'Momentum lemah',
+        score: emaFastScore,
+        max: 10,
+      },
+      {
+        label: 'RSI 14',
+        detail: `RSI ${fmtN(rsi, 1)} — ${rsi < 50 ? 'momentum lemah' : rsi <= 65 ? 'zona favorit' : rsi <= 70 ? 'momentum kuat' : 'overbought, jangan kejar'}`,
+        score: rsiScore,
+        max: 10,
+      },
+      {
+        label: 'MACD',
+        detail: indicators.macdNote,
+        score: macdScore,
+        max: 15,
+      },
+      {
+        label: 'Volume',
+        detail: `RVOL ${fmtN(rvol, 2)}x rata-rata 20 hari`,
+        score: volumeScore,
+        max: 10,
+      },
+    ];
+  }, [
+    indicators.macdNote,
+    indicators.macdSignalType,
+    indicators.macdValue,
+    indicators.rsi14,
+    ema200Rising,
+    ema50AboveEma200,
+    ema50Rising,
+    momentumStackBullish,
+    priceAboveEma200,
+    trendEma.priceVsEma20,
+    trendEma.priceVsEma50,
+    volume.relativeVolume,
+  ]);
+
+  const totalScore = factors.reduce((sum, f) => sum + f.score, 0);
+  const maxScore = factors.reduce((sum, f) => sum + f.max, 0);
+
+  const classification =
+    totalScore >= 70
+      ? { label: 'STRONG BUY', tone: 'green' as const }
+      : totalScore >= 60
+        ? { label: 'BUY', tone: 'green' as const }
+        : totalScore >= 50
+          ? { label: 'WATCHLIST', tone: 'amber' as const }
+          : totalScore >= 40
+            ? { label: 'HOLD / WAIT', tone: 'amber' as const }
+            : { label: 'AVOID', tone: 'red' as const };
+
+  const badgeToneClass = {
+    green: 'bg-emerald-600 text-white',
+    amber: 'bg-amber-500 text-white',
+    red: 'bg-rose-600 text-white',
+  };
+  const barToneClass = {
+    green: 'bg-emerald-500',
+    amber: 'bg-amber-400',
+    red: 'bg-rose-500',
+  };
+
+  return (
+    <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+          <Activity className="size-4 text-zinc-400" strokeWidth={2.5} />
+          Scoring
+        </h3>
+        <span className={cn('neo-border px-2.5 py-0.5 text-[11px] font-bold', badgeToneClass[classification.tone])}>
+          {classification.label}
+        </span>
+      </div>
+
+      <div className="flex items-end justify-between">
+        <span className="text-[10px] font-bold uppercase text-zinc-400">Total Skor</span>
+        <span className={cn(
+          'font-mono text-xl font-bold tabular-nums',
+          classification.tone === 'green' ? 'text-emerald-600 dark:text-emerald-400' : classification.tone === 'amber' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
+        )}>
+          {totalScore}/{maxScore}
+        </span>
+      </div>
+      <div className="h-2.5 w-full border-2 border-(--neo-line) bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+        <div
+          className={cn('h-full transition-all', barToneClass[classification.tone])}
+          style={{ width: `${Math.min(100, Math.max(0, (totalScore / maxScore) * 100))}%` }}
+        />
+      </div>
+
+      <div className="space-y-2.5 pt-1">
+        {factors.map((f) => (
+          <div key={f.label}>
+            <div className="flex justify-between items-baseline text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+              <span className="truncate">{f.label} <span className="opacity-60">(maks {f.max})</span></span>
+              <span className={cn(
+                'font-mono text-sm font-bold shrink-0',
+                f.score <= 0 ? 'text-rose-600 dark:text-rose-400' : f.score >= f.max * 0.7 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+              )}>
+                {f.score > 0 ? `+${f.score}` : f.score}
+              </span>
+            </div>
+            <div className="h-2 w-full border-2 border-(--neo-line) bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+              <div
+                className={cn(
+                  'h-full transition-all',
+                  f.score <= 0 ? 'bg-rose-500' : f.score >= f.max * 0.7 ? 'bg-emerald-500' : 'bg-amber-400'
+                )}
+                style={{ width: `${Math.min(100, Math.max(0, (f.score / f.max) * 100))}%` }}
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug">{f.detail}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1276,6 +1505,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         {/* Right Sidebar: AI Stock Advisor, Trading Plan Summary, Similar Stocks */}
         <aside className="space-y-5 lg:sticky lg:top-20">
           <AiStockAdvisorSidebar advisor={advisor} onViewDetails={() => setActiveTab('ai_summary')} />
+          <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
           <TradingPlanSidebarCard plan={tradingPlan} />
           <SimilarStocksSidebarCard stocks={similarStocks} />
         </aside>
