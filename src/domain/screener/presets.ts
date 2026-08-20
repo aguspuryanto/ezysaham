@@ -1,5 +1,6 @@
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
+import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { ema, lastValid, sma } from '@/domain/indicators/movingAverages';
 import { macd } from '@/domain/indicators/macd';
 import { rsi } from '@/domain/indicators/rsi';
@@ -212,10 +213,13 @@ export interface ScreenerPreset {
   criteria: string[];
   /** Cheap, summary-only check used to shortlist candidates before fetching OHLCV history. */
   coarseFilter: (s: StockSummary) => boolean;
-  /** Full check once OHLCV bars are available for a shortlisted candidate. */
-  evaluate: (s: StockSummary, bars: OHLCVBar[]) => PresetEvaluation;
+  /** Full check once OHLCV bars are available for a shortlisted candidate. `fundamentals` is
+   *  only populated when `needsFundamentals` is true; other presets can ignore the 3rd param. */
+  evaluate: (s: StockSummary, bars: OHLCVBar[], fundamentals?: FundamentalDetail | null) => PresetEvaluation;
   /** Set to false to skip the per-ticker OHLCV fetch entirely (preset only needs summary fields). Defaults to true. */
   needsHistory?: boolean;
+  /** Set to true to fetch per-ticker Yahoo Finance fundamentals (dividend, debt/equity, current ratio) for shortlisted candidates. Defaults to false. */
+  needsFundamentals?: boolean;
 }
 
 function verdict(checks: Array<[boolean, string]>): PresetEvaluation {
@@ -1231,15 +1235,17 @@ const dayTradingPreset: ScreenerPreset = {
 };
 
 // ── Fundamental ───────────────────────────────────────────────────────────────
-// Menilai kualitas bisnis (profitabilitas) + kewajaran harga (valuasi), bukan
-// hanya "PER murah = bagus". Data fundamental yang tersedia di sumber data ini
-// (ringkasan Pasardana) hanya ROE, PER, PBV, free float, dan kapitalisasi —
-// TIDAK ada data pertumbuhan EPS/revenue, laporan arus kas, atau rasio utang
-// (DER/interest coverage), jadi skor "Growth", "Cash Flow", "Balance Sheet",
-// dan "Dividend" dari kerangka fundamental yang lebih lengkap sengaja tidak
-// dibuat di sini — lebih baik tidak menampilkan skor daripada menampilkan
-// angka yang direka-reka. Preset ini tidak butuh OHLCV sama sekali
-// (needsHistory: false) karena seluruh input sudah ada di StockSummary.
+// Menilai kualitas bisnis (profitabilitas) + kewajaran harga (valuasi) + kesehatan
+// neraca + keberlanjutan dividen. StockSummary (ringkasan Pasardana) hanya punya
+// ROE, PER, PBV, free float, dan kapitalisasi — Debt/Equity, Current Ratio,
+// Dividend Yield, dan Payout Ratio diambil dari Yahoo Finance per-ticker
+// (lihat data/external/yahooFundamentals.ts). Endpoint itu tidak resmi dan bisa
+// gagal/rate-limited kapan saja, dan sebagian saham (terutama bank, karena
+// struktur neracanya beda) memang tidak punya data Debt/Equity di Yahoo sama
+// sekali — karena itu financialHealth & dividend bisa null, dan composite
+// di-reweight otomatis atas dimensi yang tersedia saja, bukan dipaksa nol.
+// Growth (EPS/revenue CAGR) dan Cash Flow masih belum ada — data historis
+// laporan keuangan multi-tahun tidak tersedia stabil di endpoint ini.
 
 export interface FundamentalScore {
   /** 0-100 — dari ROE: seberapa efisien perusahaan menghasilkan laba dari modal */
@@ -1248,9 +1254,15 @@ export interface FundamentalScore {
   valuation: number;
   /** 0-100 — dari free float & nilai transaksi: proxy keandalan harga/rasio (saham tipis rawan distorsi) */
   qualityGate: number;
-  /** Komposit tertimbang: Profitability 50% + Valuation 35% + Quality Gate 15% */
+  /** 0-100 — dari Debt/Equity & Current Ratio (Yahoo Finance). Null bila data tidak tersedia (umum untuk bank). */
+  financialHealth: number | null;
+  /** 0-100 — dari Dividend Yield & Payout Ratio (Yahoo Finance). Null bila fetch data gagal total. */
+  dividend: number | null;
+  /** Komposit tertimbang atas dimensi yang tersedia: Profitability 30 / Valuation 25 / Financial Health 20 / Dividend 15 / Quality Gate 10 */
   composite: number;
   status: 'EXCELLENT' | 'GOOD' | 'FAIR' | 'WEAK';
+  /** Catatan transparansi ketika satu atau lebih dimensi tidak tersedia untuk saham ini. */
+  dataNotes: string[];
 }
 
 function calcProfitabilityScore(roe: number): number {
@@ -1299,12 +1311,82 @@ function calcFundamentalQualityGate(s: StockSummary): number {
   return Math.round((freeFloatScore + liquidityScore) / 2);
 }
 
-export function computeFundamentalScore(s: StockSummary): FundamentalScore {
+/** Debt/Equity is already a percentage number in Yahoo's schema (18.1 means 0.18x),
+ *  unlike dividendYield/payoutRatio which arrive as fractions — see yahooFundamentals.ts. */
+function calcFinancialHealthScore(debtToEquity: number | null, currentRatio: number | null): number | null {
+  const scores: number[] = [];
+
+  if (debtToEquity != null) {
+    if (debtToEquity <= 30) scores.push(100);
+    else if (debtToEquity <= 60) scores.push(80);
+    else if (debtToEquity <= 100) scores.push(60);
+    else if (debtToEquity <= 150) scores.push(35);
+    else scores.push(15);
+  }
+
+  if (currentRatio != null) {
+    if (currentRatio >= 2) scores.push(100);
+    else if (currentRatio >= 1.5) scores.push(80);
+    else if (currentRatio >= 1) scores.push(60);
+    else if (currentRatio >= 0.75) scores.push(35);
+    else scores.push(15);
+  }
+
+  if (scores.length === 0) return null;
+  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+}
+
+/** Rewards sustainable dividends over the highest yield — a very high yield with a
+ *  payout ratio above 100% is a cut risk, not a bargain (value-trap logic from the
+ *  broader fundamental framework this preset is scoped down from). */
+function calcDividendScore(dividendYield: number | null, payoutRatio: number | null): number | null {
+  if (dividendYield == null) return null; // Yahoo fetch failed entirely
+  if (dividendYield <= 0) return 40; // tidak bayar dividen — netral, bukan otomatis buruk
+
+  let yieldScore: number;
+  if (dividendYield <= 2) yieldScore = 55;
+  else if (dividendYield <= 4) yieldScore = 75;
+  else if (dividendYield <= 7) yieldScore = 90;
+  else yieldScore = 70; // yield sangat tinggi — waspada, bisa jadi tidak berkelanjutan
+
+  if (payoutRatio == null) return yieldScore;
+
+  let payoutScore: number;
+  if (payoutRatio <= 0) payoutScore = 50;
+  else if (payoutRatio <= 60) payoutScore = 100;
+  else if (payoutRatio <= 80) payoutScore = 75;
+  else if (payoutRatio <= 100) payoutScore = 45;
+  else payoutScore = 15; // bayar melebihi laba — risiko dipotong
+
+  return Math.round(yieldScore * 0.5 + payoutScore * 0.5);
+}
+
+/** Weighted average over only the dimensions that have data — a missing dimension
+ *  drops out of both numerator and denominator instead of dragging the score to 0. */
+function weightedComposite(dims: Array<{ score: number | null; weight: number }>): number {
+  const available = dims.filter((d): d is { score: number; weight: number } => d.score != null);
+  const totalWeight = available.reduce((sum, d) => sum + d.weight, 0);
+  if (totalWeight === 0) return 0;
+  const weightedSum = available.reduce((sum, d) => sum + d.score * d.weight, 0);
+  return Math.round(weightedSum / totalWeight);
+}
+
+export function computeFundamentalScore(s: StockSummary, fundamentals: FundamentalDetail | null): FundamentalScore {
   const profitability = calcProfitabilityScore(s.roe);
   const valuation = calcValuationScore(s.per, s.pbv);
   const qualityGate = calcFundamentalQualityGate(s);
+  const financialHealth = fundamentals
+    ? calcFinancialHealthScore(fundamentals.debtToEquity, fundamentals.currentRatio)
+    : null;
+  const dividend = fundamentals ? calcDividendScore(fundamentals.dividendYield, fundamentals.dividendPayoutRatio) : null;
 
-  const composite = clamp(profitability * 0.5 + valuation * 0.35 + qualityGate * 0.15);
+  const composite = weightedComposite([
+    { score: profitability, weight: 30 },
+    { score: valuation, weight: 25 },
+    { score: financialHealth, weight: 20 },
+    { score: dividend, weight: 15 },
+    { score: qualityGate, weight: 10 },
+  ]);
 
   let status: FundamentalScore['status'];
   if (composite >= 80) status = 'EXCELLENT';
@@ -1312,32 +1394,46 @@ export function computeFundamentalScore(s: StockSummary): FundamentalScore {
   else if (composite >= 50) status = 'FAIR';
   else status = 'WEAK';
 
+  const dataNotes: string[] = [];
+  if (!fundamentals) {
+    dataNotes.push('Dividend & Financial Health tidak berhasil diambil dari Yahoo Finance — skor hanya berbasis Profitability, Valuation, dan Quality Gate.');
+  } else {
+    if (financialHealth == null) dataNotes.push('Financial Health tidak tersedia untuk saham ini (umum terjadi pada saham perbankan).');
+    if (dividend == null) dataNotes.push('Data dividen tidak tersedia dari Yahoo Finance untuk saham ini.');
+  }
+
   return {
     profitability: Math.round(profitability),
     valuation: Math.round(valuation),
     qualityGate: Math.round(qualityGate),
-    composite: Math.round(composite),
+    financialHealth,
+    dividend,
+    composite,
     status,
+    dataNotes,
   };
 }
 
 const fundamentalPreset: ScreenerPreset = {
   id: 'fundamental',
   label: 'Fundamental',
-  description: 'Saham dengan bisnis menguntungkan (ROE) dan harga yang belum terlalu mahal (PER & PBV). Skor berbasis data ringkasan saja — tidak ada data pertumbuhan laba, arus kas, atau rasio utang di sumber data ini, jadi skor ini adalah pandangan sebagian (Profitability + Valuation), bukan analisis fundamental lengkap.',
+  description: 'Saham dengan bisnis menguntungkan (ROE), harga yang belum terlalu mahal (PER & PBV), neraca sehat (Debt/Equity, Current Ratio), dan dividen yang berkelanjutan (bukan sekadar yield tertinggi). Debt/Equity & dividen diambil dari Yahoo Finance dan bisa tidak tersedia untuk sebagian saham (terutama bank) — skor tetap dihitung dari dimensi yang ada, bukan dipaksakan.',
   criteria: [
-    'Profitability 50% — ROE (Return on Equity)',
-    'Valuation 35% — PER & PBV (lebih rendah = lebih menarik)',
-    'Quality Gate 15% — free float & nilai transaksi (proxy keandalan harga)',
+    'Profitability 30% — ROE (Return on Equity)',
+    'Valuation 25% — PER & PBV (lebih rendah = lebih menarik)',
+    'Financial Health 20% — Debt/Equity & Current Ratio (via Yahoo Finance, sering tidak tersedia untuk saham bank)',
+    'Dividend 15% — Dividend Yield & Payout Ratio (menilai keberlanjutan, bukan yield tertinggi)',
+    'Quality Gate 10% — free float & nilai transaksi (proxy keandalan harga)',
     'ROE > 0 — perusahaan harus profitable',
     'PER > 0 — mengeluarkan saham rugi (PER negatif)',
     'Fundamental Score ≥ 55',
-    '⚠️ Belum mencakup pertumbuhan EPS/revenue, arus kas, dan rasio utang — data tidak tersedia di sumber ini',
+    '⚠️ Belum mencakup pertumbuhan EPS/revenue dan arus kas — menyusul di iterasi berikutnya',
   ],
   needsHistory: false,
+  needsFundamentals: true,
   coarseFilter: (s) => s.roe > 0 && s.per > 0,
-  evaluate: (s) => {
-    const fundamentalScore = computeFundamentalScore(s);
+  evaluate: (s, _bars, fundamentals) => {
+    const fundamentalScore = computeFundamentalScore(s, fundamentals ?? null);
     const passed = fundamentalScore.composite >= 55 && s.roe > 0 && s.per > 0;
 
     const reasons: string[] = [];
@@ -1353,8 +1449,18 @@ const fundamentalPreset: ScreenerPreset = {
     if (fundamentalScore.valuation >= 60) reasons.push(`Valuasi menarik (PER ${s.per.toFixed(1)}x, PBV ${s.pbv.toFixed(1)}x)`);
     else failed.push(`Valuasi kurang menarik (PER ${s.per.toFixed(1)}x, PBV ${s.pbv.toFixed(1)}x)`);
 
-    if (fundamentalScore.qualityGate >= 55) reasons.push(`Free float & likuiditas memadai`);
-    else failed.push(`Free float/likuiditas rendah — harga rawan distorsi`);
+    if (fundamentalScore.financialHealth != null) {
+      if (fundamentalScore.financialHealth >= 60) reasons.push(`Financial Health sehat (skor ${fundamentalScore.financialHealth}/100)`);
+      else failed.push(`Financial Health lemah (skor ${fundamentalScore.financialHealth}/100)`);
+    }
+
+    if (fundamentalScore.dividend != null) {
+      if (fundamentalScore.dividend >= 60) reasons.push(`Dividend sehat/berkelanjutan (skor ${fundamentalScore.dividend}/100)`);
+      else failed.push(`Dividend kurang menarik atau berisiko dipotong (skor ${fundamentalScore.dividend}/100)`);
+    }
+
+    if (fundamentalScore.qualityGate >= 55) reasons.push('Free float & likuiditas memadai');
+    else failed.push('Free float/likuiditas rendah — harga rawan distorsi');
 
     return { passed, reasons, failed, fundamentalScore };
   },

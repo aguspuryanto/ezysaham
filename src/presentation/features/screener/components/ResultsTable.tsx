@@ -376,6 +376,14 @@ const FUNDAMENTAL_STATUS_STYLES: Record<FundamentalScore['status'], string> = {
 };
 
 function FundamentalBadge({ score }: { score: FundamentalScore }) {
+  const bars: Array<{ label: string; value: number }> = [
+    { label: 'Profitability', value: score.profitability },
+    { label: 'Valuation', value: score.valuation },
+    ...(score.financialHealth != null ? [{ label: 'Financial Health', value: score.financialHealth }] : []),
+    ...(score.dividend != null ? [{ label: 'Dividend', value: score.dividend }] : []),
+    { label: 'Quality Gate', value: score.qualityGate },
+  ];
+
   return (
     <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
       {/* Status pill + composite */}
@@ -391,11 +399,7 @@ function FundamentalBadge({ score }: { score: FundamentalScore }) {
 
       {/* Mini score bars */}
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-        {([
-          { label: 'Profitability', value: score.profitability },
-          { label: 'Valuation', value: score.valuation },
-          { label: 'Quality Gate', value: score.qualityGate },
-        ] as const).map(({ label, value }) => (
+        {bars.map(({ label, value }) => (
           <div key={label}>
             <div className="flex items-center justify-between mb-0.5">
               <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
@@ -411,7 +415,14 @@ function FundamentalBadge({ score }: { score: FundamentalScore }) {
         ))}
       </div>
 
-      <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Berbasis ROE, PER, PBV — belum mencakup pertumbuhan, arus kas, atau utang.</p>
+      {score.dataNotes.length > 0 && (
+        <div className="space-y-0.5">
+          {score.dataNotes.map((note) => (
+            <p key={note} className="text-[10px] text-amber-600 dark:text-amber-400">⚠️ {note}</p>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Berbasis ROE, PER, PBV, Debt/Equity, Current Ratio, Dividend Yield/Payout — belum mencakup pertumbuhan atau arus kas.</p>
     </div>
   );
 }
@@ -522,6 +533,39 @@ function StockCard({
   );
 }
 
+// ── Composite score summary (table view — badges above are grid/card-only) ─────
+function compositeScoreInfo(evaluation: PresetEvaluation): { label: string; composite: number; className: string } | null {
+  if (evaluation.breakoutScores) {
+    const s = evaluation.breakoutScores;
+    return { label: s.status === 'BUY_WATCH' ? 'BUY WATCH' : s.status, composite: s.composite, className: STATUS_STYLES[s.status] };
+  }
+  if (evaluation.tradingPlan) {
+    const p = evaluation.tradingPlan;
+    return { label: TRADING_PLAN_STATUS_LABEL[p.status], composite: p.score, className: TRADING_PLAN_STATUS_STYLES[p.status] };
+  }
+  if (evaluation.araProbability) {
+    const a = evaluation.araProbability;
+    return { label: `ARA ${a.probability}`, composite: a.composite, className: ARA_PROBABILITY_STYLES[a.probability] };
+  }
+  if (evaluation.fundamentalScore) {
+    const f = evaluation.fundamentalScore;
+    return { label: f.status, composite: f.composite, className: FUNDAMENTAL_STATUS_STYLES[f.status] };
+  }
+  return null;
+}
+
+function ScoreBadge({ info }: { info: { label: string; composite: number; className: string } | null }) {
+  if (!info) return <span className="text-zinc-300 dark:text-zinc-700">—</span>;
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className={cn('inline-flex items-center border border-(--neo-line) px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', info.className)}>
+        {info.label}
+      </span>
+      <span className="font-mono text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{info.composite}/100</span>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Table row — navigates to /screener/[ticker]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -541,6 +585,7 @@ function StockTableRow({
   const { summary, evaluation } = result;
   const rvol = evaluation.relativeVolume;
   const volShares = summary.volume;
+  const scoreInfo = compositeScoreInfo(evaluation);
 
   return (
     <tr className={cn(
@@ -575,6 +620,11 @@ function StockTableRow({
             </div>
           </div>
         </Link>
+      </td>
+
+      {/* Skor (Breakout / Trading Plan / ARA Hunter / Fundamental — kosong untuk preset tanpa skor komposit) */}
+      <td className="px-4 py-3">
+        <ScoreBadge info={scoreInfo} />
       </td>
 
       {/* Perubahan % */}
@@ -687,6 +737,7 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist, 
             <tr>
               <th className="w-16 px-3 py-3" />
               <th className="px-4 py-3">Simbol</th>
+              <th className="px-4 py-3">Skor</th>
               <th className="px-4 py-3">Perubahan</th>
               <th className="px-4 py-3">Harga</th>
               <th className="px-4 py-3">Vol</th>

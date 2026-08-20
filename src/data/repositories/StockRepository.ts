@@ -1,6 +1,7 @@
 import { HistoryResponse, OHLCVBar } from '@/domain/models/History';
 import { IntradayResponse } from '@/domain/models/Intraday';
 import { StockSummary } from '@/domain/models/Stock';
+import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { mapToStockSummary, PasardanaStockItem } from '@/data/external/pasardana';
 import { AnalysisCacheManager } from '@/data/cache/analysisCache';
 
@@ -85,6 +86,18 @@ export async function getStockHistory(ticker: string, range = '6mo'): Promise<OH
   if (!response.ok) return [];
   const data: HistoryResponse = await response.json();
   return data.ok ? data.bars : [];
+}
+
+/** Returns null when Yahoo Finance data is unavailable for this ticker (rate limit,
+ *  stale session, or a real data gap) — callers must treat that as "unknown", not zero. */
+export async function getStockFundamentals(ticker: string): Promise<FundamentalDetail | null> {
+  try {
+    const response = await fetch(`/api/stocks/${ticker}/fundamentals`);
+    if (!response.ok) return null;
+    return (await response.json()) as FundamentalDetail | null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getStockIntraday(ticker: string): Promise<IntradayResponse> {

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
+import { getStockFundamentals, getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
 import { StockSummary } from '@/domain/models/Stock';
 import { ScreenerPresetId, SCREENER_PRESETS } from '@/domain/screener/presets';
 import { mapWithConcurrency } from '@/lib/concurrency';
@@ -140,13 +140,17 @@ export function ScreenerPage() {
     }
 
     const needsHistory = activePreset.needsHistory !== false;
+    const needsFundamentals = activePreset.needsFundamentals === true;
     let checked = 0;
     const evaluated = await mapWithConcurrency(shortlist, HISTORY_CONCURRENCY, async (summary) => {
-      const bars = needsHistory ? await getStockHistory(summary.ticker) : [];
+      const [bars, fundamentals] = await Promise.all([
+        needsHistory ? getStockHistory(summary.ticker) : Promise.resolve([]),
+        needsFundamentals ? getStockFundamentals(summary.ticker) : Promise.resolve(null),
+      ]);
       checked += 1;
       if (scanTokenRef.current === token) setProgress({ checked, total: shortlist.length });
       if (needsHistory && bars.length === 0) return null;
-      const evaluation = activePreset.evaluate(summary, bars);
+      const evaluation = activePreset.evaluate(summary, bars, fundamentals);
       return evaluation.passed ? { summary, evaluation } : null;
     });
 
