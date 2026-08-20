@@ -241,10 +241,10 @@ function ScenarioCard({ type, entry, avgDown, tp1, tp2, sl, rr, notes }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // 🤖 AI STOCK ADVISOR HERO CARD (Penjelasan Alasan Beli vs Hindari)
 // ─────────────────────────────────────────────────────────────────────────────
-function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdvisor; onViewDetails?: () => void }) {
-  const [showBuyReasons, setShowBuyReasons] = useState(false);
-  const [showAvoidReasons, setShowAvoidReasons] = useState(false);
-  const [showExecutiveSummary, setShowExecutiveSummary] = useState(false);
+function AiStockAdvisorSidebar({ advisor }: { advisor: AiStockAdvisor }) {
+  const [showBuyReasons, setShowBuyReasons] = useState(true);
+  const [showAvoidReasons, setShowAvoidReasons] = useState(true);
+  const [showExecutiveSummary, setShowExecutiveSummary] = useState(true);
   const verdictBgMap = {
     green: 'bg-emerald-50 dark:bg-emerald-500/10',
     amber: 'bg-amber-50 dark:bg-amber-500/10',
@@ -407,15 +407,6 @@ function AiStockAdvisorSidebar({ advisor, onViewDetails }: { advisor: AiStockAdv
         )}
       </div>
 
-      {/* {onViewDetails && (
-        <button
-          type="button"
-          onClick={onViewDetails}
-          className="w-full text-center text-sm font-medium text-emerald-700 dark:text-emerald-400 hover:underline"
-        >
-          Lihat detail lengkap di tab AI Summary →
-        </button>
-      )} */}
     </div>
   );
 }
@@ -1399,7 +1390,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
         {/* Right Sidebar: AI Stock Advisor, Trading Plan Summary, Similar Stocks */}
         <aside className="space-y-5 lg:sticky lg:top-20">
-          <AiStockAdvisorSidebar advisor={advisor} onViewDetails={() => setActiveTab('ai_summary')} />
+          <AiStockAdvisorSidebar advisor={advisor} />
           <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
           <TradingPlanSidebarCard plan={tradingPlan} />
           <SimilarStocksSidebarCard stocks={similarStocks} />
