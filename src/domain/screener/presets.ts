@@ -11,7 +11,7 @@ import { formatCompact } from '@/lib/format';
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -94,6 +94,8 @@ export interface PresetEvaluation {
   tradingPlan?: TradingPlanScore;
   /** Only present for the ARA Hunter preset */
   araProbability?: AraProbabilityScore;
+  /** Only present for the Fundamental preset */
+  fundamentalScore?: FundamentalScore;
   /** Relative volume (volume hari ini / volume MA20) — diisi oleh preset yang menghitungnya */
   relativeVolume?: number;
   /** Usia data OHLCV terakhir. Tier "stale" berarti data 3+ hari bursa lalu — jangan dipakai untuk keputusan Day Trading/ARA hari ini. */
@@ -212,6 +214,8 @@ export interface ScreenerPreset {
   coarseFilter: (s: StockSummary) => boolean;
   /** Full check once OHLCV bars are available for a shortlisted candidate. */
   evaluate: (s: StockSummary, bars: OHLCVBar[]) => PresetEvaluation;
+  /** Set to false to skip the per-ticker OHLCV fetch entirely (preset only needs summary fields). Defaults to true. */
+  needsHistory?: boolean;
 }
 
 function verdict(checks: Array<[boolean, string]>): PresetEvaluation {
@@ -1226,6 +1230,136 @@ const dayTradingPreset: ScreenerPreset = {
   },
 };
 
+// ── Fundamental ───────────────────────────────────────────────────────────────
+// Menilai kualitas bisnis (profitabilitas) + kewajaran harga (valuasi), bukan
+// hanya "PER murah = bagus". Data fundamental yang tersedia di sumber data ini
+// (ringkasan Pasardana) hanya ROE, PER, PBV, free float, dan kapitalisasi —
+// TIDAK ada data pertumbuhan EPS/revenue, laporan arus kas, atau rasio utang
+// (DER/interest coverage), jadi skor "Growth", "Cash Flow", "Balance Sheet",
+// dan "Dividend" dari kerangka fundamental yang lebih lengkap sengaja tidak
+// dibuat di sini — lebih baik tidak menampilkan skor daripada menampilkan
+// angka yang direka-reka. Preset ini tidak butuh OHLCV sama sekali
+// (needsHistory: false) karena seluruh input sudah ada di StockSummary.
+
+export interface FundamentalScore {
+  /** 0-100 — dari ROE: seberapa efisien perusahaan menghasilkan laba dari modal */
+  profitability: number;
+  /** 0-100 — dari PER & PBV: seberapa wajar harga saat ini */
+  valuation: number;
+  /** 0-100 — dari free float & nilai transaksi: proxy keandalan harga/rasio (saham tipis rawan distorsi) */
+  qualityGate: number;
+  /** Komposit tertimbang: Profitability 50% + Valuation 35% + Quality Gate 15% */
+  composite: number;
+  status: 'EXCELLENT' | 'GOOD' | 'FAIR' | 'WEAK';
+}
+
+function calcProfitabilityScore(roe: number): number {
+  if (roe >= 20) return 100;
+  if (roe >= 15) return 80;
+  if (roe >= 10) return 60;
+  if (roe >= 5) return 35;
+  if (roe > 0) return 15;
+  return 0;
+}
+
+function calcValuationScore(per: number, pbv: number): number {
+  let perScore: number;
+  if (per <= 0) perScore = 20; // rugi atau data tidak valid — skeptis, bukan otomatis nol
+  else if (per <= 8) perScore = 100;
+  else if (per <= 12) perScore = 85;
+  else if (per <= 18) perScore = 65;
+  else if (per <= 25) perScore = 45;
+  else if (per <= 35) perScore = 25;
+  else perScore = 10;
+
+  let pbvScore: number;
+  if (pbv <= 0) pbvScore = 30;
+  else if (pbv <= 1) pbvScore = 100;
+  else if (pbv <= 2) pbvScore = 80;
+  else if (pbv <= 3) pbvScore = 60;
+  else if (pbv <= 5) pbvScore = 35;
+  else pbvScore = 15;
+
+  return Math.round((perScore + pbvScore) / 2);
+}
+
+function calcFundamentalQualityGate(s: StockSummary): number {
+  let freeFloatScore: number;
+  if (s.freeFloat >= 30) freeFloatScore = 100;
+  else if (s.freeFloat >= 15) freeFloatScore = 70;
+  else if (s.freeFloat >= 7.5) freeFloatScore = 40;
+  else freeFloatScore = 15;
+
+  let liquidityScore: number;
+  if (s.value >= 20_000_000_000) liquidityScore = 100;
+  else if (s.value >= 5_000_000_000) liquidityScore = 70;
+  else if (s.value >= 1_000_000_000) liquidityScore = 40;
+  else liquidityScore = 15;
+
+  return Math.round((freeFloatScore + liquidityScore) / 2);
+}
+
+export function computeFundamentalScore(s: StockSummary): FundamentalScore {
+  const profitability = calcProfitabilityScore(s.roe);
+  const valuation = calcValuationScore(s.per, s.pbv);
+  const qualityGate = calcFundamentalQualityGate(s);
+
+  const composite = clamp(profitability * 0.5 + valuation * 0.35 + qualityGate * 0.15);
+
+  let status: FundamentalScore['status'];
+  if (composite >= 80) status = 'EXCELLENT';
+  else if (composite >= 65) status = 'GOOD';
+  else if (composite >= 50) status = 'FAIR';
+  else status = 'WEAK';
+
+  return {
+    profitability: Math.round(profitability),
+    valuation: Math.round(valuation),
+    qualityGate: Math.round(qualityGate),
+    composite: Math.round(composite),
+    status,
+  };
+}
+
+const fundamentalPreset: ScreenerPreset = {
+  id: 'fundamental',
+  label: 'Fundamental',
+  description: 'Saham dengan bisnis menguntungkan (ROE) dan harga yang belum terlalu mahal (PER & PBV). Skor berbasis data ringkasan saja — tidak ada data pertumbuhan laba, arus kas, atau rasio utang di sumber data ini, jadi skor ini adalah pandangan sebagian (Profitability + Valuation), bukan analisis fundamental lengkap.',
+  criteria: [
+    'Profitability 50% — ROE (Return on Equity)',
+    'Valuation 35% — PER & PBV (lebih rendah = lebih menarik)',
+    'Quality Gate 15% — free float & nilai transaksi (proxy keandalan harga)',
+    'ROE > 0 — perusahaan harus profitable',
+    'PER > 0 — mengeluarkan saham rugi (PER negatif)',
+    'Fundamental Score ≥ 55',
+    '⚠️ Belum mencakup pertumbuhan EPS/revenue, arus kas, dan rasio utang — data tidak tersedia di sumber ini',
+  ],
+  needsHistory: false,
+  coarseFilter: (s) => s.roe > 0 && s.per > 0,
+  evaluate: (s) => {
+    const fundamentalScore = computeFundamentalScore(s);
+    const passed = fundamentalScore.composite >= 55 && s.roe > 0 && s.per > 0;
+
+    const reasons: string[] = [];
+    const failed: string[] = [];
+
+    if (fundamentalScore.composite >= 55) reasons.push(`Fundamental Score ${fundamentalScore.composite}/100`);
+    else failed.push(`Fundamental Score lemah (${fundamentalScore.composite}/100)`);
+
+    if (fundamentalScore.profitability >= 60) reasons.push(`ROE ${s.roe.toFixed(1)}% — profitabilitas kuat`);
+    else if (s.roe > 0) failed.push(`ROE ${s.roe.toFixed(1)}% — profitabilitas lemah`);
+    else failed.push('ROE negatif — perusahaan merugi');
+
+    if (fundamentalScore.valuation >= 60) reasons.push(`Valuasi menarik (PER ${s.per.toFixed(1)}x, PBV ${s.pbv.toFixed(1)}x)`);
+    else failed.push(`Valuasi kurang menarik (PER ${s.per.toFixed(1)}x, PBV ${s.pbv.toFixed(1)}x)`);
+
+    if (fundamentalScore.qualityGate >= 55) reasons.push(`Free float & likuiditas memadai`);
+    else failed.push(`Free float/likuiditas rendah — harga rawan distorsi`);
+
+    return { passed, reasons, failed, fundamentalScore };
+  },
+};
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
@@ -1238,6 +1372,7 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   araHunter: araHunterPreset,
   smartMoneyHunter: smartMoneyHunterPreset,
   dayTrading: dayTradingPreset,
+  fundamental: fundamentalPreset,
 };
 
 export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
@@ -1250,4 +1385,5 @@ export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
   araHunterPreset,
   smartMoneyHunterPreset,
   dayTradingPreset,
+  fundamentalPreset,
 ];

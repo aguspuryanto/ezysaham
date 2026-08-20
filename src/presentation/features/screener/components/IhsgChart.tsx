@@ -10,9 +10,14 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { getIhsgHistory } from '@/data/repositories/MarketRepository';
 import { OHLCVBar } from '@/domain/models/History';
+import { computeMarketRegime, MarketRegimeEma, MarketRegimeResult } from '@/domain/analysis/marketRegimeEngine';
 import { cn, formatPercent } from '@/lib/format';
+
+/** Needs 200+ daily bars to seed EMA200 — '1y' gives ~250 trading days, independent of the chart's own range selector. */
+const REGIME_RANGE = '1y';
 
 const RANGES = [
   { key: '1mo', label: '1 bulan' },
@@ -76,6 +81,59 @@ function fmtIndex(n: number): string {
   return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(n);
 }
 
+function EmaTrendRow({ label, ema }: { label: string; ema: MarketRegimeEma }) {
+  const Icon = ema.rising ? ChevronUp : ChevronDown;
+  return (
+    <div className="flex items-center justify-between gap-2 text-[11px]">
+      <span className="font-semibold text-zinc-500 dark:text-zinc-400">{label}</span>
+      <span className={cn(
+        'flex items-center gap-0.5 font-mono font-bold',
+        ema.rising ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+      )}>
+        {fmtIndex(ema.value)}
+        <Icon className="size-3" strokeWidth={3} />
+      </span>
+    </div>
+  );
+}
+
+function MarketRegimeBadge({ regime }: { regime: MarketRegimeResult }) {
+  const toneMap = {
+    bullish: {
+      badge: 'bg-emerald-600 text-white',
+      icon: '🟢',
+    },
+    neutral: {
+      badge: 'bg-amber-500 text-white',
+      icon: '🟡',
+    },
+    bearish: {
+      badge: 'bg-rose-600 text-white',
+      icon: '🔴',
+    },
+  } as const;
+  const tone = toneMap[regime.regime];
+
+  return (
+    <div className="neo-border bg-zinc-50 p-3 dark:bg-zinc-800/60">
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn('neo-border px-2.5 py-1 text-xs font-bold tracking-wide', tone.badge)}>
+          {tone.icon} {regime.label}
+        </span>
+        <span className="font-mono text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
+          RSI {fmtIndex(regime.rsi14)} · MACD {regime.macdBullish ? 'Bullish' : 'Bearish'}
+        </span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+        <EmaTrendRow label="EMA 9" ema={regime.ema9} />
+        <EmaTrendRow label="EMA 21" ema={regime.ema21} />
+        <EmaTrendRow label="EMA 50" ema={regime.ema50} />
+        <EmaTrendRow label="EMA 200" ema={regime.ema200} />
+      </div>
+    </div>
+  );
+}
+
 export function IhsgChart() {
   const marketOpen = useMarketStatus();
   const [range, setRange] = useState<RangeKey>('1mo');
@@ -119,6 +177,20 @@ export function IhsgChart() {
 
     return () => clearInterval(interval);
   }, [range, fetchIhsg]);
+
+  // Market Regime needs 200+ daily bars to seed EMA200, independent of whatever
+  // display range the user picked for the chart itself — fetched separately.
+  // Deliberately mount-only: fetchIhsg's identity changes every time `cache`
+  // updates, so depending on it here would refetch in a loop.
+  useEffect(() => {
+    fetchIhsg(REGIME_RANGE, true);
+    const interval = setInterval(() => fetchIhsg(REGIME_RANGE, true), FIFTEEN_MINUTES_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const regimeBars = cache[REGIME_RANGE];
+  const marketRegime = useMemo(() => (regimeBars ? computeMarketRegime(regimeBars) : null), [regimeBars]);
 
   const bars = cache[range] ?? [];
   const chartData = useMemo(
@@ -208,6 +280,12 @@ export function IhsgChart() {
           ))}
         </div>
       </div>
+
+      {marketRegime && (
+        <div className="mt-3">
+          <MarketRegimeBadge regime={marketRegime} />
+        </div>
+      )}
 
       <div className="mt-3">
         {error ? (

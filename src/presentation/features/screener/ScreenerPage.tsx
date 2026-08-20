@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  Building2,
   Crosshair,
   Eye,
   Flame,
@@ -11,7 +12,6 @@ import {
   RefreshCw,
   Rocket,
   Table2,
-  Target,
   TrendingUp,
   X,
   Zap,
@@ -46,7 +46,8 @@ const FILTER_ITEMS: FilterChipItem[] = [
   { id: 'swingHunter', label: 'Swing Hunter', icon: Crosshair },
   // { id: 'araHunter', label: 'ARA Hunter', icon: Flame },
   // { id: 'smartMoneyHunter', label: 'Early Accumulation', icon: Eye },
-  { id: 'tradingPlan', label: 'Trading Plan', icon: Target },
+  // { id: 'tradingPlan', label: 'Trading Plan', icon: Target },
+  { id: 'fundamental', label: 'Fundamental', icon: Building2 },
   // { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
   // { id: 'ara', label: 'ARA', icon: Flame },
   // { id: 'bpjs', label: 'BPJS', icon: Zap },
@@ -138,12 +139,13 @@ export function ScreenerPage() {
       return;
     }
 
+    const needsHistory = activePreset.needsHistory !== false;
     let checked = 0;
     const evaluated = await mapWithConcurrency(shortlist, HISTORY_CONCURRENCY, async (summary) => {
-      const bars = await getStockHistory(summary.ticker);
+      const bars = needsHistory ? await getStockHistory(summary.ticker) : [];
       checked += 1;
       if (scanTokenRef.current === token) setProgress({ checked, total: shortlist.length });
-      if (bars.length === 0) return null;
+      if (needsHistory && bars.length === 0) return null;
       const evaluation = activePreset.evaluate(summary, bars);
       return evaluation.passed ? { summary, evaluation } : null;
     });

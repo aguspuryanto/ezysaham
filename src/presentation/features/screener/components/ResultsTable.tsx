@@ -1,7 +1,7 @@
-import { GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap } from 'lucide-react';
+import { Building2, GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { StockSummary } from '@/domain/models/Stock';
-import { AraProbabilityScore, BreakoutScores, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
+import { AraProbabilityScore, BreakoutScores, FundamentalScore, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
 import { DataFreshness } from '@/domain/analysis/dataFreshness';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 
@@ -367,6 +367,55 @@ function AraProbabilityBadge({ score }: { score: AraProbabilityScore }) {
   );
 }
 
+// ── Fundamental Score badge ───────────────────────────────────────────────────
+const FUNDAMENTAL_STATUS_STYLES: Record<FundamentalScore['status'], string> = {
+  EXCELLENT: 'bg-emerald-600 text-white dark:bg-emerald-600',
+  GOOD: 'bg-emerald-500 text-white dark:bg-emerald-600',
+  FAIR: 'bg-amber-400 text-white dark:bg-amber-500',
+  WEAK: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+};
+
+function FundamentalBadge({ score }: { score: FundamentalScore }) {
+  return (
+    <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
+      {/* Status pill + composite */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2.5 py-1 text-[11px] font-bold tracking-wide', FUNDAMENTAL_STATUS_STYLES[score.status])}>
+          <Building2 className="size-3" />
+          {score.status}
+        </span>
+        <span className="font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+          Score <span className="font-bold text-zinc-700 dark:text-zinc-200">{score.composite}</span>/100
+        </span>
+      </div>
+
+      {/* Mini score bars */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {([
+          { label: 'Profitability', value: score.profitability },
+          { label: 'Valuation', value: score.valuation },
+          { label: 'Quality Gate', value: score.qualityGate },
+        ] as const).map(({ label, value }) => (
+          <div key={label}>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
+              <span className="text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300">{value}</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden border border-(--neo-line) bg-zinc-100 dark:bg-zinc-800">
+              <div
+                className={cn('h-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
+                style={{ width: `${value}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Berbasis ROE, PER, PBV — belum mencakup pertumbuhan, arus kas, atau utang.</p>
+    </div>
+  );
+}
+
 // ── Empty state ────────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
@@ -401,6 +450,7 @@ function StockCard({
   const bScores = evaluation.breakoutScores;
   const tradingPlan = evaluation.tradingPlan;
   const araProbability = evaluation.araProbability;
+  const fundamentalScore = evaluation.fundamentalScore;
 
   return (
     <Link
@@ -446,6 +496,8 @@ function StockCard({
         <TradingPlanBadge plan={tradingPlan} />
       ) : araProbability ? (
         <AraProbabilityBadge score={araProbability} />
+      ) : fundamentalScore ? (
+        <FundamentalBadge score={fundamentalScore} />
       ) : evaluation.reasons.length + evaluation.failed.length > 0 ? (
         <TriggerChecklist reasons={evaluation.reasons} failed={evaluation.failed} />
       ) : (
