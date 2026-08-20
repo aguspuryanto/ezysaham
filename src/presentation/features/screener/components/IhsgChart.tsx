@@ -46,14 +46,14 @@ function isIdxOpen(now: Date): boolean {
   const m = wib.getUTCMinutes();
   const totalMin = h * 60 + m;
 
-  const PRE_OPEN  = 8 * 60 + 45;  // 08:45
-  const S1_CLOSE  = 11 * 60 + 30; // 11:30
-  const S2_OPEN   = 13 * 60 + 30; // 13:30
-  const S2_CLOSE  = 15 * 60 + 50; // 15:50
+  const PRE_OPEN = 8 * 60 + 45;  // 08:45
+  const S1_CLOSE = 11 * 60 + 30; // 11:30
+  const S2_OPEN = 13 * 60 + 30; // 13:30
+  const S2_CLOSE = 15 * 60 + 50; // 15:50
 
   return (
     (totalMin >= PRE_OPEN && totalMin < S1_CLOSE) ||
-    (totalMin >= S2_OPEN  && totalMin < S2_CLOSE)
+    (totalMin >= S2_OPEN && totalMin < S2_CLOSE)
   );
 }
 
@@ -281,11 +281,11 @@ export function IhsgChart() {
         </div>
       </div>
 
-      {marketRegime && (
+      {/* {marketRegime && (
         <div className="mt-3">
           <MarketRegimeBadge regime={marketRegime} />
         </div>
-      )}
+      )} */}
 
       <div className="mt-3">
         {error ? (
