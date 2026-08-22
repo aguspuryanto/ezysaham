@@ -7,12 +7,13 @@ import { rsi } from '@/domain/indicators/rsi';
 import { relativeVolume, volumeMA } from '@/domain/indicators/volume';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { computeDataFreshness, DataFreshness } from '@/domain/analysis/dataFreshness';
+import { computeBandarScore, BandarScoreResult } from '@/domain/analysis/bandarScore';
 import { formatCompact } from '@/lib/format';
 
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -97,6 +98,8 @@ export interface PresetEvaluation {
   araProbability?: AraProbabilityScore;
   /** Only present for the Fundamental preset */
   fundamentalScore?: FundamentalScore;
+  /** Only present for the Bandar Detector preset */
+  bandarScore?: BandarScoreResult;
   /** Relative volume (volume hari ini / volume MA20) — diisi oleh preset yang menghitungnya */
   relativeVolume?: number;
   /** Usia data OHLCV terakhir. Tier "stale" berarti data 3+ hari bursa lalu — jangan dipakai untuk keputusan Day Trading/ARA hari ini. */
@@ -1169,6 +1172,39 @@ const smartMoneyHunterPreset: ScreenerPreset = {
   },
 };
 
+// ── Bandar Detector ────────────────────────────────────────────────────────────
+// Proxy akumulasi/distribusi berbasis Price + Volume + OBV (pendekatan Wyckoff).
+// TIDAK memakai data Broker Summary/Foreign Flow asli — data itu tidak tersedia
+// lewat API gratis untuk saham IDX (lihat computeBandarScore untuk detail 5
+// faktor & disclaimer lengkapnya).
+
+const bandarDetectorPreset: ScreenerPreset = {
+  id: 'bandarDetector',
+  label: 'Bandar Detector',
+  description: 'Skor akumulasi/distribusi 100 poin dari Struktur Harga, Volume Signature, OBV Divergence, Fase Wyckoff, dan Effort vs Result. Proxy dari Price+Volume+OBV historis saja — Broker Summary & Foreign Flow asli tidak tersedia gratis untuk IDX, jadi tidak ikut dihitung.',
+  criteria: [
+    'Struktur Harga (maks 20) — basing/sideways + pola higher-low',
+    'Volume Signature (maks 20) — rasio volume naik vs turun, RVOL sedang naik',
+    'OBV Divergence (maks 25) — OBV menguat saat harga flat/turun = akumulasi tersembunyi',
+    'Fase Wyckoff (maks 20) — accumulation/markup/distribution/markdown + deteksi Spring',
+    'Effort vs Result (maks 15) — volume besar tapi harga hampir tidak bergerak = absorption',
+    'Lolos jika total skor ≥ 50 (Neutral ke atas)',
+  ],
+  coarseFilter: (s) => s.value > 1_000_000_000,
+  needsHistory: true,
+  evaluate: (s, bars) => {
+    const bandarScore = computeBandarScore(s, bars);
+    const freshness = computeDataFreshness(bars, new Date());
+
+    const result = verdict([
+      [bandarScore.total >= 50, `Skor Bandar Detector ${bandarScore.total}/100 — ${bandarScore.classification.label}`],
+      [!bandarScore.hiddenDistributionWarning, bandarScore.hiddenDistributionWarning ? 'Terdeteksi indikasi Hidden Distribution' : 'Tidak ada indikasi Hidden Distribution'],
+      [freshness?.tier !== 'stale', freshness ? `Data segar (H-${freshness.ageInTradingDays})` : 'Data tidak tersedia'],
+    ]);
+    return { ...result, bandarScore, freshness: freshness ?? undefined };
+  },
+};
+
 // ── Day Trading ──────────────────────────────────────────────────────────────
 // Target: 3–8% | Holding: 1–3 hari
 // Timeframe: H1, H4 (disimulasikan dari data daily EOD)
@@ -1479,6 +1515,7 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   smartMoneyHunter: smartMoneyHunterPreset,
   dayTrading: dayTradingPreset,
   fundamental: fundamentalPreset,
+  bandarDetector: bandarDetectorPreset,
 };
 
 export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
@@ -1492,4 +1529,5 @@ export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
   smartMoneyHunterPreset,
   dayTradingPreset,
   fundamentalPreset,
+  bandarDetectorPreset,
 ];

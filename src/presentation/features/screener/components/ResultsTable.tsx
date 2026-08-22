@@ -1,7 +1,8 @@
-import { Building2, GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap } from 'lucide-react';
+import { Building2, Eye, GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { StockSummary } from '@/domain/models/Stock';
 import { AraProbabilityScore, BreakoutScores, FundamentalScore, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
+import { BandarScoreResult } from '@/domain/analysis/bandarScore';
 import { DataFreshness } from '@/domain/analysis/dataFreshness';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 
@@ -427,6 +428,59 @@ function FundamentalBadge({ score }: { score: FundamentalScore }) {
   );
 }
 
+// ── Bandar Detector ──────────────────────────────────────────────────────────
+const BANDAR_STATUS_STYLES: Record<BandarScoreResult['classification']['label'], string> = {
+  'Strong Accumulation': 'bg-emerald-600 text-white dark:bg-emerald-600',
+  Accumulation: 'bg-emerald-500 text-white dark:bg-emerald-600',
+  Neutral: 'bg-amber-400 text-white dark:bg-amber-500',
+  'Distribution Risk': 'bg-orange-400 text-white dark:bg-orange-500',
+  'Strong Distribution': 'bg-rose-500 text-white dark:bg-rose-600',
+};
+
+function BandarBadge({ score }: { score: BandarScoreResult }) {
+  return (
+    <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
+      {/* Status pill + composite */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2.5 py-1 text-[11px] font-bold tracking-wide', BANDAR_STATUS_STYLES[score.classification.label])}>
+          <Eye className="size-3" />
+          {score.classification.label}
+        </span>
+        <span className="font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+          Score <span className="font-bold text-zinc-700 dark:text-zinc-200">{score.total}</span>/{score.max}
+        </span>
+      </div>
+
+      <p className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">Fase: {score.phaseLabel}</p>
+
+      {/* Mini score bars */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {score.factors.map(({ label, score: value, max }) => (
+          <div key={label}>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
+              <span className="text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300">{value}/{max}</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden border border-(--neo-line) bg-zinc-100 dark:bg-zinc-800">
+              <div
+                className={cn('h-full', value >= max * 0.7 ? 'bg-emerald-500' : value >= max * 0.4 ? 'bg-amber-400' : 'bg-rose-400')}
+                style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {score.hiddenDistributionWarning && (
+        <p className="text-[10px] font-semibold text-rose-600 dark:text-rose-400">⚠️ Indikasi Hidden Distribution — harga naik/flat tapi OBV melemah.</p>
+      )}
+      {score.dataNotes.map((note) => (
+        <p key={note} className="text-[10px] text-amber-600 dark:text-amber-400">⚠️ {note}</p>
+      ))}
+    </div>
+  );
+}
+
 // ── Empty state ────────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
@@ -462,6 +516,7 @@ function StockCard({
   const tradingPlan = evaluation.tradingPlan;
   const araProbability = evaluation.araProbability;
   const fundamentalScore = evaluation.fundamentalScore;
+  const bandarScore = evaluation.bandarScore;
 
   return (
     <Link
@@ -509,6 +564,8 @@ function StockCard({
         <AraProbabilityBadge score={araProbability} />
       ) : fundamentalScore ? (
         <FundamentalBadge score={fundamentalScore} />
+      ) : bandarScore ? (
+        <BandarBadge score={bandarScore} />
       ) : evaluation.reasons.length + evaluation.failed.length > 0 ? (
         <TriggerChecklist reasons={evaluation.reasons} failed={evaluation.failed} />
       ) : (
@@ -550,6 +607,10 @@ function compositeScoreInfo(evaluation: PresetEvaluation): { label: string; comp
   if (evaluation.fundamentalScore) {
     const f = evaluation.fundamentalScore;
     return { label: f.status, composite: f.composite, className: FUNDAMENTAL_STATUS_STYLES[f.status] };
+  }
+  if (evaluation.bandarScore) {
+    const b = evaluation.bandarScore;
+    return { label: b.classification.label, composite: b.total, className: BANDAR_STATUS_STYLES[b.classification.label] };
   }
   return null;
 }

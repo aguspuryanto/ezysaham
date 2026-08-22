@@ -23,6 +23,7 @@ import {
   ChevronDown,
   Crosshair,
   ExternalLink,
+  Eye,
   HelpCircle,
   History,
   Loader2,
@@ -42,6 +43,7 @@ import {
 import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 import { StockSummary } from '@/domain/models/Stock';
+import { OHLCVBar } from '@/domain/models/History';
 import {
   CandlePattern,
   IndicatorAnalysis,
@@ -53,6 +55,7 @@ import {
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
+import { computeBandarScore } from '@/domain/analysis/bandarScore';
 import { BreakoutScores } from '@/domain/screener/presets';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
@@ -494,6 +497,103 @@ function ScoringCard({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🕵️ BANDAR DETECTOR (Price + Volume + OBV Wyckoff proxy — no real broker/foreign data)
+// ─────────────────────────────────────────────────────────────────────────────
+function BandarDetectorCard({ summary, bars }: { summary: StockSummary; bars: OHLCVBar[] }) {
+  const { total, max, factors, classification, phaseLabel, hiddenDistributionWarning, dataNotes } = useMemo(
+    () => computeBandarScore(summary, bars),
+    [summary, bars]
+  );
+
+  const badgeToneClass = {
+    green: 'bg-emerald-600 text-white',
+    amber: 'bg-amber-500 text-white',
+    orange: 'bg-orange-500 text-white',
+    red: 'bg-rose-600 text-white',
+  };
+  const barToneClass = {
+    green: 'bg-emerald-500',
+    amber: 'bg-amber-400',
+    orange: 'bg-orange-400',
+    red: 'bg-rose-500',
+  };
+  const textToneClass = {
+    green: 'text-emerald-600 dark:text-emerald-400',
+    amber: 'text-amber-600 dark:text-amber-400',
+    orange: 'text-orange-600 dark:text-orange-400',
+    red: 'text-rose-600 dark:text-rose-400',
+  };
+
+  return (
+    <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+          <Eye className="size-4 text-zinc-400" strokeWidth={2.5} />
+          Bandar Detector
+        </h3>
+        <span className={cn('neo-border px-2.5 py-0.5 text-[11px] font-bold', badgeToneClass[classification.tone])}>
+          {classification.label}
+        </span>
+      </div>
+
+      <div className="flex items-end justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase text-zinc-400 truncate">Fase: {phaseLabel}</span>
+        <span className={cn('font-mono text-xl font-bold tabular-nums shrink-0', textToneClass[classification.tone])}>
+          {total}/{max}
+        </span>
+      </div>
+      <div className="h-2.5 w-full border-2 border-(--neo-line) bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+        <div
+          className={cn('h-full transition-all', barToneClass[classification.tone])}
+          style={{ width: `${Math.min(100, Math.max(0, (total / max) * 100))}%` }}
+        />
+      </div>
+
+      {hiddenDistributionWarning && (
+        <div className="neo-border border-rose-400 bg-rose-50 dark:bg-rose-400/10 px-3 py-2">
+          <p className="text-[11px] font-bold text-rose-700 dark:text-rose-400">⚠️ Indikasi Hidden Distribution</p>
+          <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+            Harga naik/flat tapi OBV melemah — smart money bisa jadi menjual ke pembeli baru yang masuk karena melihat harga masih kuat.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-2.5 pt-1">
+        {factors.map((f) => (
+          <div key={f.label}>
+            <div className="flex justify-between items-baseline text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+              <span className="truncate">{f.label} <span className="opacity-60">(maks {f.max})</span></span>
+              <span className={cn(
+                'font-mono text-sm font-bold shrink-0',
+                f.score <= 0 ? 'text-rose-600 dark:text-rose-400' : f.score >= f.max * 0.7 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+              )}>
+                {f.score}
+              </span>
+            </div>
+            <div className="h-2 w-full border-2 border-(--neo-line) bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+              <div
+                className={cn(
+                  'h-full transition-all',
+                  f.score <= 0 ? 'bg-rose-500' : f.score >= f.max * 0.7 ? 'bg-emerald-500' : 'bg-amber-400'
+                )}
+                style={{ width: `${Math.min(100, Math.max(0, (f.score / f.max) * 100))}%` }}
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug">{f.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <ul className="space-y-1 pt-1 border-t-2 border-(--neo-line)">
+        {dataNotes.map((note) => (
+          <Note key={note} text={note} tone="zinc" />
+        ))}
+      </ul>
     </div>
   );
 }
@@ -1392,6 +1492,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         <aside className="space-y-5 lg:sticky lg:top-20">
           <AiStockAdvisorSidebar advisor={advisor} />
           <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
+          <BandarDetectorCard summary={summary} bars={bars} />
           <TradingPlanSidebarCard plan={tradingPlan} />
           <SimilarStocksSidebarCard stocks={similarStocks} />
         </aside>
