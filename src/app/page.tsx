@@ -27,7 +27,7 @@ export default function Home() {
             </p>
           </div>
           <div className="flex items-center justify-between border-t border-slate-700 pt-4">
-            <p className="text-sm">© 2026 StockPilot AI. All rights reserved.</p>
+            <p className="text-sm">© 2026 EzySaham AI. All rights reserved.</p>
             <div className="flex space-x-4">
               <a href="#" className="hover:text-slate-300 transition-colors">Privacy Policy</a>
               <a href="#" className="hover:text-slate-300 transition-colors">Terms of Service</a>
