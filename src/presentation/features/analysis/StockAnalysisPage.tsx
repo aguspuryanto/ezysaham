@@ -56,6 +56,7 @@ import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/mo
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
 import { computeBandarScore } from '@/domain/analysis/bandarScore';
+import { computeObjectiveConclusion, ConclusionTone, ObjectiveConclusionResult } from '@/domain/analysis/objectiveConclusion';
 import { BreakoutScores } from '@/domain/screener/presets';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
@@ -1088,6 +1089,71 @@ function BreakoutHunterSection({ ticker, scores }: { ticker: string; scores: Bre
   );
 }
 
+// ─── Kesimpulan Objektif (cross-check: price move + divergence + Bandar + regulator) ──
+function ObjectiveConclusionCard({ conclusion }: { conclusion: ObjectiveConclusionResult }) {
+  const toneStyles: Record<ConclusionTone, { border: string; bg: string; badge: string; text: string; bullet: string }> = {
+    caution: {
+      border: 'border-rose-400',
+      bg: 'bg-rose-50 dark:bg-rose-400/10',
+      badge: 'bg-rose-600',
+      text: 'text-rose-700 dark:text-rose-400',
+      bullet: '⚠️',
+    },
+    neutral: {
+      border: 'border-amber-400',
+      bg: 'bg-amber-50 dark:bg-amber-400/10',
+      badge: 'bg-amber-500',
+      text: 'text-amber-700 dark:text-amber-400',
+      bullet: '•',
+    },
+    supportive: {
+      border: 'border-emerald-400',
+      bg: 'bg-emerald-50 dark:bg-emerald-400/10',
+      badge: 'bg-emerald-600',
+      text: 'text-emerald-700 dark:text-emerald-400',
+      bullet: '✓',
+    },
+  };
+  const t = toneStyles[conclusion.tone];
+
+  return (
+    <SectionCard title="Kesimpulan Objektif" icon={<Crosshair className="size-4" />} accentClass={t.badge}>
+      <div className={cn('neo-border px-4 py-3 mb-4', t.bg, t.border)}>
+        <p className={cn('font-bold text-sm mb-1.5', t.text)}>{conclusion.headline}</p>
+        <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">{conclusion.summary}</p>
+      </div>
+
+      <ul className="space-y-2.5">
+        {conclusion.flags.map((f) => (
+          <li key={f.key} className="flex gap-2.5 text-sm">
+            <span className="mt-0.5 shrink-0">{toneStyles[f.tone].bullet}</span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              <strong className="text-zinc-800 dark:text-zinc-200">{f.label}:</strong> {f.detail}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {conclusion.regulatoryNews.length > 0 && (
+        <div className="mt-4 border-t-2 border-(--neo-line) pt-3 space-y-1.5">
+          <p className="text-[11px] font-bold uppercase text-zinc-400">Berita terkait sinyal regulator</p>
+          {conclusion.regulatoryNews.map((n) => (
+            <a
+              key={n.url}
+              href={n.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              {n.title} <span className="text-zinc-400 dark:text-zinc-500 text-xs">— {n.publisher}</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1143,6 +1209,12 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       .sort((a, b) => Math.abs(a.capitalization - summary.capitalization) - Math.abs(b.capitalization - summary.capitalization))
       .slice(0, 5);
   }, [allSummaries, summary]);
+
+  const objectiveConclusion = useMemo(() => {
+    if (!summary || !fundamentalScreening || !technicalScreening) return null;
+    const bandarScore = computeBandarScore(summary, bars);
+    return computeObjectiveConclusion({ summary, bars, fundamentalScreening, technicalScreening, bandarScore, newsItems });
+  }, [summary, bars, fundamentalScreening, technicalScreening, newsItems]);
 
   if (status === 'loading') {
     return (
@@ -1280,6 +1352,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           {bars.length > 0 && (
             <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
           )}
+
+          {/* Kesimpulan Objektif — cross-check di luar skor AI Advisor */}
+          {objectiveConclusion && <ObjectiveConclusionCard conclusion={objectiveConclusion} />}
 
           {/* Data Freshness warning — shown only when the last available bar is 3+ trading days old */}
           {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
