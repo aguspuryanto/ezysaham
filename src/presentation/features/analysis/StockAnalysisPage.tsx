@@ -1160,9 +1160,9 @@ function ObjectiveConclusionCard({ conclusion }: { conclusion: ObjectiveConclusi
 type AnalysisTab = 'ai_summary' | 'teknikal' | 'fundamental' | 'berita' | 'breakout';
 
 const ANALYSIS_TABS: { key: AnalysisTab; label: string; icon: React.ReactNode }[] = [
-  { key: 'berita', label: 'Analisis Berita', icon: <Newspaper className="size-4" /> },
-  { key: 'fundamental', label: 'Screening Fundamental', icon: <PieChart className="size-4" /> },
   { key: 'teknikal', label: 'Screening Teknikal', icon: <TrendingUp className="size-4" /> },
+  { key: 'fundamental', label: 'Screening Fundamental', icon: <PieChart className="size-4" /> },
+  { key: 'berita', label: 'Analisis Berita', icon: <Newspaper className="size-4" /> },
 ];
 
 export function StockAnalysisPage({ ticker }: { ticker: string }) {
