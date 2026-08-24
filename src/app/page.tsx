@@ -14,7 +14,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-100">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 space-y-6">
-          <div className="max-w-3xl space-y-3">
+          <div className="max-w-full space-y-3">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-300">Apa itu EzySaham AI?</h2>
             <p className="text-sm text-slate-400 leading-relaxed">
               EzySaham AI adalah alat bantu screening saham BEI/IDX yang menerjemahkan data harga, volume, berita, dan skor fundamental
