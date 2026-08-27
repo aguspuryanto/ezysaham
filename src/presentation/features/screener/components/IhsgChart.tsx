@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { getIhsgHistory } from '@/data/repositories/MarketRepository';
 import { OHLCVBar } from '@/domain/models/History';
@@ -20,12 +20,17 @@ import { cn, formatPercent } from '@/lib/format';
 const REGIME_RANGE = '1y';
 
 const RANGES = [
-  { key: '1mo', label: '1 bulan' },
-  { key: '1y', label: '1 tahun' },
-  { key: '5y', label: '5 tahun' },
-  { key: 'max', label: 'Maks' },
+  { key: '5d', label: '1W' },
+  { key: '1mo', label: '1M' },
+  { key: '3mo', label: '3M' },
+  { key: '1y', label: '1Y' },
+  { key: '5y', label: '5Y' },
+  { key: 'max', label: 'MAX' },
 ] as const;
 type RangeKey = (typeof RANGES)[number]['key'];
+
+/** Ranges short enough that day-level tick labels stay distinguishable; longer ranges switch to month/year. */
+const DAY_LEVEL_RANGES: RangeKey[] = ['5d', '1mo', '3mo'];
 
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 
@@ -70,7 +75,7 @@ function useMarketStatus() {
 function shortDate(dateStr: string, range: RangeKey): string {
   try {
     const d = new Date(dateStr);
-    if (range === '1mo') return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+    if (DAY_LEVEL_RANGES.includes(range)) return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
     return d.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' });
   } catch {
     return dateStr;
@@ -218,17 +223,15 @@ export function IhsgChart() {
     <div className="mb-4 neo-border neo-shadow bg-white p-4 dark:bg-zinc-900">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-              IHSG: {last?.date ? new Date(last.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'}
-            </p>
-            {/* Market status badge */}
+          <p className="flex flex-wrap items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            <span>IHSG</span>
+            <span className="text-zinc-300 dark:text-zinc-600">·</span>
+            <span>{last?.date ? new Date(last.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'}</span>
+            <span className="text-zinc-300 dark:text-zinc-600">·</span>
             <span
               className={cn(
-                'inline-flex items-center gap-1 border border-(--neo-line) px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-                marketOpen
-                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                  : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
+                'inline-flex items-center gap-1',
+                marketOpen ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400 dark:text-zinc-500'
               )}
             >
               <span
@@ -241,22 +244,27 @@ export function IhsgChart() {
               />
               {marketOpen ? 'Market Open' : 'Market Close'}
             </span>
-          </div>
+          </p>
           {last ? (
-            <div className="mt-0.5 flex items-baseline gap-2">
-              <span className="text-2xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">
-                {fmtIndex(last.close)}
-              </span>
-              <span
-                className={cn(
-                  'text-sm font-bold tabular-nums',
-                  isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                )}
-              >
-                {isUp ? '+' : ''}
-                {fmtIndex(change)} ({formatPercent(changePct)})
-              </span>
-            </div>
+            <>
+              <div className="mt-0.5 flex items-baseline gap-2">
+                <span className="text-2xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">
+                  {fmtIndex(last.close)}
+                </span>
+                <span
+                  className={cn(
+                    'text-sm font-bold tabular-nums',
+                    isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                  )}
+                >
+                  {isUp ? '+' : ''}
+                  {fmtIndex(change)} ({formatPercent(changePct)})
+                </span>
+              </div>
+              <p className="mt-1 font-mono text-[11px] font-semibold tabular-nums text-zinc-500 dark:text-zinc-400">
+                Open: {fmtIndex(last.open)} · High: {fmtIndex(last.high)} · Low: {fmtIndex(last.low)} · Close: {fmtIndex(last.close)}
+              </p>
+            </>
           ) : (
             <div className="mt-1 h-8 w-40 animate-pulse bg-zinc-100 dark:bg-zinc-800" />
           )}
@@ -299,6 +307,19 @@ export function IhsgChart() {
         ) : (
           <ResponsiveContainer width="100%" height={224}>
             <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="ihsgAreaFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={lineColor} stopOpacity={0.12} />
+                  <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                horizontal
+                vertical={false}
+                stroke="#71717a"
+                strokeOpacity={0.15}
+                strokeDasharray="0"
+              />
               <XAxis
                 dataKey="date"
                 tick={{ fontSize: 10, fill: '#71717a', fontWeight: 600 }}
@@ -307,21 +328,28 @@ export function IhsgChart() {
                 interval={Math.max(Math.floor(chartData.length / 6), 0)}
                 minTickGap={24}
               />
-              <YAxis domain={[domainMin, domainMax]} hide />
+              <YAxis
+                domain={[domainMin, domainMax]}
+                tick={{ fontSize: 10, fill: '#71717a', fontWeight: 600 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => fmtIndex(Number(v))}
+                width={52}
+              />
               <Tooltip
                 formatter={(value) => [fmtIndex(Number(value)), 'IHSG']}
                 labelStyle={{ fontSize: 11, fontWeight: 700 }}
                 contentStyle={{ fontSize: 11, borderRadius: 0, border: '2px solid #0a0a0a', boxShadow: '3px 3px 0 0 #0a0a0a' }}
               />
               <Area
-                type="monotone"
+                type="linear"
                 dataKey="close"
                 stroke={lineColor}
-                strokeWidth={3}
-                fill={lineColor}
-                fillOpacity={0.18}
+                strokeWidth={2}
+                fill="url(#ihsgAreaFill)"
                 isAnimationActive={true}
                 dot={false}
+                activeDot={{ r: 3, strokeWidth: 0 }}
               />
             </AreaChart>
           </ResponsiveContainer>
