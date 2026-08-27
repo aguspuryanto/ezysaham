@@ -13,7 +13,7 @@ import { formatCompact } from '@/lib/format';
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector' | 'swingTrend' | 'swingMomentum' | 'fundamentalQuality';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -1502,6 +1502,144 @@ const fundamentalPreset: ScreenerPreset = {
   },
 };
 
+// ── Swing Trend (Pullback / Buy on Weakness) ──────────────────────────────────
+// Target: 5–15% | Holding: 3–10 hari
+// Gaya: beli saham uptrend besar (di atas MA200) yang sedang istirahat/diskon di
+// support dinamis (EMA20), dengan volume mengering — bukan mengejar breakout.
+
+const swingTrendPreset: ScreenerPreset = {
+  id: 'swingTrend',
+  label: 'Swing Trend',
+  description: 'Setup pullback/buy on weakness: saham dengan tren jangka panjang naik (di atas MA200) yang sedang beristirahat di support dinamis EMA20, dengan volume mengering — bukan setup breakout.',
+  criteria: [
+    'Close > MA200 — tren jangka panjang naik',
+    'MA50 > MA200 — tren menengah mengkonfirmasi tren panjang',
+    'Low menguji rentang EMA20–MA50 (Low ≤ EMA20 dan Low ≥ MA50), Close ≥ MA50 — support dinamis lebih fleksibel',
+    'RSI 40–58 — zona pullback sehat, belum oversold',
+    'RVOL < 0.9 — volume mengecil saat koreksi (tidak ada buangan besar)',
+    'Turnover harian > Rp 7,5 miliar',
+  ],
+  coarseFilter: (s) => s.value > 7_500_000_000,
+  evaluate: (s, bars) => {
+    const closes = bars.map((b) => b.close);
+    const ma200 = lastValid(sma(closes, 200));
+    const ma50 = lastValid(sma(closes, 50));
+    const ema20 = lastValid(ema(closes, 20));
+    const rsiLast = lastValid(rsi(bars, 14));
+    const rvol = relativeVolume(bars, 20);
+    const lastBar = bars[bars.length - 1];
+
+    const result = verdict([
+      [!Number.isNaN(ma200) && s.lastClose > ma200, `Close > MA200 (${Number.isNaN(ma200) ? 'N/A' : ma200.toFixed(0)})`],
+      [!Number.isNaN(ma50) && !Number.isNaN(ma200) && ma50 > ma200, 'MA50 > MA200'],
+      [
+        !Number.isNaN(ema20) && !Number.isNaN(ma50) && !!lastBar && lastBar.low <= ema20 && lastBar.low >= ma50 && s.lastClose >= ma50,
+        'Low menguji rentang EMA20–MA50, Close ≥ MA50 (support dinamis fleksibel)',
+      ],
+      [!Number.isNaN(rsiLast) && rsiLast >= 40 && rsiLast <= 58, `RSI 40–58 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
+      [!Number.isNaN(rvol) && rvol < 0.9, `RVOL < 0.9 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
+      [s.value > 7_500_000_000, 'Turnover harian > Rp 7,5 miliar'],
+    ]);
+    return {
+      ...result,
+      relativeVolume: Number.isNaN(rvol) ? undefined : rvol,
+      freshness: computeDataFreshness(bars, new Date()) ?? undefined,
+    };
+  },
+};
+
+// ── Swing Momentum (Breakout Continuation) ────────────────────────────────────
+// Target: 5–15% | Holding: 3–10 hari
+// Gaya: beli saham yang baru menembus resistensi 20 hari dengan dorongan volume
+// dan tren kuat (ADX) — melanjutkan momentum, bukan menunggu diskon.
+
+const swingMomentumPreset: ScreenerPreset = {
+  id: 'swingMomentum',
+  label: 'Swing Momentum',
+  description: 'Setup breakout continuation: saham yang baru menembus level tertinggi 20 hari dengan dorongan volume besar dan tren yang bertenaga (ADX), di atas MA50 & MA200.',
+  criteria: [
+    'Close > MA50 dan Close > MA200',
+    'Close > Highest High(20 hari)[1] — breakout level tertinggi 1 bulan',
+    'RVOL ≥ 1.5 — volume lonjak dari rata-rata 20 hari',
+    'RSI 55–75 — momentum naik, belum ekstrem overbought',
+    'ADX > 22 — tren memiliki tenaga kuat',
+    'Turnover harian > Rp 15 miliar',
+  ],
+  coarseFilter: (s) => s.value > 15_000_000_000,
+  evaluate: (s, bars) => {
+    const closes = bars.map((b) => b.close);
+    const ma50 = lastValid(sma(closes, 50));
+    const ma200 = lastValid(sma(closes, 200));
+    const rsiLast = lastValid(rsi(bars, 14));
+    const rvol = relativeVolume(bars, 20);
+    const adx = calcADX(bars, 14);
+    const prior20 = bars.slice(-21, -1);
+    const high20 = prior20.length > 0 ? Math.max(...prior20.map((b) => b.high)) : s.lastClose;
+
+    const result = verdict([
+      [!Number.isNaN(ma50) && s.lastClose > ma50, 'Close > MA50'],
+      [!Number.isNaN(ma200) && s.lastClose > ma200, 'Close > MA200'],
+      [s.lastClose > high20, `Close > Highest High 20 hari (${high20.toFixed(0)})`],
+      [!Number.isNaN(rvol) && rvol >= 1.5, `RVOL ≥ 1.5 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
+      [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 75, `RSI 55–75 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
+      [!Number.isNaN(adx) && adx > 22, `ADX > 22 (${Number.isNaN(adx) ? 'N/A' : adx.toFixed(1)})`],
+      [s.value > 15_000_000_000, 'Turnover harian > Rp 15 miliar'],
+    ]);
+    return {
+      ...result,
+      relativeVolume: Number.isNaN(rvol) ? undefined : rvol,
+      freshness: computeDataFreshness(bars, new Date()) ?? undefined,
+    };
+  },
+};
+
+// ── Fundamental Quality (Gate diperketat) ─────────────────────────────────────
+// Memperketat preset Fundamental lama: menaikkan ambang market cap, ROE, dan
+// menambah gate DER (via Yahoo, di-skip bila tidak tersedia — umum utk bank)
+// serta turnover rata-rata 20 hari, agar hasil lebih sedikit tapi lebih prima.
+
+const fundamentalQualityPreset: ScreenerPreset = {
+  id: 'fundamentalQuality',
+  label: 'Fundamental Quality',
+  description: 'Gate fundamental yang diperketat: market cap minimal Rp2 triliun, ROE ≥ 10%, DER < 1,5x (via Yahoo, di-skip bila tidak tersedia — umum untuk saham bank), valuasi wajar (PER & PBV), dan turnover rata-rata 20 hari memadai — dirancang untuk memangkas hasil jadi puluhan saham berkualitas prima, bukan ratusan.',
+  criteria: [
+    'Market Cap ≥ Rp 2 triliun — hindari saham terlalu kecil/mudah digoyang',
+    'ROE ≥ 10% — profitabilitas solid, bukan sekadar positif',
+    'DER < 1,5x (via Yahoo Finance; dilewati bila data tidak tersedia, umum untuk saham bank)',
+    '0 < PER ≤ 25 — valuasi belum terlalu mahal',
+    '0 < PBV ≤ 3,5',
+    'Turnover rata-rata 20 hari ≥ Rp 5 miliar',
+  ],
+  needsHistory: true,
+  needsFundamentals: true,
+  coarseFilter: (s) =>
+    s.capitalization >= 2_000_000_000_000 &&
+    s.roe >= 10 &&
+    s.per > 0 && s.per <= 25 &&
+    s.pbv > 0 && s.pbv <= 3.5,
+  evaluate: (s, bars, fundamentals) => {
+    const der = fundamentals?.debtToEquity ?? null;
+    const turnovers = bars.map((b) => b.close * b.volume);
+    const avgTurnover20 = lastValid(sma(turnovers, 20));
+
+    const result = verdict([
+      [s.capitalization >= 2_000_000_000_000, 'Market Cap ≥ Rp 2 triliun'],
+      [s.roe >= 10, `ROE ≥ 10% (${s.roe.toFixed(1)}%)`],
+      [
+        der == null || der < 150,
+        der == null ? 'DER tidak tersedia — dilewati (umum untuk saham keuangan)' : `DER < 1,5x (${(der / 100).toFixed(2)}x)`,
+      ],
+      [s.per > 0 && s.per <= 25, `PER wajar (${s.per.toFixed(1)}x)`],
+      [s.pbv > 0 && s.pbv <= 3.5, `PBV wajar (${s.pbv.toFixed(1)}x)`],
+      [
+        !Number.isNaN(avgTurnover20) && avgTurnover20 >= 5_000_000_000,
+        `Turnover rata-rata 20 hari ≥ Rp 5 miliar${Number.isNaN(avgTurnover20) ? '' : ` (${formatCompact(avgTurnover20)})`}`,
+      ],
+    ]);
+    return { ...result, freshness: computeDataFreshness(bars, new Date()) ?? undefined };
+  },
+};
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
@@ -1516,6 +1654,9 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   dayTrading: dayTradingPreset,
   fundamental: fundamentalPreset,
   bandarDetector: bandarDetectorPreset,
+  swingTrend: swingTrendPreset,
+  swingMomentum: swingMomentumPreset,
+  fundamentalQuality: fundamentalQualityPreset,
 };
 
 export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
@@ -1530,4 +1671,7 @@ export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
   dayTradingPreset,
   fundamentalPreset,
   bandarDetectorPreset,
+  swingTrendPreset,
+  swingMomentumPreset,
+  fundamentalQualityPreset,
 ];

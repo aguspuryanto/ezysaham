@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  ArrowDownToLine,
   Building2,
   Crosshair,
   Eye,
@@ -11,6 +12,7 @@ import {
   Loader2,
   RefreshCw,
   Rocket,
+  ShieldCheck,
   Table2,
   TrendingUp,
   X,
@@ -53,6 +55,9 @@ const FILTER_ITEMS: FilterChipItem[] = [
   // { id: 'ara', label: 'ARA', icon: Flame },
   // { id: 'bpjs', label: 'BPJS', icon: Zap },
   // { id: 'momentum', label: 'Momentum', icon: TrendingUp },
+  // { id: 'swingTrend', label: 'Swing Trend', icon: ArrowDownToLine },
+  // { id: 'swingMomentum', label: 'Swing Momentum', icon: Rocket },
+  // { id: 'fundamentalQuality', label: 'Fundamental Quality', icon: ShieldCheck },
 ];
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
