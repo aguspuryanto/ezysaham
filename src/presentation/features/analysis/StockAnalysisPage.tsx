@@ -21,11 +21,13 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  Compass,
   Crosshair,
   ExternalLink,
   Eye,
   HelpCircle,
   History,
+  Info,
   Loader2,
   Newspaper,
   PieChart,
@@ -1165,6 +1167,12 @@ const ANALYSIS_TABS: { key: AnalysisTab; label: string; icon: React.ReactNode }[
   { key: 'berita', label: 'Analisis Berita', icon: <Newspaper className="size-4" /> },
 ];
 
+const LINKS = [
+  { href: '/tutorial', label: 'Tutorial', icon: Compass },
+  { href: '/panduan', label: 'Panduan', icon: BookOpen },
+  { href: '/tentang', label: 'Tentang', icon: Info },
+] as const;
+
 export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const {
     status,
@@ -1273,6 +1281,18 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </div>
 
           <div className="ml-auto flex items-center gap-3">
+            <nav className="flex items-center gap-1.5">
+              {LINKS.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={'flex items-center gap-1.5 border-2 border-transparent px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 transition-colors hover:border-(--neo-line) dark:text-zinc-400'}
+                >
+                  <Icon className="size-3.5" strokeWidth={2.5} />
+                  <span className="hidden sm:inline">{label}</span>
+                </Link>
+              ))}
+            </nav>
             <button
               type="button"
               onClick={() => load(true)}

@@ -26,7 +26,9 @@ export function AppHeader({
             <TrendingUp className="size-5" strokeWidth={2.75} />
           </span>
           <span className="hidden text-lg font-bold uppercase tracking-tight text-zinc-900 sm:inline dark:text-zinc-50">
-            {SITE_NAME}
+            <Link href="/" title="EzySaham AI">
+              {SITE_NAME}
+            </Link>
           </span>
         </div>
 
