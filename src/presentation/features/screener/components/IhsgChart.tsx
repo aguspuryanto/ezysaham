@@ -141,7 +141,7 @@ function MarketRegimeBadge({ regime }: { regime: MarketRegimeResult }) {
 
 export function IhsgChart() {
   const marketOpen = useMarketStatus();
-  const [range, setRange] = useState<RangeKey>('1mo');
+  const [range, setRange] = useState<RangeKey>('5d');
   const [cache, setCache] = useState<Partial<Record<RangeKey, OHLCVBar[]>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
