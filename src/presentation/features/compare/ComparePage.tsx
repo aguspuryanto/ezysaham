@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, GitCompare } from 'lucide-react';
@@ -8,10 +8,15 @@ import { StockSummary } from '@/domain/models/Stock';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { getStockFundamentals, getStockSummaries } from '@/data/repositories/StockRepository';
 import { useStockAnalysis } from '@/presentation/features/analysis/useStockAnalysis';
+import { buildAiVerdict, buildInvestorProfiles, computeDecisionScore } from '@/domain/compare/decisionEngine';
 import { TickerPicker } from './TickerPicker';
 import { StockSummaryCard } from './StockSummaryCard';
 import { PriceComparisonChart } from './PriceComparisonChart';
 import { FundamentalsComparisonTable } from './FundamentalsComparisonTable';
+import { ComparisonResultCard } from './ComparisonResultCard';
+import { ScoreBreakdown } from './ScoreBreakdown';
+import { InvestorProfileGrid } from './InvestorProfileGrid';
+import { AiVerdictCard } from './AiVerdictCard';
 
 interface ComparePageProps {
   initialTickerA: string;
@@ -51,6 +56,17 @@ export function ComparePage({ initialTickerA, initialTickerB }: ComparePageProps
   }, [router, tickerA, tickerB]);
 
   const bothReady = sideA.status === 'ready' && sideB.status === 'ready' && sideA.summary && sideB.summary;
+
+  const decision = useMemo(() => {
+    if (!bothReady || !sideA.summary || !sideB.summary) return null;
+
+    const { scores: scoresA, overall: overallA } = computeDecisionScore(sideA.summary, fundamentalsA);
+    const { scores: scoresB, overall: overallB } = computeDecisionScore(sideB.summary, fundamentalsB);
+    const verdict = buildAiVerdict(tickerA, scoresA, overallA, tickerB, scoresB, overallB);
+    const profiles = buildInvestorProfiles(scoresA, scoresB);
+
+    return { scoresA, overallA, scoresB, overallB, verdict, profiles };
+  }, [bothReady, sideA.summary, sideB.summary, fundamentalsA, fundamentalsB, tickerA, tickerB]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -97,13 +113,37 @@ export function ComparePage({ initialTickerA, initialTickerB }: ComparePageProps
 
         <PriceComparisonChart tickerA={tickerA} tickerB={tickerB} />
 
-        {bothReady ? (
-          <FundamentalsComparisonTable
-            summaryA={sideA.summary!}
-            summaryB={sideB.summary!}
-            fundamentalsA={fundamentalsA}
-            fundamentalsB={fundamentalsB}
-          />
+        {bothReady && decision ? (
+          <>
+            <ComparisonResultCard
+              tickerA={tickerA}
+              tickerB={tickerB}
+              overallA={decision.overallA}
+              overallB={decision.overallB}
+              winner={decision.verdict.winner}
+              winnerStrengths={decision.verdict.winnerStrengths}
+            />
+
+            {/* <ScoreBreakdown
+              tickerA={tickerA}
+              tickerB={tickerB}
+              scoresA={decision.scoresA}
+              scoresB={decision.scoresB}
+              overallA={decision.overallA}
+              overallB={decision.overallB}
+            /> */}
+
+            <FundamentalsComparisonTable
+              summaryA={sideA.summary!}
+              summaryB={sideB.summary!}
+              fundamentalsA={fundamentalsA}
+              fundamentalsB={fundamentalsB}
+            />
+
+            {/* <InvestorProfileGrid tickerA={tickerA} tickerB={tickerB} profiles={decision.profiles} /> */}
+
+            {/* <AiVerdictCard tickerA={tickerA} tickerB={tickerB} verdict={decision.verdict} /> */}
+          </>
         ) : (
           <div className="flex items-center justify-center neo-border neo-shadow bg-white p-8 text-sm font-semibold text-zinc-400 dark:bg-zinc-900">
             Memuat data fundamental…

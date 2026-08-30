@@ -1301,7 +1301,7 @@ export interface FundamentalScore {
   dataNotes: string[];
 }
 
-function calcProfitabilityScore(roe: number): number {
+export function calcProfitabilityScore(roe: number): number {
   if (roe >= 20) return 100;
   if (roe >= 15) return 80;
   if (roe >= 10) return 60;
@@ -1310,7 +1310,7 @@ function calcProfitabilityScore(roe: number): number {
   return 0;
 }
 
-function calcValuationScore(per: number, pbv: number): number {
+export function calcValuationScore(per: number, pbv: number): number {
   let perScore: number;
   if (per <= 0) perScore = 20; // rugi atau data tidak valid — skeptis, bukan otomatis nol
   else if (per <= 8) perScore = 100;
@@ -1349,7 +1349,7 @@ function calcFundamentalQualityGate(s: StockSummary): number {
 
 /** Debt/Equity is already a percentage number in Yahoo's schema (18.1 means 0.18x),
  *  unlike dividendYield/payoutRatio which arrive as fractions — see yahooFundamentals.ts. */
-function calcFinancialHealthScore(debtToEquity: number | null, currentRatio: number | null): number | null {
+export function calcFinancialHealthScore(debtToEquity: number | null, currentRatio: number | null): number | null {
   const scores: number[] = [];
 
   if (debtToEquity != null) {
@@ -1375,7 +1375,7 @@ function calcFinancialHealthScore(debtToEquity: number | null, currentRatio: num
 /** Rewards sustainable dividends over the highest yield — a very high yield with a
  *  payout ratio above 100% is a cut risk, not a bargain (value-trap logic from the
  *  broader fundamental framework this preset is scoped down from). */
-function calcDividendScore(dividendYield: number | null, payoutRatio: number | null): number | null {
+export function calcDividendScore(dividendYield: number | null, payoutRatio: number | null): number | null {
   if (dividendYield == null) return null; // Yahoo fetch failed entirely
   if (dividendYield <= 0) return 40; // tidak bayar dividen — netral, bukan otomatis buruk
 
@@ -1399,7 +1399,7 @@ function calcDividendScore(dividendYield: number | null, payoutRatio: number | n
 
 /** Weighted average over only the dimensions that have data — a missing dimension
  *  drops out of both numerator and denominator instead of dragging the score to 0. */
-function weightedComposite(dims: Array<{ score: number | null; weight: number }>): number {
+export function weightedComposite(dims: Array<{ score: number | null; weight: number }>): number {
   const available = dims.filter((d): d is { score: number; weight: number } => d.score != null);
   const totalWeight = available.reduce((sum, d) => sum + d.weight, 0);
   if (totalWeight === 0) return 0;
