@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, GitCompare } from 'lucide-react';
 import { StockSummary } from '@/domain/models/Stock';
-import { getStockSummaries } from '@/data/repositories/StockRepository';
+import { FundamentalDetail } from '@/domain/models/Fundamentals';
+import { getStockFundamentals, getStockSummaries } from '@/data/repositories/StockRepository';
 import { useStockAnalysis } from '@/presentation/features/analysis/useStockAnalysis';
 import { TickerPicker } from './TickerPicker';
 import { StockSummaryCard } from './StockSummaryCard';
@@ -22,10 +23,22 @@ export function ComparePage({ initialTickerA, initialTickerB }: ComparePageProps
   const [tickerA, setTickerA] = useState(initialTickerA);
   const [tickerB, setTickerB] = useState(initialTickerB);
   const [summaries, setSummaries] = useState<StockSummary[]>([]);
+  const [fundamentalsA, setFundamentalsA] = useState<FundamentalDetail | null>(null);
+  const [fundamentalsB, setFundamentalsB] = useState<FundamentalDetail | null>(null);
 
   useEffect(() => {
     getStockSummaries().then(setSummaries).catch(() => { });
   }, []);
+
+  useEffect(() => {
+    setFundamentalsA(null);
+    getStockFundamentals(tickerA).then(setFundamentalsA).catch(() => { });
+  }, [tickerA]);
+
+  useEffect(() => {
+    setFundamentalsB(null);
+    getStockFundamentals(tickerB).then(setFundamentalsB).catch(() => { });
+  }, [tickerB]);
 
   const sideA = useStockAnalysis(tickerA);
   const sideB = useStockAnalysis(tickerB);
@@ -85,7 +98,12 @@ export function ComparePage({ initialTickerA, initialTickerB }: ComparePageProps
         <PriceComparisonChart tickerA={tickerA} tickerB={tickerB} />
 
         {bothReady ? (
-          <FundamentalsComparisonTable summaryA={sideA.summary!} summaryB={sideB.summary!} />
+          <FundamentalsComparisonTable
+            summaryA={sideA.summary!}
+            summaryB={sideB.summary!}
+            fundamentalsA={fundamentalsA}
+            fundamentalsB={fundamentalsB}
+          />
         ) : (
           <div className="flex items-center justify-center neo-border neo-shadow bg-white p-8 text-sm font-semibold text-zinc-400 dark:bg-zinc-900">
             Memuat data fundamental…

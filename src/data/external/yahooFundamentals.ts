@@ -125,11 +125,14 @@ export async function fetchYahooFundamentals(code: string): Promise<FundamentalD
     const summaryDetail = result.summaryDetail;
     const financialData = result.financialData;
 
-    // dividendYield/payoutRatio are fractions (0.0565 = 5.65%); debtToEquity/
-    // currentRatio are not (18.1 already means 18.1%, 0.57 already means 0.57x) —
-    // an inconsistency in Yahoo's own schema, confirmed empirically per-field.
+    // dividendYield/payoutRatio/profitMargins/revenueGrowth are fractions
+    // (0.0565 = 5.65%); debtToEquity/currentRatio are not (18.1 already means
+    // 18.1%, 0.57 already means 0.57x) — an inconsistency in Yahoo's own
+    // schema, confirmed empirically per-field.
     const dividendYieldRaw = pickRaw(summaryDetail?.dividendYield);
     const payoutRatioRaw = pickRaw(summaryDetail?.payoutRatio);
+    const profitMarginsRaw = pickRaw(financialData?.profitMargins);
+    const revenueGrowthRaw = pickRaw(financialData?.revenueGrowth);
 
     return {
       ticker: code,
@@ -137,6 +140,8 @@ export async function fetchYahooFundamentals(code: string): Promise<FundamentalD
       dividendPayoutRatio: payoutRatioRaw != null ? payoutRatioRaw * 100 : null,
       debtToEquity: pickRaw(financialData?.debtToEquity),
       currentRatio: pickRaw(financialData?.currentRatio),
+      netMargin: profitMarginsRaw != null ? profitMarginsRaw * 100 : null,
+      revenueGrowth: revenueGrowthRaw != null ? revenueGrowthRaw * 100 : null,
       source: 'yahoo',
       fetchedAt: new Date().toISOString(),
     };

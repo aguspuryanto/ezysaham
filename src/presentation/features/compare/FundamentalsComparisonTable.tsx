@@ -1,8 +1,14 @@
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { StockSummary } from '@/domain/models/Stock';
+import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { cn, formatCompact } from '@/lib/format';
 
 type Direction = 'higher-better' | 'lower-better';
+
+interface CombinedData {
+  summary: StockSummary;
+  fundamentals: FundamentalDetail | null;
+}
 
 interface MetricRow {
   key: string;
@@ -10,8 +16,8 @@ interface MetricRow {
   description: string;
   direction?: Direction;
   /** Value used only to decide which side "wins" (an unfavorable/missing value is normalized to Infinity so it never wins). */
-  compareValue?: (s: StockSummary) => number;
-  format?: (s: StockSummary) => string;
+  compareValue?: (d: CombinedData) => number;
+  format?: (d: CombinedData) => string;
 }
 
 const METRICS: MetricRow[] = [
@@ -20,38 +26,74 @@ const METRICS: MetricRow[] = [
     label: 'Market Cap',
     description: 'Total nilai pasar perusahaan',
     direction: 'higher-better',
-    compareValue: (s) => s.capitalization,
-    format: (s) => formatCompact(s.capitalization),
+    compareValue: (d) => d.summary.capitalization,
+    format: (d) => formatCompact(d.summary.capitalization),
   },
   {
     key: 'per',
     label: 'PER',
     description: 'Price to Earnings Ratio',
     direction: 'lower-better',
-    compareValue: (s) => (s.per > 0 ? s.per : Infinity),
-    format: (s) => (s.per > 0 ? `${s.per.toFixed(1)}×` : 'N/A'),
+    compareValue: (d) => (d.summary.per > 0 ? d.summary.per : Infinity),
+    format: (d) => (d.summary.per > 0 ? `${d.summary.per.toFixed(1)}×` : 'N/A'),
   },
   {
     key: 'pbv',
     label: 'PBV',
     description: 'Price to Book Value',
     direction: 'lower-better',
-    compareValue: (s) => (s.pbv > 0 ? s.pbv : Infinity),
-    format: (s) => (s.pbv > 0 ? `${s.pbv.toFixed(2)}×` : 'N/A'),
+    compareValue: (d) => (d.summary.pbv > 0 ? d.summary.pbv : Infinity),
+    format: (d) => (d.summary.pbv > 0 ? `${d.summary.pbv.toFixed(2)}×` : 'N/A'),
   },
   {
     key: 'roe',
     label: 'ROE',
     description: 'Return on Equity',
     direction: 'higher-better',
-    compareValue: (s) => s.roe,
-    format: (s) => (s.roe !== 0 ? `${s.roe.toFixed(2)}%` : 'N/A'),
+    compareValue: (d) => d.summary.roe,
+    format: (d) => (d.summary.roe !== 0 ? `${d.summary.roe.toFixed(2)}%` : 'N/A'),
   },
-  { key: 'netMargin', label: 'Net Margin', description: 'Profit margin' },
-  { key: 'dividendYield', label: 'Dividend Yield', description: 'Annual dividend yield' },
-  { key: 'revenueGrowth', label: 'Revenue Growth (YoY)', description: 'Year-over-year revenue growth' },
-  { key: 'currentRatio', label: 'Current Ratio', description: 'Liquidity ratio' },
-  { key: 'der', label: 'Debt to Equity Ratio (DER)', description: 'Debt to equity ratio' },
+  {
+    key: 'netMargin',
+    label: 'Net Margin',
+    description: 'Profit margin',
+    direction: 'higher-better',
+    compareValue: (d) => d.fundamentals?.netMargin ?? Infinity,
+    format: (d) => (d.fundamentals?.netMargin != null ? `${d.fundamentals.netMargin.toFixed(2)}%` : 'N/A'),
+  },
+  {
+    key: 'dividendYield',
+    label: 'Dividend Yield',
+    description: 'Annual dividend yield',
+    direction: 'higher-better',
+    compareValue: (d) => d.fundamentals?.dividendYield ?? Infinity,
+    format: (d) => (d.fundamentals?.dividendYield != null ? `${d.fundamentals.dividendYield.toFixed(2)}%` : 'N/A'),
+  },
+  {
+    key: 'revenueGrowth',
+    label: 'Revenue Growth (YoY)',
+    description: 'Year-over-year revenue growth',
+    direction: 'higher-better',
+    compareValue: (d) => d.fundamentals?.revenueGrowth ?? Infinity,
+    format: (d) => (d.fundamentals?.revenueGrowth != null ? `${d.fundamentals.revenueGrowth.toFixed(2)}%` : 'N/A'),
+  },
+  {
+    key: 'currentRatio',
+    label: 'Current Ratio',
+    description: 'Liquidity ratio',
+    direction: 'higher-better',
+    compareValue: (d) => d.fundamentals?.currentRatio ?? Infinity,
+    format: (d) => (d.fundamentals?.currentRatio != null ? `${d.fundamentals.currentRatio.toFixed(2)}×` : 'N/A'),
+  },
+  {
+    key: 'der',
+    label: 'Debt to Equity Ratio (DER)',
+    description: 'Debt to equity ratio',
+    direction: 'lower-better',
+    // debtToEquity arrives from Yahoo already scaled as a percentage (18.1 == 0.181x)
+    compareValue: (d) => (d.fundamentals?.debtToEquity != null ? d.fundamentals.debtToEquity / 100 : Infinity),
+    format: (d) => (d.fundamentals?.debtToEquity != null ? `${(d.fundamentals.debtToEquity / 100).toFixed(2)}×` : 'N/A'),
+  },
 ];
 
 function winner(direction: Direction, valueA: number, valueB: number): 'a' | 'b' | null {
@@ -76,9 +118,19 @@ function MetricValue({ text, trend }: { text: string; trend: 'up' | 'down' | nul
 interface FundamentalsComparisonTableProps {
   summaryA: StockSummary;
   summaryB: StockSummary;
+  fundamentalsA?: FundamentalDetail | null;
+  fundamentalsB?: FundamentalDetail | null;
 }
 
-export function FundamentalsComparisonTable({ summaryA, summaryB }: FundamentalsComparisonTableProps) {
+export function FundamentalsComparisonTable({
+  summaryA,
+  summaryB,
+  fundamentalsA = null,
+  fundamentalsB = null,
+}: FundamentalsComparisonTableProps) {
+  const dataA: CombinedData = { summary: summaryA, fundamentals: fundamentalsA };
+  const dataB: CombinedData = { summary: summaryB, fundamentals: fundamentalsB };
+
   return (
     <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 overflow-hidden">
       <div className="px-5 py-4 border-b-[3px] border-(--neo-line)">
@@ -99,13 +151,13 @@ export function FundamentalsComparisonTable({ summaryA, summaryB }: Fundamentals
           </thead>
           <tbody>
             {METRICS.map((metric) => {
-              const textA = metric.format ? metric.format(summaryA) : 'N/A';
-              const textB = metric.format ? metric.format(summaryB) : 'N/A';
+              const textA = metric.format ? metric.format(dataA) : 'N/A';
+              const textB = metric.format ? metric.format(dataB) : 'N/A';
               let trendA: 'up' | 'down' | null = null;
               let trendB: 'up' | 'down' | null = null;
 
               if (metric.direction && metric.compareValue) {
-                const w = winner(metric.direction, metric.compareValue(summaryA), metric.compareValue(summaryB));
+                const w = winner(metric.direction, metric.compareValue(dataA), metric.compareValue(dataB));
                 if (w === 'a') { trendA = 'up'; trendB = 'down'; }
                 else if (w === 'b') { trendA = 'down'; trendB = 'up'; }
               }

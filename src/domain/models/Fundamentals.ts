@@ -18,6 +18,10 @@ export interface FundamentalDetail {
   debtToEquity: number | null;
   /** Current assets / current liabilities. Often null for banks. */
   currentRatio: number | null;
+  /** % — trailing net profit margin, e.g. 12.3 means 12.3%. */
+  netMargin: number | null;
+  /** % — year-over-year revenue growth (most recent quarter). */
+  revenueGrowth: number | null;
   source: 'yahoo';
   fetchedAt: string;
 }
