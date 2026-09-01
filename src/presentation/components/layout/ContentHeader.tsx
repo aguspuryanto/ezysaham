@@ -1,14 +1,15 @@
 import Link from 'next/link';
-import { ArrowLeft, BookOpen, Compass, Info } from 'lucide-react';
+import { ArrowLeft, BookOpen, Compass, Info, Newspaper } from 'lucide-react';
 import { SITE_NAME } from '@/lib/site';
 
 const LINKS = [
   { href: '/tutorial', label: 'Tutorial', icon: Compass },
   { href: '/panduan', label: 'Panduan', icon: BookOpen },
+  { href: '/blog', label: 'Blog', icon: Newspaper },
   { href: '/tentang', label: 'Tentang', icon: Info },
 ] as const;
 
-export function ContentHeader({ active }: { active: 'tutorial' | 'panduan' | 'tentang' }) {
+export function ContentHeader({ active }: { active: 'tutorial' | 'panduan' | 'blog' | 'tentang' }) {
   return (
     <header className="sticky top-0 z-20 neo-border border-x-0 border-t-0 bg-white dark:bg-zinc-950">
       <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
