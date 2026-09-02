@@ -86,6 +86,15 @@ function pickRaw(node: unknown): number | null {
   return typeof raw === 'number' ? raw : null;
 }
 
+/** Yahoo date-typed quoteSummary fields (e.g. exDividendDate) carry the same
+ *  { raw: unixSeconds, fmt: string } shape as numeric fields — raw is UTC midnight
+ *  for these day-precision dates, so no gmtOffset adjustment is needed. */
+function pickRawDate(node: unknown): string | null {
+  const raw = pickRaw(node);
+  if (raw == null) return null;
+  return new Date(raw * 1000).toISOString().slice(0, 10);
+}
+
 /**
  * Fetches historical dividend payments (ex-date + amount per share) from
  * Yahoo's chart endpoint using `events=div` — a separate, unauthenticated
@@ -175,16 +184,20 @@ export async function fetchYahooFundamentals(code: string): Promise<FundamentalD
     const payoutRatioRaw = pickRaw(summaryDetail?.payoutRatio);
     const profitMarginsRaw = pickRaw(financialData?.profitMargins);
     const revenueGrowthRaw = pickRaw(financialData?.revenueGrowth);
-    // trailingAnnualDividendRate is already Rupiah/share (not a fraction), unlike
-    // dividendYield/payoutRatio above.
+    // trailingAnnualDividendRate/dividendRate are already Rupiah/share (not a fraction),
+    // unlike dividendYield/payoutRatio above.
     const dividendPerShareTtm = pickRaw(summaryDetail?.trailingAnnualDividendRate);
+    const dividendRate = pickRaw(summaryDetail?.dividendRate);
+    const exDividendDate = pickRawDate(summaryDetail?.exDividendDate);
     const dividendHistory = await dividendHistoryPromise.catch(() => null);
 
     return {
       ticker: code,
+      dividendRate,
       dividendYield: dividendYieldRaw != null ? dividendYieldRaw * 100 : null,
       dividendPayoutRatio: payoutRatioRaw != null ? payoutRatioRaw * 100 : null,
       dividendPerShareTtm,
+      exDividendDate,
       dividendHistory,
       debtToEquity: pickRaw(financialData?.debtToEquity),
       currentRatio: pickRaw(financialData?.currentRatio),
