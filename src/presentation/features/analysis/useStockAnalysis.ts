@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
+import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { computeDataFreshness, DataFreshness } from '@/domain/analysis/dataFreshness';
 import { BreakoutScores, computeBreakoutScores } from '@/domain/screener/presets';
-import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
+import { getStockFundamentals, getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
 import { getStockNews } from '@/data/repositories/newsRepository';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import {
@@ -33,6 +34,10 @@ export interface UseStockAnalysisResult {
   advisor: AiStockAdvisor | null;
   fundamentalScreening: FundamentalScreeningResult | null;
   technicalScreening: TechnicalScreeningResult | null;
+  /** Dividend & balance-sheet-ratio detail from Yahoo Finance. Null while loading
+   *  or when unavailable for this ticker — never coerced to zero. */
+  fundamentals: FundamentalDetail | null;
+  fundamentalsLoading: boolean;
   reload: (forceRefresh?: boolean) => Promise<void>;
 }
 
@@ -60,6 +65,8 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
   const [newsSummary, setNewsSummary] = useState<NewsSentimentSummary>(EMPTY_NEWS_SUMMARY);
   const [newsLoading, setNewsLoading] = useState(false);
   const [allSummaries, setAllSummaries] = useState<StockSummary[]>([]);
+  const [fundamentals, setFundamentals] = useState<FundamentalDetail | null>(null);
+  const [fundamentalsLoading, setFundamentalsLoading] = useState(false);
 
   const load = useCallback(async (forceRefresh = false) => {
     const code = ticker.toUpperCase();
@@ -150,6 +157,27 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
 
   useEffect(() => { load(false); }, [load]);
 
+  // Dividend/balance-sheet detail is fetched separately from the summary/bars/news
+  // pipeline above: it's not part of the instant-cache shape (it changes slowly and
+  // the API route itself is cached 6h server-side), so it loads independently and
+  // doesn't block or get blocked by the 0ms cached-summary fast path.
+  useEffect(() => {
+    const code = ticker.toUpperCase();
+    let cancelled = false;
+    setFundamentals(null);
+    setFundamentalsLoading(true);
+    getStockFundamentals(code)
+      .then((data) => {
+        if (!cancelled) setFundamentals(data);
+      })
+      .finally(() => {
+        if (!cancelled) setFundamentalsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
+
   const breakoutScores = useMemo(() => {
     if (!summary || bars.length === 0) return null;
     return computeBreakoutScores(summary, bars);
@@ -178,6 +206,8 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
     advisor,
     fundamentalScreening,
     technicalScreening,
+    fundamentals,
+    fundamentalsLoading,
     reload: load,
   };
 }

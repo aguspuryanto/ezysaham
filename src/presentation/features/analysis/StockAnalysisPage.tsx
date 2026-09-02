@@ -55,6 +55,7 @@ import {
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
+import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
 import { computeBandarScore } from '@/domain/analysis/bandarScore';
@@ -700,9 +701,13 @@ function SimilarStocksSidebarCard({ stocks }: { stocks: StockSummary[] }) {
 function FundamentalSection({
   summary,
   screening,
+  fundamentals,
+  fundamentalsLoading,
 }: {
   summary: StockSummary;
   screening: FundamentalScreeningResult;
+  fundamentals: FundamentalDetail | null;
+  fundamentalsLoading: boolean;
 }) {
   const { per, pbv, roe } = summary;
 
@@ -779,6 +784,60 @@ function FundamentalSection({
             <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400 leading-relaxed">{item.detail}</p>
           </div>
         ))}
+      </div>
+
+      {/* Dividen */}
+      <div className="border-t-2 border-(--neo-line) pt-4">
+        <h3 className="mb-3 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
+          <History className="size-4 text-zinc-400" strokeWidth={2.5} />
+          Dividen
+        </h3>
+
+        {fundamentalsLoading ? (
+          <div className="flex items-center gap-2 py-3 text-sm font-semibold text-zinc-400">
+            <Loader2 className="size-4 animate-spin" strokeWidth={2.5} /> Memuat data dividen…
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
+                <div className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Dividen (TTM)</div>
+                <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">
+                  {fundamentals?.dividendPerShareTtm != null ? fmtRp(fundamentals.dividendPerShareTtm) : '–'}
+                </div>
+              </div>
+              <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
+                <div className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Dividend Yield</div>
+                <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">
+                  {fundamentals?.dividendYield != null ? `${fundamentals.dividendYield.toFixed(2)}%` : '–'}
+                </div>
+              </div>
+              <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
+                <div className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Payout Ratio</div>
+                <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">
+                  {fundamentals?.dividendPayoutRatio != null ? `${fundamentals.dividendPayoutRatio.toFixed(1)}%` : '–'}
+                </div>
+              </div>
+            </div>
+
+            {fundamentals?.dividendHistory && fundamentals.dividendHistory.length > 0 ? (
+              <div className="neo-border divide-y-2 divide-(--neo-line) bg-white dark:bg-zinc-900">
+                {fundamentals.dividendHistory.slice(0, 8).map((entry) => (
+                  <div key={entry.date} className="flex items-center justify-between px-4 py-2 text-sm">
+                    <span className="text-zinc-500 dark:text-zinc-400">
+                      {new Date(entry.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                    <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">{fmtRp(entry.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="py-2 text-sm font-semibold text-zinc-400">
+                {fundamentals ? 'Tidak ada riwayat dividen tercatat untuk emiten ini.' : 'Data dividen tidak tersedia saat ini.'}
+              </p>
+            )}
+          </>
+        )}
       </div>
     </SectionCard>
   );
@@ -1188,6 +1247,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     advisor,
     fundamentalScreening,
     technicalScreening,
+    fundamentals,
+    fundamentalsLoading,
     reload: load,
   } = useStockAnalysis(ticker);
   const [justCopied, setJustCopied] = useState(false);
@@ -1535,7 +1596,12 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
           {/* Tab 3: Screening & Analisis Fundamental */}
           {activeTab === 'fundamental' && (
-            <FundamentalSection summary={summary} screening={fundamentalScreening} />
+            <FundamentalSection
+              summary={summary}
+              screening={fundamentalScreening}
+              fundamentals={fundamentals}
+              fundamentalsLoading={fundamentalsLoading}
+            />
           )}
 
           {/* Tab 4: Analisis Berita & Sentimen */}

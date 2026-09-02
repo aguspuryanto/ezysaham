@@ -1,4 +1,5 @@
-import { FundamentalDetail } from '@/domain/models/Fundamentals';
+import { DividendHistoryEntry, FundamentalDetail } from '@/domain/models/Fundamentals';
+import { toDateString } from '@/data/external/yahooFinance';
 
 /**
  * Yahoo's fundamentals endpoint (v10/finance/quoteSummary) is not documented
@@ -86,6 +87,43 @@ function pickRaw(node: unknown): number | null {
 }
 
 /**
+ * Fetches historical dividend payments (ex-date + amount per share) from
+ * Yahoo's chart endpoint using `events=div` — a separate, unauthenticated
+ * endpoint from quoteSummary, so it needs no crumb/cookie session. Returns
+ * null on failure (treat as "unknown"), or an empty array when the fetch
+ * succeeded but no dividend events exist for this ticker.
+ */
+async function fetchYahooDividendHistory(code: string): Promise<DividendHistoryEntry[] | null> {
+  const symbol = `${code}.JK`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=1mo&events=div`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+
+  let payload: any;
+  try {
+    payload = await res.json();
+  } catch {
+    return null;
+  }
+
+  const result = payload?.chart?.result?.[0];
+  const dividends = result?.events?.dividends as Record<string, { amount: number; date: number }> | undefined;
+  if (!result) return null;
+  if (!dividends) return [];
+
+  const gmtOffset: number = result.meta?.gmtoffset ?? 0;
+  return Object.values(dividends)
+    .map((d) => ({ date: toDateString(d.date, gmtOffset), amount: d.amount }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+/**
  * Fetches dividend & balance-sheet-ratio fields for one IDX ticker.
  * Returns null on any failure (network error, rate limit, or a stale
  * crumb/cookie even after one retry) — callers must treat that as "data
@@ -94,6 +132,10 @@ function pickRaw(node: unknown): number | null {
 export async function fetchYahooFundamentals(code: string): Promise<FundamentalDetail | null> {
   const symbol = `${code}.JK`;
   const modules = 'summaryDetail,financialData';
+  // Fired off eagerly and awaited only once the quoteSummary session succeeds —
+  // it hits an independent endpoint, so a slow/failed quoteSummary retry loop
+  // shouldn't block it from resolving in parallel.
+  const dividendHistoryPromise = fetchYahooDividendHistory(code);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const session = await getSession(attempt > 0);
@@ -133,11 +175,17 @@ export async function fetchYahooFundamentals(code: string): Promise<FundamentalD
     const payoutRatioRaw = pickRaw(summaryDetail?.payoutRatio);
     const profitMarginsRaw = pickRaw(financialData?.profitMargins);
     const revenueGrowthRaw = pickRaw(financialData?.revenueGrowth);
+    // trailingAnnualDividendRate is already Rupiah/share (not a fraction), unlike
+    // dividendYield/payoutRatio above.
+    const dividendPerShareTtm = pickRaw(summaryDetail?.trailingAnnualDividendRate);
+    const dividendHistory = await dividendHistoryPromise.catch(() => null);
 
     return {
       ticker: code,
       dividendYield: dividendYieldRaw != null ? dividendYieldRaw * 100 : null,
       dividendPayoutRatio: payoutRatioRaw != null ? payoutRatioRaw * 100 : null,
+      dividendPerShareTtm,
+      dividendHistory,
       debtToEquity: pickRaw(financialData?.debtToEquity),
       currentRatio: pickRaw(financialData?.currentRatio),
       netMargin: profitMarginsRaw != null ? profitMarginsRaw * 100 : null,

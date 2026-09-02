@@ -1,6 +1,6 @@
 import { HistoryResponse, OHLCVBar } from '@/domain/models/History';
 
-function toDateString(unixSeconds: number, gmtOffsetSeconds: number): string {
+export function toDateString(unixSeconds: number, gmtOffsetSeconds: number): string {
   const shifted = new Date((unixSeconds + gmtOffsetSeconds) * 1000);
   return shifted.toISOString().slice(0, 10);
 }
