@@ -18,19 +18,12 @@ export interface DividendHistoryEntry {
 
 export interface FundamentalDetail {
   ticker: string;
-  /** Rupiah per share — forward-looking annualized dividend rate (Yahoo's "Forward Dividend",
-   *  paired with dividendYield below to form "Forward Dividend & Yield"). */
-  dividendRate: number | null;
-  /** % — forward-looking dividend yield paired with dividendRate, e.g. 5.65 means 5.65%.
-   *  NOT trailing — despite the field name, this mirrors Yahoo's summaryDetail.dividendYield,
-   *  which is the forward figure. Use dividendPerShareTtm/below for the trailing amount. */
+  /** % — trailing dividend yield, e.g. 5.65 means 5.65%. */
   dividendYield: number | null;
   /** % — dividend paid / net income, e.g. 75.4 means 75.4%. */
   dividendPayoutRatio: number | null;
   /** Rupiah per share — trailing twelve-month dividend total (Dividend TTM). */
   dividendPerShareTtm: number | null;
-  /** ISO date (YYYY-MM-DD) of the most recent/next ex-dividend date, or null if unknown. */
-  exDividendDate: string | null;
   /** Historical dividend payments, newest first. Null when the fetch failed;
    *  an empty array means the fetch succeeded but the emiten has no recorded
    *  dividend history on Yahoo. */

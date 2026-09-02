@@ -799,27 +799,17 @@ function FundamentalSection({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 mb-3 sm:grid-cols-4">
-              <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
-                <div className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Forward Dividend & Yield</div>
-                <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">
-                  {fundamentals?.dividendRate != null
-                    ? `${fmtRp(fundamentals.dividendRate)}${fundamentals.dividendYield != null ? ` (${fundamentals.dividendYield.toFixed(2)}%)` : ''}`
-                    : '–'}
-                </div>
-              </div>
-              <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
-                <div className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Ex-Dividend Date</div>
-                <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">
-                  {fundamentals?.exDividendDate
-                    ? new Date(fundamentals.exDividendDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
-                    : '–'}
-                </div>
-              </div>
+            <div className="grid grid-cols-3 gap-3 mb-3">
               <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
                 <div className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Dividen (TTM)</div>
                 <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">
                   {fundamentals?.dividendPerShareTtm != null ? fmtRp(fundamentals.dividendPerShareTtm) : '–'}
+                </div>
+              </div>
+              <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
+                <div className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Dividend Yield</div>
+                <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">
+                  {fundamentals?.dividendYield != null ? `${fundamentals.dividendYield.toFixed(2)}%` : '–'}
                 </div>
               </div>
               <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
