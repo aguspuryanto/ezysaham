@@ -33,6 +33,7 @@ import {
   PieChart,
   RefreshCw,
   Rocket,
+  Settings2,
   Share2,
   Sparkles,
   Target,
@@ -43,7 +44,7 @@ import {
   Zap,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { StockSummary } from '@/domain/models/Stock';
 import { OHLCVBar } from '@/domain/models/History';
 import {
@@ -68,6 +69,8 @@ import { PhilosophyBanner } from '@/presentation/features/screener/components/Ph
 import { useStockAnalysis } from './useStockAnalysis';
 import { DataFreshnessPill, DataFreshnessStaleBanner } from './DataFreshnessBanner';
 import { OHLCVChart } from './OHLCVChart';
+import { useTradingStyle } from './useTradingStyle';
+import { applyTradingStyle } from '@/domain/analysis/tradingStyleAdjuster';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtRp(n: number): string {
@@ -617,13 +620,60 @@ function BandarDetectorCard({ summary, bars }: { summary: StockSummary; bars: OH
 // 🎯 TRADING PLAN SUMMARY (sidebar, compact single-column version of ScenarioCard)
 // ─────────────────────────────────────────────────────────────────────────────
 function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
-  const bias = plan.recommendedBias === 'bearish' ? 'bearish' : 'bullish';
-  const scenario = plan[bias];
+  const { prefs, setPrefs } = useTradingStyle();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Input state (string agar bisa ketik angka bebas sebelum di-commit)
+  const [clInput, setClInput] = useState(String(prefs.maxClPct));
+  const [tp1Input, setTp1Input] = useState(String(prefs.minTp1Pct));
+  const [tp2Input, setTp2Input] = useState(String(prefs.minTp2Pct));
+
+  // Sync input values ketika prefs di-hydrate dari localStorage setelah mount
+  const prevPrefsRef = useRef(prefs);
+  if (prevPrefsRef.current !== prefs) {
+    prevPrefsRef.current = prefs;
+    // Tidak setState di sini — sync dilakukan saat buka settings panel
+  }
+
+  // Pastikan input ter-sync dengan prefs saat pertama buka settings
+  const handleSettingsToggle = () => {
+    if (!settingsOpen) {
+      setClInput(String(prefs.maxClPct));
+      setTp1Input(String(prefs.minTp1Pct));
+      setTp2Input(String(prefs.minTp2Pct));
+    }
+    setSettingsOpen((v) => !v);
+  };
+
+  const commitCl = () => {
+    const v = parseFloat(clInput);
+    if (!Number.isNaN(v)) setPrefs({ maxClPct: v });
+    else setClInput(String(prefs.maxClPct));
+  };
+  const commitTp1 = () => {
+    const v = parseFloat(tp1Input);
+    if (!Number.isNaN(v)) setPrefs({ minTp1Pct: v });
+    else setTp1Input(String(prefs.minTp1Pct));
+  };
+  const commitTp2 = () => {
+    const v = parseFloat(tp2Input);
+    if (!Number.isNaN(v)) setPrefs({ minTp2Pct: v });
+    else setTp2Input(String(prefs.minTp2Pct));
+  };
+
+  // Terapkan preferensi gaya trading ke plan
+  const adjusted = useMemo(() => applyTradingStyle(plan, prefs), [plan, prefs]);
+
+  const bias = adjusted.recommendedBias === 'bearish' ? 'bearish' : 'bullish';
+  const scenario = adjusted[bias];
   const isBull = bias === 'bullish';
   const Icon = isBull ? TrendingUp : TrendingDown;
 
+  const anyAdjusted = scenario.slAdjusted || scenario.tp1Adjusted || scenario.tp2Adjusted;
+
   return (
     <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 p-4 space-y-3">
+      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
           <Crosshair className="size-4 text-zinc-400" strokeWidth={2.5} />
@@ -634,10 +684,183 @@ function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
           isBull ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'
         )}>
           <Icon className="size-3" strokeWidth={2.5} />
-          {plan.recommendedBias === 'neutral' ? 'Netral' : isBull ? 'Bullish' : 'Bearish'}
+          {adjusted.recommendedBias === 'neutral' ? 'Netral' : isBull ? 'Bullish' : 'Bearish'}
         </span>
       </div>
 
+      {/* ── Settings Panel ─────────────────────────────────── */}
+      <div className="neo-border border-(--neo-line) overflow-hidden">
+        <button
+          type="button"
+          onClick={handleSettingsToggle}
+          aria-expanded={settingsOpen}
+          className="flex w-full items-center justify-between gap-2 px-3 py-2 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+        >
+          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            <Settings2 className="size-3" strokeWidth={2.5} />
+            Gaya Trading Saya
+          </span>
+          <div className="flex items-center gap-1.5">
+            {anyAdjusted && (
+              <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">● disesuaikan</span>
+            )}
+            <ChevronDown className={cn('size-3.5 text-zinc-400 transition-transform shrink-0', settingsOpen && 'rotate-180')} strokeWidth={2.5} />
+          </div>
+        </button>
+
+        {settingsOpen && (
+          <div className="px-3 py-3 space-y-3 border-t-2 border-(--neo-line) bg-white dark:bg-zinc-900">
+            {/* CL Input */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  ✂️ Cut Loss maks
+                  {scenario.slAdjusted && (
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 ml-1">↑ aktif</span>
+                  )}
+                </span>
+                <span className="text-rose-500 font-mono">{prefs.maxClPct}%</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  id="tp-cl-range"
+                  min={1}
+                  max={20}
+                  step={0.5}
+                  value={prefs.maxClPct}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setClInput(String(v));
+                    setPrefs({ maxClPct: v });
+                  }}
+                  className="flex-1 accent-rose-500 h-1.5"
+                />
+                <input
+                  type="number"
+                  id="tp-cl-input"
+                  min={1}
+                  max={20}
+                  step={0.5}
+                  value={clInput !== '' ? clInput : prefs.maxClPct}
+                  onChange={(e) => setClInput(e.target.value)}
+                  onBlur={commitCl}
+                  onKeyDown={(e) => e.key === 'Enter' && commitCl()}
+                  className="w-14 text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-0.5 focus:outline-none focus:border-rose-400 dark:focus:border-rose-500"
+                />
+                <span className="text-xs font-bold text-zinc-400">%</span>
+              </div>
+            </div>
+
+            {/* TP1 Input */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  🎯 TP 1 minimal
+                  {scenario.tp1Adjusted && (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 ml-1">↑ aktif</span>
+                  )}
+                </span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-mono">{prefs.minTp1Pct}%</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  id="tp-tp1-range"
+                  min={3}
+                  max={50}
+                  step={0.5}
+                  value={prefs.minTp1Pct}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setTp1Input(String(v));
+                    setPrefs({ minTp1Pct: v });
+                  }}
+                  className="flex-1 accent-emerald-500 h-1.5"
+                />
+                <input
+                  type="number"
+                  id="tp-tp1-input"
+                  min={3}
+                  max={50}
+                  step={0.5}
+                  value={tp1Input !== '' ? tp1Input : prefs.minTp1Pct}
+                  onChange={(e) => setTp1Input(e.target.value)}
+                  onBlur={commitTp1}
+                  onKeyDown={(e) => e.key === 'Enter' && commitTp1()}
+                  className="w-14 text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-0.5 focus:outline-none focus:border-emerald-400 dark:focus:border-emerald-500"
+                />
+                <span className="text-xs font-bold text-zinc-400">%</span>
+              </div>
+            </div>
+
+            {/* TP2 Input */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  🚀 TP 2 minimal
+                  {scenario.tp2Adjusted && (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 ml-1">↑ aktif</span>
+                  )}
+                </span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-mono">{prefs.minTp2Pct}%</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  id="tp-tp2-range"
+                  min={5}
+                  max={100}
+                  step={1}
+                  value={prefs.minTp2Pct}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setTp2Input(String(v));
+                    setPrefs({ minTp2Pct: v });
+                  }}
+                  className="flex-1 accent-emerald-500 h-1.5"
+                />
+                <input
+                  type="number"
+                  id="tp-tp2-input"
+                  min={5}
+                  max={100}
+                  step={1}
+                  value={tp2Input !== '' ? tp2Input : prefs.minTp2Pct}
+                  onChange={(e) => setTp2Input(e.target.value)}
+                  onBlur={commitTp2}
+                  onKeyDown={(e) => e.key === 'Enter' && commitTp2()}
+                  className="w-14 text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-0.5 focus:outline-none focus:border-emerald-400 dark:focus:border-emerald-500"
+                />
+                <span className="text-xs font-bold text-zinc-400">%</span>
+              </div>
+            </div>
+
+            {/* Indikator penyesuaian */}
+            {anyAdjusted && (
+              <div className="pt-2 border-t-2 border-(--neo-line) space-y-1">
+                {scenario.slAdjusted && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">
+                    ⚠️ SL engine ({fmtN(Math.abs(((plan[bias].sl - plan[bias].entry) / plan[bias].entry) * 100), 1)}%) &gt; batas CL Anda → di-cap ke -{prefs.maxClPct}%
+                  </p>
+                )}
+                {scenario.tp1Adjusted && (
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 leading-snug">
+                    ✅ TP1 engine ({fmtN(((plan[bias].tp1 - plan[bias].entry) / plan[bias].entry) * 100, 1)}%) &lt; target Anda → didorong ke +{prefs.minTp1Pct}%
+                  </p>
+                )}
+                {scenario.tp2Adjusted && (
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 leading-snug">
+                    ✅ TP2 engine ({fmtN(((plan[bias].tp2 - plan[bias].entry) / plan[bias].entry) * 100, 1)}%) &lt; target Anda → didorong ke +{prefs.minTp2Pct}%
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Levels ─────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2 text-sm">
         <KV label="Entry" value={fmtRp(scenario.entry)} />
         {scenario.avgDown != null && (
@@ -660,7 +883,7 @@ function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
         <KV
           label="Stop Loss"
           value={fmtRp(scenario.sl)}
-          valueClass="text-rose-600 dark:text-rose-400"
+          valueClass={cn('text-rose-600 dark:text-rose-400', scenario.slAdjusted && 'font-bold')}
           suffix={`${(((scenario.sl - scenario.entry) / scenario.entry) * 100).toFixed(1)}%`}
           suffixClass="text-rose-500 dark:text-rose-500 text-xs font-semibold"
         />
