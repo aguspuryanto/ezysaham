@@ -110,6 +110,34 @@
   }
 }
 
+/* ── Mobile fintech card system ───────────────────────────────────────
+   On screens ≤ 768px, replace the heavy neo-brutalist borders with
+   a clean, modern fintech aesthetic: subtle 1px border, soft shadow,
+   12px radius. Desktop retains full neo-brutalist styling. */
+@utility mob-card {
+  @apply rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm;
+}
+
+/* On mobile: soften neo-border to 1.5px, remove offset shadow */
+@media (max-width: 767px) {
+  .neo-border {
+    border-width: 1.5px !important;
+  }
+  .neo-shadow, .neo-shadow-sm, .neo-shadow-lg {
+    box-shadow: none !important;
+  }
+  .neo-press:active {
+    transform: translate(1px, 1px) !important;
+  }
+}
+
+/* Prevent horizontal overflow on mobile */
+@media (max-width: 767px) {
+  body {
+    overflow-x: hidden;
+  }
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

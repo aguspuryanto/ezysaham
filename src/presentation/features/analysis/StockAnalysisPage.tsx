@@ -1574,326 +1574,385 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      {/* Header Bar */}
-      <header className="sticky top-0 z-20 neo-border border-x-0 border-t-0 bg-white dark:bg-zinc-950">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+      {/* ── Sticky Header ──────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-800 neo-border border-x-0 border-t-0">
+        <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2.5 sm:px-6 sm:py-3">
+          {/* Back button */}
           <Link
             href="/screener"
-            className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+            className="flex shrink-0 items-center gap-1 text-sm font-bold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
             aria-label="Kembali ke screener"
           >
             <ArrowLeft className="size-4" strokeWidth={2.5} />
-            <span className="hidden sm:inline">Screener</span>
+            <span className="hidden sm:inline text-xs uppercase tracking-wide">Screener</span>
           </Link>
 
-          <div className="h-5 w-[3px] bg-(--neo-line)" />
+          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
 
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-bold text-zinc-900 dark:text-zinc-100 text-lg">{summary.ticker}</span>
-            <span className="hidden truncate text-sm font-medium text-zinc-500 dark:text-zinc-400 sm:inline">{summary.name}</span>
+          {/* Ticker name */}
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 text-base">{summary.ticker}</span>
+            <span className="hidden sm:inline truncate text-xs font-medium text-zinc-400 dark:text-zinc-500">{summary.name}</span>
           </div>
 
-          <div className="ml-auto flex items-center gap-3">
-            <nav className="flex items-center gap-1.5">
-              {LINKS.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={'flex items-center gap-1.5 border-2 border-transparent px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 transition-colors hover:border-(--neo-line) dark:text-zinc-400'}
-                >
-                  <Icon className="size-3.5" strokeWidth={2.5} />
-                  <span className="hidden sm:inline">{label}</span>
-                </Link>
-              ))}
-            </nav>
-            <button
-              type="button"
-              onClick={() => load(true)}
-              title="Perbarui & muat ulang data"
-              className="neo-press flex size-9 items-center justify-center neo-border neo-shadow-sm bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
-            >
-              <RefreshCw className="size-4" strokeWidth={2.5} />
-            </button>
+          {/* Mobile: inline price + change in header */}
+          <div className="flex items-center gap-1.5 shrink-0 sm:hidden">
+            <span className="font-mono text-sm font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
+              {formatRupiah(summary.lastClose)}
+            </span>
+            <span className={cn(
+              'inline-flex items-center gap-0.5 text-xs font-mono font-bold tabular-nums px-1.5 py-0.5 rounded-md',
+              positiveDay
+                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+                : 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400'
+            )}>
+              {positiveDay ? <TrendingUp className="size-3" strokeWidth={2.5} /> : <TrendingDown className="size-3" strokeWidth={2.5} />}
+              {formatPercent(summary.percentChange1D)}
+            </span>
           </div>
+
+          {/* Desktop: nav links */}
+          <nav className="hidden sm:flex items-center gap-1">
+            {LINKS.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <Icon className="size-3.5" strokeWidth={2.5} />
+                <span>{label}</span>
+              </Link>
+            ))}
+          </nav>
+
+          {/* Reload */}
+          <button
+            type="button"
+            onClick={() => load(true)}
+            title="Perbarui & muat ulang data"
+            className="neo-press flex shrink-0 size-8 items-center justify-center neo-border neo-shadow-sm bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 rounded-lg sm:rounded-none sm:size-9"
+          >
+            <RefreshCw className="size-3.5 sm:size-4" strokeWidth={2.5} />
+          </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 pb-16 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:items-start">
-        <div className="space-y-5 min-w-0">
-          {/* Ticker Identity Card */}
-          <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 p-5 space-y-4">
-            <div className="flex items-start justify-between gap-4">
+      {/* ── Main Content ────────────────────────────────────────────────────── */}
+      <main className="mx-auto max-w-6xl px-0 sm:px-4 sm:py-4 lg:px-6 lg:py-6 pb-16 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-0 sm:gap-5 lg:items-start">
+
+        {/* ── LEFT / MAIN COLUMN ─────────────────────────────────────────── */}
+        <div className="min-w-0 space-y-0 sm:space-y-4">
+
+          {/* ── Hero Price Block ────────────────────────────────────────── */}
+          <div className="bg-white dark:bg-zinc-900 px-4 pt-4 pb-3 sm:neo-border sm:neo-shadow sm:px-5 sm:py-5 border-b border-zinc-100 dark:border-zinc-800 sm:border-b-0">
+            {/* Company name + sector */}
+            <div className="flex items-start gap-2 mb-3">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-                    {summary.name} ({summary.ticker})
-                  </h1>
-                  <Pill tone="zinc">{summary.sector || 'Sektor BEI'}</Pill>
+                <h1 className="text-base sm:text-xl font-bold text-zinc-900 dark:text-zinc-100 leading-tight truncate">
+                  {summary.name}
+                </h1>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs font-semibold text-zinc-400 dark:text-zinc-500">{summary.ticker}</span>
+                  {summary.sector && (
+                    <>
+                      <span className="text-zinc-300 dark:text-zinc-700">·</span>
+                      <span className="text-xs font-medium text-zinc-400 dark:text-zinc-500 truncate">{summary.sector}</span>
+                    </>
+                  )}
+                  {freshness && <DataFreshnessPill freshness={freshness} />}
                 </div>
-                <div className="flex flex-wrap gap-x-4 text-sm sm:text-sm font-medium text-zinc-500 dark:text-zinc-400 mt-1">
-                  <span>Market Cap: <strong>{formatCompact(summary.capitalization)}</strong></span>
-                  <span>Avg Vol 20D: <strong>{formatCompact(volume.volumeMa20)} lembar</strong></span>
-                </div>
-                {freshness && <DataFreshnessPill freshness={freshness} />}
+              </div>
+            </div>
+
+            {/* Price + change — large on desktop, medium on mobile (header has it small) */}
+            <div className="flex items-end justify-between gap-3">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="font-mono text-2xl sm:text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {formatRupiah(summary.lastClose)}
+                </span>
+                <span className={cn(
+                  'hidden sm:inline-flex items-center gap-1 text-base font-mono tabular-nums font-bold',
+                  positiveDay ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                )}>
+                  {positiveDay ? <TrendingUp className="size-5" strokeWidth={2.5} /> : <TrendingDown className="size-5" strokeWidth={2.5} />}
+                  {formatPercent(summary.percentChange1D)}
+                </span>
               </div>
 
-              <div className="flex flex-col items-end gap-2 shrink-0">
-                <div className="flex items-center gap-2">
-                  {/* <Link
-                    href={`/history/${summary.ticker}`}
-                    className="neo-press flex items-center gap-1.5 px-3 py-1.5 neo-border neo-shadow-sm bg-white text-sm font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
-                  >
-                    <History className="size-3.5" strokeWidth={2.5} /> Riwayat Teknikal
-                  </Link> */}
-                  <button
-                    type="button"
-                    onClick={handleShare}
-                    className="neo-press flex items-center gap-1.5 px-3 py-1.5 neo-border neo-shadow-sm bg-white text-sm font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
-                  >
-                    <Share2 className="size-3.5" strokeWidth={2.5} /> {justCopied ? 'Tautan Disalin!' : 'Bagikan'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => watchlist.toggle(summary.ticker)}
+              {/* Action buttons */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="neo-press flex items-center gap-1 px-2.5 py-1.5 neo-border neo-shadow-sm bg-white text-xs font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 rounded-lg sm:rounded-none sm:px-3"
+                >
+                  <Share2 className="size-3.5" strokeWidth={2.5} />
+                  <span className="hidden sm:inline">{justCopied ? 'Disalin!' : 'Bagikan'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => watchlist.toggle(summary.ticker)}
+                  className={cn(
+                    'neo-press flex items-center gap-1 px-2.5 py-1.5 neo-border neo-shadow-sm text-xs font-bold transition-colors rounded-lg sm:rounded-none sm:px-3',
+                    isWatched ? 'bg-amber-300 text-black' : 'bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300'
+                  )}
+                >
+                  {isWatched ? <BookmarkCheck className="size-3.5" strokeWidth={2.5} /> : <Bookmark className="size-3.5" strokeWidth={2.5} />}
+                  <span className="hidden sm:inline">{isWatched ? 'Watching' : 'Watch'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* ── Horizontal Stats Bar ─────────────────────────────────── */}
+            <div className="mt-3 -mx-4 sm:mx-0 overflow-x-auto">
+              <div className="flex items-stretch gap-0 px-4 sm:px-0 sm:gap-4 sm:flex-wrap min-w-max sm:min-w-0">
+                {[
+                  { label: 'Mkt Cap', value: formatCompact(summary.capitalization) },
+                  { label: 'Vol 20D', value: `${formatCompact(volume.volumeMa20)} lbr` },
+                  { label: 'RVOL', value: Number.isNaN(volume.relativeVolume) ? '–' : `${volume.relativeVolume.toFixed(2)}×` },
+                  { label: 'PER', value: summary.per != null ? `${summary.per.toFixed(1)}×` : '–' },
+                  { label: 'PBV', value: summary.pbv != null ? `${summary.pbv.toFixed(2)}×` : '–' },
+                  { label: 'ROE', value: summary.roe != null ? `${summary.roe.toFixed(1)}%` : '–' },
+                ].map((stat, i) => (
+                  <div
+                    key={stat.label}
                     className={cn(
-                      'neo-press flex items-center gap-1.5 px-3 py-1.5 neo-border neo-shadow-sm text-sm font-bold transition-colors',
-                      isWatched ? 'bg-amber-300 text-black' : 'bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300'
+                      'flex flex-col items-center justify-center px-3 py-1.5 shrink-0',
+                      i > 0 && 'border-l border-zinc-100 dark:border-zinc-800 sm:border-0 sm:pl-0'
                     )}
                   >
-                    {isWatched ? <BookmarkCheck className="size-3.5" strokeWidth={2.5} /> : <Bookmark className="size-3.5" strokeWidth={2.5} />}
-                    {isWatched ? 'Watching' : 'Watch'}
-                  </button>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-2xl sm:text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
-                    {formatRupiah(summary.lastClose)}
-                  </span>
-                  <span className={cn(
-                    'inline-flex items-center gap-1 text-base sm:text-lg font-mono tabular-nums font-bold',
-                    positiveDay ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                  )}>
-                    {positiveDay ? <TrendingUp className="size-5" strokeWidth={2.5} /> : <TrendingDown className="size-5" strokeWidth={2.5} />}
-                    {formatPercent(summary.percentChange1D)}
-                  </span>
-                </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 whitespace-nowrap">{stat.label}</span>
+                    <span className="text-xs font-mono font-bold text-zinc-800 dark:text-zinc-200 whitespace-nowrap mt-0.5">{stat.value}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* OHLCV Chart */}
+          {/* ── OHLCV Chart ─────────────────────────────────────────────── */}
           {bars.length > 0 && (
-            <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
+            <div className="sm:neo-border sm:neo-shadow">
+              <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
+            </div>
           )}
 
-          {/* Kesimpulan Objektif — cross-check di luar skor AI Advisor */}
-          {objectiveConclusion && <ObjectiveConclusionCard conclusion={objectiveConclusion} />}
+          {/* ── Kesimpulan Objektif ──────────────────────────────────────── */}
+          <div className="px-0 sm:px-0">
+            {objectiveConclusion && <ObjectiveConclusionCard conclusion={objectiveConclusion} />}
+          </div>
 
-          {/* Data Freshness warning — shown only when the last available bar is 3+ trading days old */}
+          {/* Data Freshness warning */}
           {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
 
-          <div className="space-y-5">
-            {/* Quick Link to Deep Dive Tabs */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* ── MOBILE SIDEBAR CARDS ─────────────────────────────────────
+              On mobile: AI Advisor, Scoring, Bandar, Trading Plan appear
+              here (after chart, before tabs). On lg+ they move to the
+              right sticky sidebar via CSS order. */}
+          <div className="lg:hidden space-y-3 px-3 sm:px-0">
+            <AiStockAdvisorSidebar advisor={advisor} />
+            <TradingPlanSidebarCard plan={tradingPlan} />
+            <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
+            <BandarDetectorCard summary={summary} bars={bars} />
+          </div>
+
+          {/* ── Quick Stat Cards ─────────────────────────────────────────── */}
+          <div className="px-3 sm:px-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
               <button
                 onClick={() => setActiveTab('berita')}
-                className="neo-press p-4 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 text-left space-y-1"
+                className={cn(
+                  'neo-press p-3 sm:p-4 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 text-left space-y-1 rounded-xl sm:rounded-none transition-colors',
+                  activeTab === 'berita' && 'bg-zinc-50 dark:bg-zinc-800'
+                )}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase text-zinc-500">1. Analisis Berita</span>
-                  <span className="text-sm font-bold text-blue-600">
-                    {newsSummary.netSentimentScore}%
-                  </span>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] sm:text-xs font-bold uppercase text-zinc-500">Berita</span>
+                  <span className="text-xs sm:text-sm font-bold text-blue-600">{newsSummary.netSentimentScore}%</span>
                 </div>
-                <p className="text-sm text-zinc-600 dark:text-zinc-300 font-semibold">
-                  {newsSummary.totalNews} Artikel ({newsSummary.overallSentiment.toUpperCase()})
+                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 font-semibold leading-tight">
+                  {newsSummary.totalNews} artikel
                 </p>
+                <p className="text-[10px] font-medium text-zinc-400 uppercase">{newsSummary.overallSentiment}</p>
               </button>
 
               <button
                 onClick={() => setActiveTab('fundamental')}
-                className="neo-press p-4 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 text-left space-y-1"
+                className={cn(
+                  'neo-press p-3 sm:p-4 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 text-left space-y-1 rounded-xl sm:rounded-none transition-colors',
+                  activeTab === 'fundamental' && 'bg-zinc-50 dark:bg-zinc-800'
+                )}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase text-zinc-500">2. Screening Fundamental</span>
-                  <span className={cn('text-sm font-bold', fundamentalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] sm:text-xs font-bold uppercase text-zinc-500">Fundamental</span>
+                  <span className={cn('text-xs sm:text-sm font-bold', fundamentalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
                     {fundamentalScreening.score}/100
                   </span>
                 </div>
-                <p className="text-sm text-zinc-600 dark:text-zinc-300 font-semibold">
+                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 font-semibold leading-tight">
                   {fundamentalScreening.statusText}
                 </p>
               </button>
 
               <button
                 onClick={() => setActiveTab('teknikal')}
-                className="neo-press p-4 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 text-left space-y-1"
+                className={cn(
+                  'neo-press p-3 sm:p-4 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 text-left space-y-1 rounded-xl sm:rounded-none col-span-2 sm:col-span-1 transition-colors',
+                  activeTab === 'teknikal' && 'bg-zinc-50 dark:bg-zinc-800'
+                )}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase text-zinc-500">3. Screening Teknikal</span>
-                  <span className={cn('text-sm font-bold', technicalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] sm:text-xs font-bold uppercase text-zinc-500">Teknikal</span>
+                  <span className={cn('text-xs sm:text-sm font-bold', technicalScreening.passed ? 'text-emerald-600' : 'text-amber-600')}>
                     {technicalScreening.score}/100
                   </span>
                 </div>
-                <p className="text-sm text-zinc-600 dark:text-zinc-300 font-semibold">
+                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 font-semibold leading-tight">
                   {technicalScreening.statusText}
                 </p>
               </button>
             </div>
           </div>
 
-          {/* Navigation Tabs */}
-          <div className="flex flex-wrap gap-1.5 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 p-1.5" role="tablist">
-            {ANALYSIS_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  'flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm sm:text-sm font-bold uppercase tracking-wide transition-all',
-                  activeTab === tab.key
-                    ? 'bg-(--neo-accent) text-black'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                )}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
+          {/* ── Sticky Tab Bar ───────────────────────────────────────────── */}
+          <div className="sticky top-[49px] sm:top-[57px] z-20 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm border-y border-zinc-200 dark:border-zinc-800 sm:border-0 sm:neo-border sm:neo-shadow-sm sm:rounded-none" role="tablist">
+            <div className="flex overflow-x-auto scrollbar-hide">
+              {ANALYSIS_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={cn(
+                    'flex shrink-0 items-center justify-center gap-1.5 px-3 py-3 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-bold uppercase tracking-wide transition-all whitespace-nowrap border-b-2 sm:border-b-0 sm:flex-1',
+                    activeTab === tab.key
+                      ? 'border-b-emerald-500 text-emerald-600 dark:text-emerald-400 sm:border-b-0 sm:bg-(--neo-accent) sm:text-black'
+                      : 'border-b-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                  )}
+                >
+                  <span className="size-4 sm:size-4">{tab.icon}</span>
+                  {/* Label: hidden on very small screens, show from sm */}
+                  <span className="hidden xs:inline sm:inline">{tab.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
+          {/* ── TAB CONTENT ─────────────────────────────────────────────── */}
+          <div className="px-3 sm:px-0">
 
-          {/* Tab 2: Screening & Analisis Teknikal */}
-          {activeTab === 'teknikal' && (
-            <div className="space-y-5">
-              {/* Technical Screening Status Header */}
-              <div className={cn(
-                'neo-border neo-shadow-sm p-4 flex items-center justify-between gap-3',
-                technicalScreening.passed
-                  ? 'bg-emerald-50 dark:bg-emerald-500/10'
-                  : 'bg-amber-50 dark:bg-amber-500/10'
-              )}>
-                <div>
-                  <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
-                    {technicalScreening.statusText}
-                  </h3>
-                  <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-                    Evaluasi Tren, Momentum MACD/RSI, Price Action & Volume Akumulasi
-                  </p>
+            {/* Tab: Screening & Analisis Teknikal */}
+            {activeTab === 'teknikal' && (
+              <div className="space-y-4 sm:space-y-5">
+                <div className={cn(
+                  'neo-border neo-shadow-sm p-3 sm:p-4 flex items-center justify-between gap-3 rounded-xl sm:rounded-none',
+                  technicalScreening.passed
+                    ? 'bg-emerald-50 dark:bg-emerald-500/10'
+                    : 'bg-amber-50 dark:bg-amber-500/10'
+                )}>
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 leading-tight">{technicalScreening.statusText}</h3>
+                    <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mt-0.5 leading-snug">
+                      Evaluasi Tren, Momentum MACD/RSI, Price Action & Volume
+                    </p>
+                  </div>
+                  <span className="font-mono text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400 shrink-0">
+                    {technicalScreening.score}/100
+                  </span>
                 </div>
-                <span className="font-mono text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                  {technicalScreening.score}/100
-                </span>
+
+                <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} />
+
+                <SectionCard number={2} title="Level Penting (Resistance & Support)" icon={<Crosshair className="size-4" />} accentClass="bg-violet-500">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-xs sm:text-sm font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">Resistance</p>
+                      {supportResistance.resistances.length > 0
+                        ? supportResistance.resistances.map((r) => (
+                          <LevelRow key={r.label} label={r.label} price={r.price} description={r.description} tone="red" />
+                        ))
+                        : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs sm:text-sm font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-2">Support</p>
+                      {supportResistance.supports.length > 0
+                        ? supportResistance.supports.map((s) => (
+                          <LevelRow key={s.label} label={s.label} price={s.price} description={s.description} tone="green" />
+                        ))
+                        : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <PriceActionSection number={3} priceAction={priceAction} />
+                <VolumeSection number={4} volume={volume} />
+                <IndicatorsSection number={5} indicators={indicators} />
+
+                <SectionCard number={6} title="Rencana Trading" icon={<Target className="size-4" />} accentClass="bg-rose-500">
+                  <div className="grid gap-4 sm:grid-cols-2 mb-4">
+                    <ScenarioCard
+                      type="bullish"
+                      entry={tradingPlan.bullish.entry}
+                      avgDown={tradingPlan.bullish.avgDown}
+                      tp1={tradingPlan.bullish.tp1}
+                      tp2={tradingPlan.bullish.tp2}
+                      sl={tradingPlan.bullish.sl}
+                      rr={tradingPlan.bullish.riskRewardRatio}
+                      notes={tradingPlan.bullish.notes}
+                    />
+                    <ScenarioCard
+                      type="bearish"
+                      entry={tradingPlan.bearish.entry}
+                      tp1={tradingPlan.bearish.tp1}
+                      tp2={tradingPlan.bearish.tp2}
+                      sl={tradingPlan.bearish.sl}
+                      rr={tradingPlan.bearish.riskRewardRatio}
+                      notes={tradingPlan.bearish.notes}
+                    />
+                  </div>
+                </SectionCard>
               </div>
+            )}
 
-              <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} />
+            {/* Tab: Screening & Analisis Fundamental */}
+            {activeTab === 'fundamental' && (
+              <FundamentalSection
+                summary={summary}
+                screening={fundamentalScreening}
+                fundamentals={fundamentals}
+                fundamentalsLoading={fundamentalsLoading}
+              />
+            )}
 
-              {/* Level Penting */}
-              <SectionCard number={2} title="Level Penting (Resistance & Support)" icon={<Crosshair className="size-4" />} accentClass="bg-violet-500">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">
-                      Resistance
-                    </p>
-                    {supportResistance.resistances.length > 0
-                      ? supportResistance.resistances.map((r) => (
-                        <LevelRow key={r.label} label={r.label} price={r.price} description={r.description} tone="red" />
-                      ))
-                      : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-2">
-                      Support
-                    </p>
-                    {supportResistance.supports.length > 0
-                      ? supportResistance.supports.map((s) => (
-                        <LevelRow key={s.label} label={s.label} price={s.price} description={s.description} tone="green" />
-                      ))
-                      : <p className="text-sm text-zinc-400">Tidak terdeteksi.</p>}
-                  </div>
-                </div>
-              </SectionCard>
+            {/* Tab: Analisis Berita & Sentimen */}
+            {activeTab === 'berita' && (
+              <NewsSection newsItems={newsItems} newsSummary={newsSummary} loading={newsLoading} />
+            )}
 
-              <PriceActionSection number={3} priceAction={priceAction} />
-              <VolumeSection number={4} volume={volume} />
-              <IndicatorsSection number={5} indicators={indicators} />
-
-              {/* Rencana Trading */}
-              <SectionCard number={6} title="Rencana Trading" icon={<Target className="size-4" />} accentClass="bg-rose-500">
-                <div className="grid gap-4 sm:grid-cols-2 mb-4">
-                  <ScenarioCard
-                    type="bullish"
-                    entry={tradingPlan.bullish.entry}
-                    avgDown={tradingPlan.bullish.avgDown}
-                    tp1={tradingPlan.bullish.tp1}
-                    tp2={tradingPlan.bullish.tp2}
-                    sl={tradingPlan.bullish.sl}
-                    rr={tradingPlan.bullish.riskRewardRatio}
-                    notes={tradingPlan.bullish.notes}
-                  />
-                  <ScenarioCard
-                    type="bearish"
-                    entry={tradingPlan.bearish.entry}
-                    tp1={tradingPlan.bearish.tp1}
-                    tp2={tradingPlan.bearish.tp2}
-                    sl={tradingPlan.bearish.sl}
-                    rr={tradingPlan.bearish.riskRewardRatio}
-                    notes={tradingPlan.bearish.notes}
-                  />
-                </div>
-              </SectionCard>
-            </div>
-          )}
-
-          {/* Tab 3: Screening & Analisis Fundamental */}
-          {activeTab === 'fundamental' && (
-            <FundamentalSection
-              summary={summary}
-              screening={fundamentalScreening}
-              fundamentals={fundamentals}
-              fundamentalsLoading={fundamentalsLoading}
-            />
-          )}
-
-          {/* Tab 4: Analisis Berita & Sentimen */}
-          {activeTab === 'berita' && (
-            <NewsSection newsItems={newsItems} newsSummary={newsSummary} loading={newsLoading} />
-          )}
-
-          {/* Tab 5: Breakout Hunter AI */}
-          {activeTab === 'breakout' && (
-            <BreakoutHunterSection ticker={summary.ticker} scores={breakoutScores} />
-          )}
+            {/* Tab: Breakout Hunter AI */}
+            {activeTab === 'breakout' && (
+              <BreakoutHunterSection ticker={summary.ticker} scores={breakoutScores} />
+            )}
+          </div>
 
           {/* Philosophy Banner */}
-          <PhilosophyBanner />
+          <div className="px-3 sm:px-0">
+            <PhilosophyBanner />
+          </div>
 
           {/* Disclaimer */}
-          <div className="flex gap-2.5 neo-border bg-amber-50 dark:bg-amber-400/10 px-4 py-3">
+          <div className="mx-3 sm:mx-0 flex gap-2.5 neo-border bg-amber-50 dark:bg-amber-400/10 px-3 sm:px-4 py-3 rounded-xl sm:rounded-none">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" strokeWidth={2.5} />
-            <p className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
+            <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
               <strong>Disclaimer:</strong> Analisis AI ini mengombinasikan screening fundamental, teknikal, dan berita untuk tujuan edukasi. <strong>Bukan merupakan rekomendasi finansial langsung.</strong> Selalu terapkan manajemen risiko ketat dan pertimbangkan kondisi pasar sebelum mengambil keputusan investasi.
             </p>
           </div>
 
           {/* Footer Links */}
-          <div className="flex items-center justify-center gap-3 pt-2 text-sm font-semibold text-zinc-400 dark:text-zinc-600">
-            <a
-              href={`https://finance.yahoo.com/quote/${summary.ticker}.JK`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors"
-            >
+          <div className="flex items-center justify-center gap-3 pt-1 pb-4 text-xs font-semibold text-zinc-400 dark:text-zinc-600 flex-wrap">
+            <a href={`https://finance.yahoo.com/quote/${summary.ticker}.JK`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors">
               Yahoo Finance <ExternalLink className="size-3" strokeWidth={2.5} />
             </a>
             <span>·</span>
-            <a
-              href={`https://www.idx.co.id/id/data-pasar/data-saham/daftar-saham/?kodeEmiten=${summary.ticker}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors"
-            >
+            <a href={`https://www.idx.co.id/id/data-pasar/data-saham/daftar-saham/?kodeEmiten=${summary.ticker}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors">
               IDX.co.id <ExternalLink className="size-3" strokeWidth={2.5} />
             </a>
             <span>·</span>
@@ -1901,14 +1960,21 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </div>
         </div>
 
-        {/* Right Sidebar: AI Stock Advisor, Trading Plan Summary, Similar Stocks */}
-        <aside className="space-y-5 lg:sticky lg:top-20">
+        {/* ── RIGHT SIDEBAR (desktop only — lg+) ──────────────────────── */}
+        <aside className="hidden lg:block space-y-5 lg:sticky lg:top-20">
           <AiStockAdvisorSidebar advisor={advisor} />
           <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
           <BandarDetectorCard summary={summary} bars={bars} />
           <TradingPlanSidebarCard plan={tradingPlan} />
           <SimilarStocksSidebarCard stocks={similarStocks} />
         </aside>
+
+        {/* ── SIMILAR STOCKS (mobile — below main content) ────────────── */}
+        {similarStocks.length > 0 && (
+          <div className="lg:hidden px-3 sm:px-0 pb-4">
+            <SimilarStocksSidebarCard stocks={similarStocks} />
+          </div>
+        )}
       </main>
     </div>
   );
