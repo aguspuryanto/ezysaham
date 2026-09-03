@@ -132,12 +132,23 @@ function SectionCard({
 }
 
 // ─── Key-Value Row ─────────────────────────────────────────────────────────────
-function KV({ label, value, valueClass }: { label: string; value: React.ReactNode; valueClass?: string }) {
+function KV({ label, value, valueClass, suffix, suffixClass }: {
+  label: string;
+  value: React.ReactNode;
+  valueClass?: string;
+  suffix?: string;
+  suffixClass?: string;
+}) {
   return (
     <div className="flex items-center justify-between gap-2 text-sm py-1">
       <span className="text-zinc-500 dark:text-zinc-400 shrink-0">{label}</span>
-      <span className={cn('font-mono tabular-nums text-zinc-800 dark:text-zinc-200 text-right', valueClass)}>
-        {value}
+      <span className="flex items-baseline gap-1 text-right">
+        <span className={cn('font-mono tabular-nums text-zinc-800 dark:text-zinc-200', valueClass)}>
+          {value}
+        </span>
+        {suffix && (
+          <span className={cn('font-mono tabular-nums', suffixClass)}>{suffix}</span>
+        )}
       </span>
     </div>
   );
@@ -224,9 +235,9 @@ function ScenarioCard({ type, entry, avgDown, tp1, tp2, sl, rr, notes }: {
         <div className="grid grid-cols-2 gap-x-6 px-4 py-3">
           <KV label="Entry" value={fmtRp(entry)} />
           {avgDown != null && <KV label="Add / AVGD" value={fmtRp(avgDown)} valueClass="text-amber-600 dark:text-amber-400" />}
-          <KV label="TP 1" value={fmtRp(tp1)} valueClass="text-emerald-600 dark:text-emerald-400" />
-          <KV label="TP 2" value={fmtRp(tp2)} valueClass="text-emerald-600 dark:text-emerald-400" />
-          <KV label="Stop Loss" value={fmtRp(sl)} valueClass="text-rose-600 dark:text-rose-400" />
+          <KV label="TP 1" value={fmtRp(tp1)} valueClass="text-emerald-600 dark:text-emerald-400" suffix={`+${(((tp1 - entry) / entry) * 100).toFixed(1)}%`} suffixClass="text-emerald-500 dark:text-emerald-500 text-xs font-semibold" />
+          <KV label="TP 2" value={fmtRp(tp2)} valueClass="text-emerald-600 dark:text-emerald-400" suffix={`+${(((tp2 - entry) / entry) * 100).toFixed(1)}%`} suffixClass="text-emerald-500 dark:text-emerald-500 text-xs font-semibold" />
+          <KV label="Stop Loss" value={fmtRp(sl)} valueClass="text-rose-600 dark:text-rose-400" suffix={`${(((sl - entry) / entry) * 100).toFixed(1)}%`} suffixClass="text-rose-500 dark:text-rose-500 text-xs font-semibold" />
         </div>
         <div className="px-4 py-3 flex items-center gap-3">
           <span className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Risk / Reward</span>
@@ -632,9 +643,27 @@ function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
         {scenario.avgDown != null && (
           <KV label="Add / AVGD" value={fmtRp(scenario.avgDown)} valueClass="text-amber-600 dark:text-amber-400" />
         )}
-        <KV label="TP 1" value={fmtRp(scenario.tp1)} valueClass="text-emerald-600 dark:text-emerald-400" />
-        <KV label="TP 2" value={fmtRp(scenario.tp2)} valueClass="text-emerald-600 dark:text-emerald-400" />
-        <KV label="Stop Loss" value={fmtRp(scenario.sl)} valueClass="text-rose-600 dark:text-rose-400" />
+        <KV
+          label="TP 1"
+          value={fmtRp(scenario.tp1)}
+          valueClass="text-emerald-600 dark:text-emerald-400"
+          suffix={`+${(((scenario.tp1 - scenario.entry) / scenario.entry) * 100).toFixed(1)}%`}
+          suffixClass="text-emerald-500 dark:text-emerald-500 text-xs font-semibold"
+        />
+        <KV
+          label="TP 2"
+          value={fmtRp(scenario.tp2)}
+          valueClass="text-emerald-600 dark:text-emerald-400"
+          suffix={`+${(((scenario.tp2 - scenario.entry) / scenario.entry) * 100).toFixed(1)}%`}
+          suffixClass="text-emerald-500 dark:text-emerald-500 text-xs font-semibold"
+        />
+        <KV
+          label="Stop Loss"
+          value={fmtRp(scenario.sl)}
+          valueClass="text-rose-600 dark:text-rose-400"
+          suffix={`${(((scenario.sl - scenario.entry) / scenario.entry) * 100).toFixed(1)}%`}
+          suffixClass="text-rose-500 dark:text-rose-500 text-xs font-semibold"
+        />
       </div>
 
       <div className="flex items-center justify-between border-2 border-(--neo-line) bg-zinc-50 dark:bg-zinc-800/60 px-3 py-2">

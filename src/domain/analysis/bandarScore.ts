@@ -355,6 +355,7 @@ export function computeBandarScore(summary: StockSummary, bars: OHLCVBar[]): Ban
 
   const dataNotes: string[] = [
     'Skor ini adalah proxy dari Price Action + Volume + OBV historis (pendekatan Wyckoff). Data Broker Summary & Foreign Flow tidak tersedia lewat API gratis, sehingga TIDAK ikut dihitung — gunakan sebagai salah satu input, bukan satu-satunya sinyal "bandar".',
+    'Saran Penggunaan: Gunakan skor ini sebagai filter awal, lalu konfirmasi dengan: (1) Analisis teknikal lain (support/resistance, indikator momentum). (2) Fundamental perusahaan (laba, pertumbuhan, valuasi). (3) Sentimen pasar dan berita terbaru tentang saham ini.',
   ];
   if (bars.length < 40) {
     dataNotes.push(`Riwayat harga hanya ${bars.length} hari — sebagian faktor mungkin kurang akurat untuk saham yang baru listing/IPO.`);
