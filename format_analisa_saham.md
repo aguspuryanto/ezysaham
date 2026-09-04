@@ -1,11 +1,9 @@
 Hasil di bawah ini adalah contoh hasil analisa saham yang akan dihasilkan oleh AI.
-══════════════════════════════════════════════
 
 RATING GLOBAL: BUY ON WEAKNESS
 
 Rasionalisasi Utama: BRPT menunjukkan fundamental yang solid dengan PE 13.68x dan ROE 34.82%, mencerminkan kualitas profitabilitas yang mampu menopang pertumbuhan jangka panjang. Meski struktur Volume Price Analysis (VPA) harian masih berada dalam fase konsolidasi setelah tren turun, mulai terlihat akumulasi dari broker institusional di area nilai wajar. Kondisi ini membuka peluang akumulasi bertahap, namun tetap lebih ideal dilakukan saat terjadi pelemahan harga (buy on weakness) agar memperoleh Margin of Safety yang lebih baik.
 
-══════════════════════════════════════════════
 
 1. PROFIL RISIKO & INTEGRITAS FUNDAMENTAL
 
@@ -15,7 +13,6 @@ Rasionalisasi Utama: BRPT menunjukkan fundamental yang solid dengan PE 13.68x da
 
 • Margin of Safety: Harga saat ini (1.485) berada tepat di Fair Price fundamental (1.485). Valuasi Peter Lynch berada di 1.559, sementara valuasi Graham di 1.410. Dengan demikian, harga saat ini tergolong fairly valued dengan potensi kenaikan yang masih tersedia, meski ruang Margin of Safety akan menjadi lebih menarik apabila terjadi koreksi menuju area Graham.
 
-══════════════════════════════════════════════
 
 2. SENTIMEN & KATALIS STRATEGIS
 
@@ -31,7 +28,6 @@ Rasionalisasi Utama: BRPT menunjukkan fundamental yang solid dengan PE 13.68x da
 
 • Distributor: Di sisi lain, Broker MG menjadi penjual terbesar dengan Net Sell Rp22 miliar (142,5 ribu lot) pada harga rata-rata 1.546, disusul Broker AK dengan Net Sell Rp21,1 miliar pada harga rata-rata 1.538. Tekanan jual ini mengindikasikan sebagian pelaku pasar masih memanfaatkan kenaikan intraday untuk melakukan distribusi.
 
-══════════════════════════════════════════════
 
 3. VPA & MARKET PHASE
 
@@ -41,7 +37,6 @@ Rasionalisasi Utama: BRPT menunjukkan fundamental yang solid dengan PE 13.68x da
 
 • Divergensi & Reversal: RSI berada di level 41.56 sementara MACD masih berstatus Bearish. Kombinasi ini menunjukkan momentum kenaikan belum terbentuk sepenuhnya dan harga masih berpotensi bergerak sideways sambil menyerap sisa tekanan jual.
 
-══════════════════════════════════════════════
 
 4. STRATEGI TRADING & SINYAL TAKTIS
 
@@ -54,7 +49,6 @@ Rasionalisasi Utama: BRPT menunjukkan fundamental yang solid dengan PE 13.68x da
 • Swing Trading (85/100) | Taktik: Accumulate
   Alasan: Fundamental tetap kuat, harga berada di sekitar Fair Value, dan area historis Selling Climax masih memberikan potensi Risk Reward Ratio yang menarik bagi investor jangka menengah.
 
-══════════════════════════════════════════════
 
 5. TRADING PLAN (DAYTRADE - 15M/5M)
 
@@ -70,7 +64,6 @@ Rasionalisasi Utama: BRPT menunjukkan fundamental yang solid dengan PE 13.68x da
 
 • Zona Re-Entry: Area 1.405 - 1.430 menjadi zona pemantauan berikutnya karena merupakan High Volume Node yang berpotensi menjadi demand zone.
 
-══════════════════════════════════════════════
 
 6. TRADING PLAN (SWING - DAILY)
 
@@ -86,7 +79,6 @@ Rasionalisasi Utama: BRPT menunjukkan fundamental yang solid dengan PE 13.68x da
 
 • Akselerasi (Breakout LVN): Jika harga berhasil ditutup di atas 1.915 dengan volume di atas rata-rata, penambahan posisi (Pyramiding) dapat dipertimbangkan karena harga memasuki area Low Volume Node yang berpotensi mempercepat kenaikan menuju VAH di 2.241.
 
-══════════════════════════════════════════════
 
 7. RISK MITIGATION
 
