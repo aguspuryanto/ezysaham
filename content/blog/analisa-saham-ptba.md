@@ -18,8 +18,6 @@ Secara fundamental, PTBA membukukan **pendapatan Rp 22,03 triliun** (tumbuh 7,7%
 
 ---
 
-## FORMAT ANALISA SAHAM EZYSAHAM AI
-
 **RATING GLOBAL: BUY ON WEAKNESS**
 
 **Rasionalisasi Utama**: PTBA tampil dengan pemulihan fundamental yang sangat kuat pada Semester I 2026 — laba bersih melonjak 218% YoY menjadi Rp 2,65 triliun, didukung efisiensi biaya rantai pasok dan kenaikan ASP batubara 10% YoY. Valuasi PER 11,91x dan PBV 1,25x masih tergolong atraktif untuk emiten BUMN yang secara konsisten membagikan dividen. Secara teknikal, harga berada dalam fase *uptrend* dengan *golden cross* SMA20/SMA50 yang baru terbentuk, disertai MACD bullish yang kuat. Namun, RSI yang sudah memasuki area jenuh beli (*overbought*) mengisyaratkan risiko koreksi teknikal jangka pendek. Strategi terbaik adalah menunggu pullback ke area support untuk masuk dengan margin of safety yang lebih baik.

@@ -18,8 +18,6 @@ Pada Semester I-2026, DMAS membukukan **pendapatan usaha sebesar Rp 1,80 triliun
 
 ---
 
-## FORMAT ANALISA SAHAM EZYSAHAM AI
-
 **RATING GLOBAL: BUY ON WEAKNESS / ACCUMULATE**
 
 **Rasionalisasi Utama**: DMAS menunjukkan profil fundamental superior dengan PER 6.24x, ROE disetahunkan melampaui 23%, serta margin laba bersih di atas 60% yang didukung oleh posisi neraca tanpa utang berbunga (*zero debt*). Dominasi penguasaan lahan untuk ekosistem *data center hyperscale* dan otomotif/EV di kawasan GIIC Kota Deltamas menjamin keberlanjutan arus kas kas dan dividen berimbal hasil tinggi (*dividend yield* 8% – 11%). Secara struktur Volume Price Analysis (VPA), saham DMAS berada dalam fase konsolidasi sehat (*re-accumulation*) di atas area support kuat Rp 198 – 200 setelah reli bertahap. Akumulasi bertahap pada saat harga terkoreksi menguji area *Value Area Low* (VAL) memberikan *Margin of Safety* yang sangat menarik bagi investor berorientasi nilai maupun dividen.

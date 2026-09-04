@@ -18,8 +18,6 @@ Di tengah percepatan implementasi regulasi pembatasan plastik sekali pakai di be
 
 ---
 
-## FORMAT ANALISA SAHAM EZYSAHAM AI
-
 **RATING GLOBAL: SPECULATIVE BUY / BUY ON RETEST**
 
 **Rasionalisasi Utama**: PPRI menampilkan sinyal pembalikan arah yang tegas (*bullish reversal breakout*) ditandai oleh lonjakan volume harian menembus 11,9 juta lembar saat keluar dari area basis sideways Rp 134 – Rp 142. Secara fundamental, perusahaan mencatatkan pertumbuhan laba kuartalan yang solid sebesar +66,1% YoY seiring meluasnya adopsi kemasan kertas di industri F&B nasional. Neraca keuangan sangat likuid dengan rasio lancar 3,88x dan posisi kas yang melebihi total utang (*net cash*). Mengingat kenaikan harian yang sudah cukup tajam (+17%), strategi yang paling terukur adalah melakukan pembelian spekulatif saat terjadi koreksi pengujian ulang (*retest on weakness*) di kisaran area support Rp 148 – Rp 154 guna mengoptimalkan *Margin of Safety*.

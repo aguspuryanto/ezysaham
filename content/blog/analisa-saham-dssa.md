@@ -18,8 +18,6 @@ Secara fundamental, DSSA membukukan pendapatan usaha tahun berjalan setara **USD
 
 ---
 
-## FORMAT ANALISA SAHAM EZYSAHAM AI
-
 **RATING GLOBAL: BUY ON WEAKNESS / ACCUMULATE**
 
 **Rasionalisasi Utama**: DSSA memperlihatkan kualitas fundamental grup konglomerasi papan atas dengan pendapatan tahun berjalan mencapai USD 2,75 miliar, margin kotor 32,28%, serta rasio lancar (*current ratio*) sehat di level 2,26x. Didukung oleh arus kas operasional yang kuat dari GEMS dan Stanmore Resources, DSSA kini secara agresif memperluas sayap ke sektor infrastruktur digital (MyRepublic FTTH dan data center) serta energi terbarukan (PLTS dan captive power hijau). Secara Volume Price Analysis (VPA), saham DSSA sedang berada dalam fase konsolidasi menguat (*re-accumulation / markup continuation*) setelah berhasil menembus resisten psikologis Rp 1.100. Koreksi teknikal ke area support Rp 1.130 – 1.150 memberikan peluang *buy on weakness* dengan rasio *risk-to-reward* yang terukur.
