@@ -18,16 +18,13 @@ import {
   BarChart2,
   Bookmark,
   BookmarkCheck,
-  BookOpen,
   CheckCircle2,
   ChevronDown,
-  Compass,
   Crosshair,
   ExternalLink,
   Eye,
   HelpCircle,
   History,
-  Info,
   Loader2,
   Newspaper,
   PieChart,
@@ -45,6 +42,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { LINKS } from '@/lib/site';
 import { StockSummary } from '@/domain/models/Stock';
 import { OHLCVBar } from '@/domain/models/History';
 import {
@@ -1478,11 +1476,6 @@ const ANALYSIS_TABS: { key: AnalysisTab; label: string; icon: React.ReactNode }[
   { key: 'berita', label: 'Analisis Berita', icon: <Newspaper className="size-4" /> },
 ];
 
-const LINKS = [
-  { href: '/tutorial', label: 'Tutorial', icon: Compass },
-  { href: '/panduan', label: 'Panduan', icon: BookOpen },
-  { href: '/tentang', label: 'Tentang', icon: Info },
-] as const;
 
 export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const {

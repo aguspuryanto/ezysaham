@@ -10,7 +10,7 @@ export const BRAND = {
 };
 
 
-import { Home, Activity, BookOpen, Info } from 'lucide-react';
+import { Home, Activity, BookOpen, Compass, Info, Newspaper } from 'lucide-react';
 
 // ─── Navigation ────────────────────────────────────────────────────────────────
 export const NAV_ITEMS = [
@@ -39,6 +39,14 @@ export const NAV_ITEMS = [
         href: '/tentang',
         icon: Info,
     },
+] as const;
+
+// ─── Content header links (Tutorial/Panduan/Blog/Tentang) ──────────────────────
+export const LINKS = [
+    { href: '/tutorial', label: 'Tutorial', icon: Compass },
+    { href: '/panduan', label: 'Panduan', icon: BookOpen },
+    { href: '/blog', label: 'Blog', icon: Newspaper },
+    { href: '/tentang', label: 'Tentang', icon: Info },
 ] as const;
 
 // ─── Social links ──────────────────────────────────────────────────────────────

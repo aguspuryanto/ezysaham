@@ -1,13 +1,6 @@
 import Link from 'next/link';
-import { ArrowLeft, BookOpen, Compass, Info, Newspaper } from 'lucide-react';
-import { SITE_NAME } from '@/lib/site';
-
-const LINKS = [
-  { href: '/tutorial', label: 'Tutorial', icon: Compass },
-  { href: '/panduan', label: 'Panduan', icon: BookOpen },
-  { href: '/blog', label: 'Blog', icon: Newspaper },
-  { href: '/tentang', label: 'Tentang', icon: Info },
-] as const;
+import { ArrowLeft } from 'lucide-react';
+import { LINKS, SITE_NAME } from '@/lib/site';
 
 export function ContentHeader({ active }: { active: 'tutorial' | 'panduan' | 'blog' | 'tentang' }) {
   return (
