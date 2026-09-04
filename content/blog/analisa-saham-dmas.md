@@ -20,13 +20,9 @@ Pada Semester I-2026, DMAS membukukan **pendapatan usaha sebesar Rp 1,80 triliun
 
 ## FORMAT ANALISA SAHAM EZYSAHAM AI
 
-══════════════════════════════════════════════
-
 **RATING GLOBAL: BUY ON WEAKNESS / ACCUMULATE**
 
 **Rasionalisasi Utama**: DMAS menunjukkan profil fundamental superior dengan PER 6.24x, ROE disetahunkan melampaui 23%, serta margin laba bersih di atas 60% yang didukung oleh posisi neraca tanpa utang berbunga (*zero debt*). Dominasi penguasaan lahan untuk ekosistem *data center hyperscale* dan otomotif/EV di kawasan GIIC Kota Deltamas menjamin keberlanjutan arus kas kas dan dividen berimbal hasil tinggi (*dividend yield* 8% – 11%). Secara struktur Volume Price Analysis (VPA), saham DMAS berada dalam fase konsolidasi sehat (*re-accumulation*) di atas area support kuat Rp 198 – 200 setelah reli bertahap. Akumulasi bertahap pada saat harga terkoreksi menguji area *Value Area Low* (VAL) memberikan *Margin of Safety* yang sangat menarik bagi investor berorientasi nilai maupun dividen.
-
-══════════════════════════════════════════════
 
 ### 1. PROFIL RISIKO & INTEGRITAS FUNDAMENTAL
 
@@ -35,8 +31,6 @@ Pada Semester I-2026, DMAS membukukan **pendapatan usaha sebesar Rp 1,80 triliun
 • **Analisis PB Ratio**: Price to Book Value (PBV) berada di level 1.47x. Angka ini mencerminkan valuasi yang sangat wajar (*fairly valued to undervalued*) untuk emiten dengan profitabilitas tinggi dan neraca kas bersih. Sebagian besar aset DMAS berupa persediaan tanah (*landbank*) matang yang tercatat dengan biaya historis perolehan awal puluhan tahun lalu, sehingga nilai wajar pasar aset neto (*Net Asset Value / NAV*) sebenarnya diperkirakan jauh melampaui nilai buku akuntansinya.
 
 • **Margin of Safety**: Pada harga saat ini (Rp 202), valuasi Peter Lynch Fair Value berada di rentang Rp 245 – 260 (memperhitungkan kombinasi pertumbuhan laba dan dividen yield). Nilai valuasi konservatif Graham Number berada di kisaran Rp 215. Dengan demikian, harga saham saat ini masih berada di bawah nilai wajar intrinsiknya (*discounted*), menyajikan ruang *Margin of Safety* sebesar 15% – 25% bagi pemodal jangka menengah hingga panjang.
-
-══════════════════════════════════════════════
 
 ### 2. SENTIMEN & KATALIS STRATEGIS
 
@@ -52,8 +46,6 @@ Pada Semester I-2026, DMAS membukukan **pendapatan usaha sebesar Rp 1,80 triliun
 
   • **Distributor**: Tekanan jual sporadis didominasi oleh broker ritel dan *short-term momentum trader* (Broker YP, PD, dan XC) yang merealisasikan *capital gain* intraday setiap kali harga menyentuh area resisten psikologis Rp 206 – 210. Karakteristik ini menciptakan formasi penyerapan supply (*absorption*) yang rapi di area support.
 
-══════════════════════════════════════════════
-
 ### 3. VPA & MARKET PHASE
 
 • **Fase Wyckoff**: Mengacu pada grafik Daily OHLC 150 hari, saham DMAS sedang berada dalam **Fase Re-Accumulation (Fase B/C)** setelah menyelesaikan fase *Mark-Up* awal pasca rilis laporan keuangan Q1 dan H1. Koreksi minor dari puncak lokal Rp 214 tertahan dengan volume yang mengering (*diminishing volume* on pullback), menandakan tidak ada distribusi institusi berskala besar. Secondary Test di kisaran Rp 198 – 200 berhasil mempertahankan struktur *higher low*.
@@ -61,8 +53,6 @@ Pada Semester I-2026, DMAS membukukan **pendapatan usaha sebesar Rp 1,80 triliun
 • **Intraday Microstructure**: Timeframe 15 menit dan 1 jam memperlihatkan harga terkonsolidasi tipis di sekitar Point of Control (POC) di level Rp 202, dengan Value Area High (VAH) di Rp 206 dan Value Area Low (VAL) di Rp 199. Tekanan beli terlihat agresif saat harga menyentuh Rp 200, menciptakan formasi ekor bawah (*pin bar demand*) yang mengindikasikan kehadiran pembeli pasif bervolume besar.
 
 • **Divergensi & Reversal**: Indikator RSI (14) bertengger di area netral 52.4, menyisakan ruang gerak yang sangat leluasa sebelum menyentuh batas *overbought*. Sementara indikator MACD harian berada di ambang *Golden Cross* di atas garis nol (*zero line*), mengindikasikan potensi momentum ekspansi harga baru apabila volume harian menembus di atas rata-rata 20 hari (MA-V 20).
-
-══════════════════════════════════════════════
 
 ### 4. STRATEGI TRADING & SINYAL TAKTIS
 
@@ -75,8 +65,6 @@ Pada Semester I-2026, DMAS membukukan **pendapatan usaha sebesar Rp 1,80 triliun
 • **Swing Trading & Dividend Investing (90/100) | Taktik: Accumulate / Buy on Weakness**  
   *Alasan*: Fundamental sangat solid, tanpa utang, margin laba >60%, valuasi PER 6.2x, serta potensi pembagian dividen interim H2-2026 menjadikan saham ini sangat menarik untuk akumulasi terencana.
 
-══════════════════════════════════════════════
-
 ### 5. TRADING PLAN (DAYTRADE - 15M/5M)
 
 🎯 **Skenario Utama**:
@@ -88,8 +76,6 @@ Pada Semester I-2026, DMAS membukukan **pendapatan usaha sebesar Rp 1,80 triliun
 🛠️ **Rencana Antisipasi**:
 • *Gagal Tembus Resisten 206*: Jika harga naik ke 205-206 namun antrian offer sangat tebal tanpa ada *aggressive market buy*, segera amankan cuan kilat.
 • *Jebol Support Intraday 198*: Jangan averaging down intraday; tunggu konfirmasi harga membentuk base baru di level Rp 192 – 195.
-
-══════════════════════════════════════════════
 
 ### 6. TRADING PLAN (SWING - DAILY)
 
@@ -104,16 +90,12 @@ Pada Semester I-2026, DMAS membukukan **pendapatan usaha sebesar Rp 1,80 triliun
 • *Konsolidasi Berkepanjangan di 200*: Pertahankan posisi selama dividen yield dan fundamental tetap utuh. Manfaatkan dividen tunai sebagai kompensasi waktu tunggu.
 • *Akselerasi Breakout 214*: Jika terjadi breakout di atas Rp 214 dengan volume di atas 500 ribu lot/hari, lakukan *pyramiding* (tambah posisi) dengan target akselerasi ke Rp 230+.
 
-══════════════════════════════════════════════
-
 ### 7. RISK MITIGATION
 
 🚨 **Risiko Kritis**:
 1. **Lumpy Recognition**: Penjualan lahan industri berskala besar (misal 20-30 hektare sekaligus) dapat menyebabkan volatilitas kinerja antarkuartal. Kuartal dengan sedikit serah terima akta jual beli akan memperlihatkan penurunan laba sementara.
 2. **Ketersediaan Cadangan Lahan (Landbank)**: Meskipun DMAS masih memiliki sisa cadangan lahan lebih dari 1.000 hektare, laju penyerapan yang masif mengharuskan perusahaan terus merencanakan strategi pembebasan lahan atau penguatan infrastruktur bernilai tambah agar nilai sisa lahan terus meningkat.
 3. **Ketegangan Geopolitik & Regulasi Transmisi Listrik**: Pertumbuhan data center mensyaratkan pasokan listrik hijau (*renewable energy*) dan keandalan transmisi dari PLN. Kendala pada alokasi daya listrik tegangan tinggi berpotensi menunda realisasi komitmen investasi penyewa data center.
-
-══════════════════════════════════════════════
 
 ---
 
