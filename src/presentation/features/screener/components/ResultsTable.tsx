@@ -1,4 +1,5 @@
-import { Building2, Eye, GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap } from 'lucide-react';
+import { Building2, Eye, GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { StockSummary } from '@/domain/models/Stock';
 import { AraProbabilityScore, BreakoutScores, FundamentalScore, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
@@ -12,6 +13,10 @@ export interface ScreenerResult {
 }
 
 export type ResultsView = 'table' | 'grid';
+
+export type ColumnSortKey = 'ticker' | 'score' | 'change' | 'price' | 'volume' | 'cap' | 'pe';
+export type ColumnSortDir = 'asc' | 'desc';
+export interface ColumnSort { key: ColumnSortKey; dir: ColumnSortDir }
 
 interface ResultsTableProps {
   results: ScreenerResult[];
@@ -764,10 +769,92 @@ function StockTableRow({
 }
 
 
+// ── Sortable column header ────────────────────────────────────────────────────
+function SortableHeader({
+  label,
+  colKey,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  colKey: ColumnSortKey;
+  sort: ColumnSort | null;
+  onSort: (key: ColumnSortKey) => void;
+  className?: string;
+}) {
+  const isActive = sort?.key === colKey;
+  const Icon = isActive ? (sort.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+  return (
+    <th
+      className={cn('px-4 py-3 select-none', className)}
+      aria-sort={isActive ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(colKey)}
+        className={cn(
+          'inline-flex items-center gap-1 transition-opacity',
+          isActive ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        {label}
+        <Icon className="size-3.5" strokeWidth={2.5} />
+      </button>
+    </th>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────────────────────────────────────────
 export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist, isCompareSelected, onToggleCompare }: ResultsTableProps) {
+  const [columnSort, setColumnSort] = useState<ColumnSort | null>(null);
+
+  const handleSort = (key: ColumnSortKey) => {
+    setColumnSort((prev) => {
+      if (prev?.key === key) {
+        // same column: toggle direction
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      }
+      // new column: default desc (highest first) for numbers, asc for text
+      return { key, dir: key === 'ticker' ? 'asc' : 'desc' };
+    });
+  };
+
+  const sortedResults = useMemo(() => {
+    if (!columnSort) return results;
+    const { key, dir } = columnSort;
+    const mul = dir === 'asc' ? 1 : -1;
+    return [...results].sort((a, b) => {
+      switch (key) {
+        case 'ticker':
+          return mul * a.summary.ticker.localeCompare(b.summary.ticker);
+        case 'score': {
+          const sa = compositeScoreInfo(a.evaluation)?.composite ?? -1;
+          const sb = compositeScoreInfo(b.evaluation)?.composite ?? -1;
+          return mul * (sa - sb);
+        }
+        case 'change':
+          return mul * (a.summary.percentChange1D - b.summary.percentChange1D);
+        case 'price':
+          return mul * (a.summary.lastClose - b.summary.lastClose);
+        case 'volume':
+          return mul * (a.summary.volume - b.summary.volume);
+        case 'cap':
+          return mul * (a.summary.capitalization - b.summary.capitalization);
+        case 'pe': {
+          // push zero/missing P/E to the bottom regardless of direction
+          const pa = a.summary.per > 0 ? a.summary.per : (dir === 'asc' ? Infinity : -Infinity);
+          const pb = b.summary.per > 0 ? b.summary.per : (dir === 'asc' ? Infinity : -Infinity);
+          return mul * (pa - pb);
+        }
+        default:
+          return 0;
+      }
+    });
+  }, [results, columnSort]);
+
   if (results.length === 0) return <EmptyState />;
 
 
@@ -797,22 +884,22 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist, 
           <thead className="border-b-[3px] border-(--neo-line) bg-(--neo-accent) text-left text-xs font-bold uppercase tracking-wide text-black">
             <tr>
               <th className="w-16 px-3 py-3" />
-              <th className="px-4 py-3">Simbol</th>
-              <th className="px-4 py-3">Skor</th>
-              <th className="px-4 py-3">Perubahan</th>
-              <th className="px-4 py-3">Harga</th>
-              <th className="px-4 py-3">Vol</th>
+              <SortableHeader label="Simbol" colKey="ticker" sort={columnSort} onSort={handleSort} />
+              <SortableHeader label="Skor" colKey="score" sort={columnSort} onSort={handleSort} />
+              <SortableHeader label="Perubahan" colKey="change" sort={columnSort} onSort={handleSort} />
+              <SortableHeader label="Harga" colKey="price" sort={columnSort} onSort={handleSort} />
+              <SortableHeader label="Vol" colKey="volume" sort={columnSort} onSort={handleSort} />
               {/* <th className="px-4 py-3">
                 <span className="leading-tight">Volume<br />relatif</span>
               </th> */}
-              <th className="px-4 py-3">Kap pasar</th>
-              <th className="px-4 py-3">P/E</th>
+              <SortableHeader label="Kap pasar" colKey="cap" sort={columnSort} onSort={handleSort} />
+              <SortableHeader label="P/E" colKey="pe" sort={columnSort} onSort={handleSort} />
               <th className="px-4 py-3">Sektor</th>
               {/* <th className="px-4 py-3">Detail</th> */}
             </tr>
           </thead>
           <tbody className="divide-y-2 divide-(--neo-line) bg-white dark:bg-zinc-900">
-            {results.map((result) => (
+            {sortedResults.map((result) => (
               <StockTableRow
                 key={result.summary.ticker}
                 result={result}
@@ -827,9 +914,9 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist, 
       </div>
 
 
-      {/* Mobile: stacked cards */}
+      {/* Mobile: stacked cards — use sortedResults so mobile also honours column sort */}
       <div className="grid gap-2.5 md:hidden">
-        {results.map((result) => (
+        {sortedResults.map((result) => (
           <StockCard
             key={result.summary.ticker}
             result={result}
