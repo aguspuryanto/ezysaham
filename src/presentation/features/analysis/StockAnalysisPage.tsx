@@ -861,7 +861,7 @@ function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
       </div>
 
       {/* ── Levels ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-2 text-sm">
+      <div className="grid gap-2 text-sm">
         <KV label="Entry" value={fmtRp(scenario.entry)} />
         {scenario.avgDown != null && (
           <KV label="Add / AVGD" value={fmtRp(scenario.avgDown)} valueClass="text-amber-600 dark:text-amber-400" />
