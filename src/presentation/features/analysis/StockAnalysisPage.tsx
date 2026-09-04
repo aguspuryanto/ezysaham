@@ -235,7 +235,7 @@ function ScenarioCard({ type, entry, avgDown, tp1, tp2, sl, rr, notes }: {
         Skenario {isBull ? 'Bullish ✓' : 'Bearish ✗'}
       </div>
       <div className="divide-y-2 divide-(--neo-line)">
-        <div className="grid grid-cols-2 gap-x-6 px-4 py-3">
+        <div className="px-4 py-3 space-y-1">
           <KV label="Entry" value={fmtRp(entry)} />
           {avgDown != null && <KV label="Add / AVGD" value={fmtRp(avgDown)} valueClass="text-amber-600 dark:text-amber-400" />}
           <KV label="TP 1" value={fmtRp(tp1)} valueClass="text-emerald-600 dark:text-emerald-400" suffix={`+${(((tp1 - entry) / entry) * 100).toFixed(1)}%`} suffixClass="text-emerald-500 dark:text-emerald-500 text-xs font-semibold" />
