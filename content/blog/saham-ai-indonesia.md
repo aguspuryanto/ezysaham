@@ -21,7 +21,7 @@ Kolaborasi strategis antara ISAT dan GOTO melahirkan **Sahabat-AI**, sebuah ekos
 *   **Peran ISAT:** Mendukung dari sisi infrastruktur komputasi melalui Lintasarta-AI Factory yang bekerja sama dengan NVIDIA untuk menyediakan *Sovereign AI Cloud* ("GPU Merdeka").
 *   **Peran GOTO:** Mengintegrasikan model ini ke dalam ekosistem produknya, seperti DIRA (asisten suara) pada aplikasi Gojek dan GoPay, guna meningkatkan pengalaman pengguna dengan interaksi yang lebih natural.
 
-> Gunakan fitur [Analisa Saham](/screener/ISAT) ISAT & [Analisa Saham](/screener/GOTO) GOTO di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
+> Gunakan fitur [Analisa Saham ISAT](/screener/ISAT) & [Analisa Saham GOTO](/screener/GOTO) di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
 
 ### 2. PT Telkom Indonesia (Persero) Tbk (TLKM)
 **Fokus: Ekosistem AI Full-Stack (AIcosystem)**
@@ -30,7 +30,7 @@ Sebagai BUMN telekomunikasi, Telkom memposisikan dirinya sebagai *Indonesia’s 
 *   **Infrastruktur:** Penyediaan infrastruktur komputasi canggih melalui NeutraDC.
 *   **Pengembangan Talenta & Solusi:** Telkom AI Center of Excellence (AI CoE) menjadi pusat inovasi yang menjembatani pengembangan model AI dengan aplikasi siap pakai untuk sektor industri, pemerintahan, dan layanan publik.
 
-> Gunakan fitur [Analisa Saham](/screener/TLKM) TLKM di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
+> Gunakan fitur [Analisa Saham TLKM](/screener/TLKM) di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
 
 ### 3. PT DCI Indonesia Tbk (DCII)
 **Fokus: Infrastruktur Data Center AI**
@@ -38,7 +38,7 @@ Sebagai BUMN telekomunikasi, Telkom memposisikan dirinya sebagai *Indonesia’s 
 Revolusi AI membutuhkan daya komputasi yang sangat besar (GPU), dan infrastruktur ini hanya dapat berjalan secara optimal di dalam *data center* berskala besar.
 *   **Peran DCII:** Sebagai *market leader* penyedia jasa *data center colocation* di Indonesia dengan standar Tier IV, DCII adalah tulang punggung infrastruktur digital yang mendukung *hyperscaler* dan perusahaan-perusahaan teknologi yang mengadopsi AI. Kapasitas megawatt (MW) yang besar menjadikannya krusial dalam rantai pasok AI di Indonesia.
 
-> Gunakan fitur [Analisa Saham](/screener/DCII) DCII di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
+> Gunakan fitur [Analisa Saham DCII](/screener/DCII) di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
 
 ### 4. PT Multipolar Technology Tbk (MLPT) & PT Metrodata Electronics Tbk (MTDL)
 **Fokus: Enabler Implementasi AI Enterprise**
@@ -46,7 +46,7 @@ Revolusi AI membutuhkan daya komputasi yang sangat besar (GPU), dan infrastruktu
 MLPT dan MTDL bukan pengembang AI secara langsung, melainkan *IT solutions integrator* atau *enabler* yang membantu perusahaan lain mengadopsi teknologi AI.
 *   **Peran Strategis:** Banyak perusahaan (bank, ritel, manufaktur) ingin mengadopsi AI namun kesulitan dari sisi teknis. MLPT dan MTDL menjembatani *gap* ini dengan mengintegrasikan solusi AI, komputasi awan (*cloud*), dan analitik data dari prinsipal global (seperti Microsoft, Google, AWS) ke dalam sistem operasional klien mereka.
 
-> Gunakan fitur [Analisa Saham](/screener/MLPT) MLPT dan [Analisa Saham](/screener/MTDL) MTDL di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
+> Gunakan fitur [Analisa Saham MLPT](/screener/MLPT) dan [Analisa Saham MTDL](/screener/MTDL) di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
 
 ### 5. PT WIR Asia Tbk (WIRG)
 **Fokus: Teknologi Imersif (AR/VR) & Ekosistem AI**
@@ -54,7 +54,7 @@ MLPT dan MTDL bukan pengembang AI secara langsung, melainkan *IT solutions integ
 WIRG dikenal sebagai pelopor teknologi *Augmented Reality* (AR), *Virtual Reality* (VR), dan platform *metaverse* di Indonesia.
 *   **Peran dalam AI:** Teknologi AI sangat lekat dengan dunia *metaverse* dan AR/VR untuk menciptakan interaksi cerdas, pengenalan objek, dan analitik perilaku pengguna. WIRG juga telah berkolaborasi secara strategis dengan DCII untuk memastikan infrastruktur *data center* yang mumpuni guna menangani *traffic* data masif yang dihasilkan oleh ekosistem imersif mereka.
 
-> Gunakan fitur [Analisa Saham](/screener/WIRG) WIRG di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
+> Gunakan fitur [Analisa Saham WIRG](/screener/WIRG) di EzySaham AI untuk melihat indikator RSI, MACD, dan level Support/Resistance terbaru secara real-time.
 
 ---
 
