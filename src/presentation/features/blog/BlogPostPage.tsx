@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft, CalendarDays, User } from 'lucide-react';
 import { ContentHeader } from '@/presentation/components/layout/ContentHeader';
 import { StockEmbed } from './StockEmbed';
-import type { BlogPost } from '@/lib/blog';
+import { getAllPosts, type BlogPost } from '@/lib/blog';
 
 function formatDate(date: string) {
   if (!date) return '';
@@ -10,6 +10,10 @@ function formatDate(date: string) {
 }
 
 export function BlogPostPage({ post }: { post: BlogPost }) {
+  const related = getAllPosts()
+    .filter((p) => p.slug !== post.slug)
+    .slice(0, 3);
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <ContentHeader active="blog" />
@@ -51,6 +55,38 @@ export function BlogPostPage({ post }: { post: BlogPost }) {
             dangerouslySetInnerHTML={{ __html: post.contentHtml }}
           />
         </article>
+
+        {related.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Rekomendasi Analisa Saham Lainnya
+            </h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {related.map((p) => (
+                <Link
+                  key={p.slug}
+                  href={`/blog/${p.slug}`}
+                  className="neo-press flex flex-col neo-border neo-shadow-sm bg-white p-4 transition-transform dark:bg-zinc-900"
+                >
+                  <h3 className="line-clamp-2 text-sm font-bold text-zinc-900 dark:text-zinc-50">
+                    {p.title}
+                  </h3>
+                  {p.description && (
+                    <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
+                      {p.description}
+                    </p>
+                  )}
+                  {p.date && (
+                    <div className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      <CalendarDays className="size-3" strokeWidth={2.5} />
+                      <span>{formatDate(p.date)}</span>
+                    </div>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
