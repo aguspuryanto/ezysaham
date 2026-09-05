@@ -14,7 +14,7 @@ export function BlogPostPage({ post }: { post: BlogPost }) {
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <ContentHeader active="blog" />
 
-      <main className="mx-auto max-w-3xl space-y-6 px-4 py-8 pb-16 sm:px-6">
+      <main className="mx-auto max-w-4xl space-y-6 px-4 py-8 pb-16 sm:px-6">
         <Link
           href="/blog"
           className="flex w-fit items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
