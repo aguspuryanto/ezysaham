@@ -1762,7 +1762,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </div>
 
           {/* ── Quick Stat Cards ─────────────────────────────────────────── */}
-          <div className="px-3 sm:px-0">
+          {/* <div className="px-3 sm:px-0">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
               <button
                 onClick={() => setActiveTab('berita')}
@@ -1817,7 +1817,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 </p>
               </button>
             </div>
-          </div>
+          </div> */}
 
           {/* ── Sticky Tab Bar ───────────────────────────────────────────── */}
           <div className="sticky top-[49px] sm:top-[57px] z-20 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm border-y border-zinc-200 dark:border-zinc-800 sm:border-0 sm:neo-border sm:neo-shadow-sm sm:rounded-none" role="tablist">
