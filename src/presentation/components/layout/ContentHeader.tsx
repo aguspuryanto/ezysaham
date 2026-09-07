@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { LINKS, SITE_NAME } from '@/lib/site';
 
-export function ContentHeader({ active }: { active: 'tutorial' | 'panduan' | 'blog' | 'tentang' }) {
+export function ContentHeader({ active }: { active: 'sektor' | 'tutorial' | 'panduan' | 'blog' | 'tentang' }) {
   return (
     <header className="sticky top-0 z-20 neo-border border-x-0 border-t-0 bg-white dark:bg-zinc-950">
       <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">

@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getStockSummaries } from '@/data/repositories/StockRepository';
 import { StockSummary } from '@/domain/models/Stock';
 import { cn, formatCompact, formatPercent } from '@/lib/format';
-import { SITE_NAME } from '@/lib/site';
+import { LINKS, SITE_NAME } from '@/lib/site';
 import { ResultsTable, ResultsView, ScreenerResult } from '@/presentation/features/screener/components/ResultsTable';
 import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
 
@@ -140,7 +140,7 @@ export function SectorPage({ initialSector }: { initialSector: string | null }) 
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-sm border-b-[3px] border-(--neo-line)">
+      <header className="bg-white dark:bg-zinc-950 border-b-[3px] border-(--neo-line)">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
           <Link
             href={activeGroup ? '#' : '/screener'}
@@ -159,11 +159,25 @@ export function SectorPage({ initialSector }: { initialSector: string | null }) 
           <h1 className="font-bold text-zinc-900 dark:text-zinc-100 truncate">
             {activeGroup ? activeGroup.sector : 'Saham per Sektor'}
           </h1>
+
+          <nav className="ml-auto hidden sm:flex items-center gap-1">
+            {LINKS.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <Icon className="size-3.5" strokeWidth={2.5} />
+                <span>{label}</span>
+              </Link>
+            ))}
+          </nav>
+
           <button
             type="button"
             onClick={reload}
             title="Muat ulang"
-            className="neo-press ml-auto flex shrink-0 size-8 items-center justify-center neo-border neo-shadow-sm bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+            className="neo-press flex shrink-0 size-8 items-center justify-center neo-border neo-shadow-sm bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 sm:ml-0 ml-auto"
           >
             <RefreshCw className={cn('size-3.5', status === 'loading' && 'animate-spin')} strokeWidth={2.5} />
           </button>

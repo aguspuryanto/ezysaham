@@ -1,6 +1,7 @@
 import { Building2, Eye, GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { StockSummary } from '@/domain/models/Stock';
 import { AraProbabilityScore, BreakoutScores, FundamentalScore, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
 import { BandarScoreResult } from '@/domain/analysis/bandarScore';
@@ -516,6 +517,7 @@ function StockCard({
   onToggleCompare: () => void;
 }) {
   const { summary, evaluation } = result;
+  const router = useRouter();
   const positive = summary.percentChange1D >= 0;
   const bScores = evaluation.breakoutScores;
   const tradingPlan = evaluation.tradingPlan;
@@ -541,6 +543,20 @@ function StockCard({
               {summary.ticker}
             </div>
             <div className="max-w-[9rem] truncate text-xs font-medium text-zinc-500 dark:text-zinc-400">{summary.name}</div>
+            {summary.sector && (
+              <span
+                role="link"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  router.push(`/sektor?sector=${encodeURIComponent(summary.sector)}`);
+                }}
+                title={`Lihat semua saham sektor ${summary.sector}`}
+                className="mt-1 inline-block max-w-[9rem] truncate border border-(--neo-line) bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+              >
+                {summary.sector}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -746,9 +762,13 @@ function StockTableRow({
       {/* Sektor */}
       <td className="px-4 py-3">
         {summary.sector ? (
-          <span className="inline-block max-w-[9rem] truncate border border-(--neo-line) bg-zinc-100 px-2 py-0.5 text-[11px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+          <Link
+            href={`/sektor?sector=${encodeURIComponent(summary.sector)}`}
+            title={`Lihat semua saham sektor ${summary.sector}`}
+            className="inline-block max-w-[9rem] truncate border border-(--neo-line) bg-zinc-100 px-2 py-0.5 text-[11px] font-bold text-zinc-600 transition-colors hover:bg-zinc-200 hover:text-zinc-900 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+          >
             {summary.sector}
-          </span>
+          </Link>
         ) : (
           <span className="text-zinc-300 dark:text-zinc-700">—</span>
         )}

@@ -121,7 +121,7 @@ export function SectorListCard({ summaries }: { summaries: StockSummary[] }) {
           Lihat semua →
         </Link>
       </div>
-      <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto">
+      <ul className="mt-3 space-y-1">
         {sectors.map((g) => (
           <li key={g.sector}>
             <Link
