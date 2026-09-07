@@ -1,4 +1,6 @@
-import { ListFilter, Star } from 'lucide-react';
+import { Building2, ListFilter, Star } from 'lucide-react';
+import Link from 'next/link';
+import { useMemo } from 'react';
 import { StockSummary } from '@/domain/models/Stock';
 import { cn, formatPercent } from '@/lib/format';
 
@@ -84,6 +86,64 @@ export function WatchlistCard({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+export function SectorListCard({ summaries }: { summaries: StockSummary[] }) {
+  const sectors = useMemo(() => {
+    const map = new Map<string, { count: number; changeSum: number }>();
+    for (const s of summaries) {
+      const key = s.sector || 'Lainnya';
+      const entry = map.get(key) ?? { count: 0, changeSum: 0 };
+      entry.count += 1;
+      entry.changeSum += s.percentChange1D;
+      map.set(key, entry);
+    }
+    return Array.from(map.entries())
+      .map(([sector, { count, changeSum }]) => ({ sector, count, avgChange: changeSum / count }))
+      .sort((a, b) => b.count - a.count);
+  }, [summaries]);
+
+  if (sectors.length === 0) return null;
+
+  return (
+    <div className="neo-border neo-shadow bg-white p-4 dark:bg-zinc-900">
+      <div className="flex items-center justify-between gap-2 text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">
+        <span className="flex items-center gap-2">
+          <Building2 className="size-4 text-indigo-500" strokeWidth={2.5} />
+          Sektor
+        </span>
+        <Link
+          href="/sektor"
+          className="text-[10px] font-bold normal-case tracking-normal text-emerald-600 hover:underline dark:text-emerald-400"
+        >
+          Lihat semua →
+        </Link>
+      </div>
+      <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto">
+        {sectors.map((g) => (
+          <li key={g.sector}>
+            <Link
+              href={`/sektor?sector=${encodeURIComponent(g.sector)}`}
+              className="flex items-center justify-between gap-2 border-2 border-(--neo-line) px-2 py-1.5 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              <span className="truncate font-bold text-zinc-700 dark:text-zinc-200">{g.sector}</span>
+              <span className="flex shrink-0 items-center gap-1.5">
+                <span className="text-zinc-400 dark:text-zinc-500">{g.count}</span>
+                <span
+                  className={cn(
+                    'font-mono font-bold tabular-nums',
+                    g.avgChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                  )}
+                >
+                  {formatPercent(g.avgChange)}
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

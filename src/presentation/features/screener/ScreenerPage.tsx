@@ -29,7 +29,7 @@ import { AppHeader } from '@/presentation/components/layout/AppHeader';
 import { BottomNav } from './components/BottomNav';
 import { FilterChipItem, PresetTabs } from './components/PresetTabs';
 import { ResultsTable, ResultsView, ScreenerResult } from './components/ResultsTable';
-import { FilterInfoCard, WatchlistCard } from './components/ScreenerSidebar';
+import { FilterInfoCard, SectorListCard, WatchlistCard } from './components/ScreenerSidebar';
 import { TickerTape } from './components/TickerTape';
 import { useWatchlist } from './hooks/useWatchlist';
 import { PhilosophyBanner } from './components/PhilosophyBanner';
@@ -280,6 +280,7 @@ export function ScreenerPage() {
             criteria={activeFilterInfo.criteria}
           />
           <WatchlistCard tickers={watchlist.tickers} summaries={summaries ?? []} onRemove={watchlist.toggle} />
+          <SectorListCard summaries={summaries ?? []} />
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col gap-1">
@@ -290,8 +291,15 @@ export function ScreenerPage() {
             <PhilosophyBanner />
           </div>
 
-          <div className="hidden lg:block">
+          <div className="hidden lg:flex lg:items-center lg:gap-2">
             <PresetTabs items={FILTER_ITEMS} selected={filterId} onSelect={handleSelectFilter} />
+            <Link
+              href="/sektor"
+              className="neo-press inline-flex shrink-0 items-center gap-1.5 neo-border neo-shadow-sm bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide text-zinc-600 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              <Building2 className="size-3.5" strokeWidth={2.5} />
+              Sektor
+            </Link>
           </div>
 
           {status === 'loading-summary' && (

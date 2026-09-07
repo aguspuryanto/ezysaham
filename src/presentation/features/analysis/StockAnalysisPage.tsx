@@ -988,11 +988,11 @@ function SimilarStocksSidebarCard({ current, stocks }: { current: StockSummary; 
     <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 p-4 space-y-3">
       <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
         <PieChart className="size-4 text-zinc-400" strokeWidth={2.5} />
-        Peer Comparison — Saham Sejenis
+        Saham Sejenis
       </h3>
 
       {/* Ratio comparison table — scroll horizontal di mobile */}
-      <div className="-mx-1 overflow-x-auto">
+      {/* <div className="-mx-1 overflow-x-auto">
         <table className="w-full min-w-[280px] text-xs">
           <thead>
             <tr className="text-zinc-400 dark:text-zinc-500 border-b-2 border-(--neo-line)">
@@ -1036,7 +1036,7 @@ function SimilarStocksSidebarCard({ current, stocks }: { current: StockSummary; 
             })}
           </tbody>
         </table>
-      </div>
+      </div> */}
 
       <ul className="space-y-1.5 pt-1 border-t-2 border-(--neo-line)">
         {stocks.map((s) => {
@@ -1561,6 +1561,268 @@ function BreakoutHunterSection({ ticker, scores }: { ticker: string; scores: Bre
   );
 }
 
+// ─── Indonesian-style comma-decimal number formatter (khusus kartu ini) ────────
+function fmtIdNum(n: number, dec = 1): string {
+  if (Number.isNaN(n)) return '–';
+  return n.toLocaleString('id-ID', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtIdPct(n: number, dec = 1): string {
+  if (Number.isNaN(n)) return '–';
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${fmtIdNum(n, dec)}%`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 💹 FAIR VALUE CALCULATOR — P/E Expansion, PBV Band, Graham Formula
+// ─────────────────────────────────────────────────────────────────────────────
+function FairValueCalculatorCard({
+  summary,
+  fundamentals,
+}: {
+  summary: StockSummary;
+  fundamentals: FundamentalDetail | null;
+}) {
+  const price = summary.lastClose;
+  const eps = summary.per > 0 ? price / summary.per : null;
+  const bvps = summary.pbv > 0 ? price / summary.pbv : null;
+
+  const [meanPerInput, setMeanPerInput] = useState(summary.per > 0 ? summary.per.toFixed(1) : '15');
+  const [meanPbvInput, setMeanPbvInput] = useState(summary.pbv > 0 ? summary.pbv.toFixed(2) : '1.5');
+  const [growthInput, setGrowthInput] = useState('8');
+  const [useGrowthGraham, setUseGrowthGraham] = useState(false);
+
+  const meanPer = parseFloat(meanPerInput);
+  const meanPbv = parseFloat(meanPbvInput);
+  const g = parseFloat(growthInput);
+
+  const fvPe = eps != null && eps > 0 && !Number.isNaN(meanPer) ? eps * meanPer : null;
+  const fvPbv = bvps != null && bvps > 0 && !Number.isNaN(meanPbv) ? bvps * meanPbv : null;
+  const fvGraham =
+    eps == null || eps <= 0 ? null :
+      useGrowthGraham
+        ? (!Number.isNaN(g) ? eps * (8.5 + 2 * g) : null)
+        : (bvps != null && bvps > 0 ? Math.sqrt(22.5 * eps * bvps) : null);
+
+  const upside = (fv: number | null) => (fv != null ? ((fv - price) / price) * 100 : null);
+  const statusOf = (u: number | null): { label: string; tone: 'green' | 'amber' | 'red' | 'zinc' } => {
+    if (u == null) return { label: '–', tone: 'zinc' };
+    if (u >= 15) return { label: 'Undervalued', tone: 'green' };
+    if (u <= -15) return { label: 'Overvalued', tone: 'red' };
+    return { label: 'Fair Value', tone: 'amber' };
+  };
+
+  const rows = [
+    { key: 'pe', label: 'P/E Ratio', fv: fvPe },
+    { key: 'pbv', label: 'PBV Ratio', fv: fvPbv },
+    { key: 'graham', label: 'Graham Value', fv: fvGraham },
+  ];
+  const validFvs = rows.map((r) => r.fv).filter((v): v is number => v != null);
+  const consensus = validFvs.length > 0 ? validFvs.reduce((a, b) => a + b, 0) / validFvs.length : null;
+  const consensusUpside = upside(consensus);
+
+  const verdict: { label: string; tone: 'green' | 'amber' | 'red' | 'zinc' } =
+    consensusUpside == null ? { label: '–', tone: 'zinc' } :
+      consensusUpside >= 25 ? { label: 'DEEPLY UNDERVALUED', tone: 'green' } :
+        consensusUpside <= -15 ? { label: 'OVERVALUED', tone: 'red' } : { label: 'FAIR VALUE', tone: 'amber' };
+
+  const perDiffLabel = summary.per > 0 && !Number.isNaN(meanPer)
+    ? `PER saat ini ${fmtIdNum(summary.per, 1)}× ${summary.per < meanPer ? 'lebih rendah' : 'lebih tinggi'} dibanding rata-rata input Anda (${fmtIdNum(meanPer, 1)}×).`
+    : null;
+  const pbvDiffLabel = summary.pbv > 0 && !Number.isNaN(meanPbv)
+    ? `PBV saat ini ${fmtIdNum(summary.pbv, 2)}× ${summary.pbv < meanPbv ? 'lebih rendah' : 'lebih tinggi'} dibanding rata-rata input Anda (${fmtIdNum(meanPbv, 2)}×).`
+    : null;
+
+  const riskNotes: string[] = [];
+  if (eps == null || eps <= 0) riskNotes.push('EPS negatif/tidak tersedia — metode P/E dan Graham tidak valid untuk emiten ini.');
+  if (bvps == null || bvps <= 0) riskNotes.push('BVPS negatif/tidak tersedia — metode PBV dan Graham tidak valid untuk emiten ini.');
+  if (fundamentals?.debtToEquity != null && fundamentals.debtToEquity > 100) {
+    riskNotes.push(`DER ${fmtIdNum(fundamentals.debtToEquity, 1)}% tergolong tinggi — cek beban bunga & risiko solvabilitas sebelum mengandalkan valuasi ini.`);
+  }
+  if (fundamentals?.revenueGrowth != null && fundamentals.revenueGrowth < 0) {
+    riskNotes.push(`Pertumbuhan pendapatan YoY negatif (${fmtIdNum(fundamentals.revenueGrowth, 1)}%) — verifikasi tren laba sebelum memakai asumsi pertumbuhan di atas.`);
+  }
+  riskNotes.push('Rata-rata P/E & PBV historis di atas adalah input manual Anda, bukan data historis 5 tahun yang diambil otomatis — verifikasi dengan data riil sebelum mengambil keputusan.');
+
+  return (
+    <SectionCard title="Kalkulator Nilai Wajar (Fair Value)" icon={<Crosshair className="size-4" />} accentClass="bg-teal-600">
+      <div className="space-y-5">
+        {/* 1. Data Dasar Emiten */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📌 1. Data Dasar Emiten
+          </h3>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-3">
+            <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2.5 text-center">
+              <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">Harga Saat Ini</div>
+              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{fmtRp(price)}</div>
+            </div>
+            <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2.5 text-center">
+              <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">EPS (TTM, estimasi)</div>
+              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{eps != null ? fmtRp(eps) : '–'}</div>
+            </div>
+            <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2.5 text-center">
+              <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">BVPS (estimasi)</div>
+              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{bvps != null ? fmtRp(bvps) : '–'}</div>
+            </div>
+            <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2.5 text-center">
+              <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">PER / PBV Saat Ini</div>
+              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">
+                {summary.per > 0 ? `${fmtIdNum(summary.per, 1)}×` : '–'} / {summary.pbv > 0 ? `${fmtIdNum(summary.pbv, 2)}×` : '–'}
+              </div>
+            </div>
+          </div>
+          <p className="text-[11px] text-zinc-400 mb-3">
+            EPS & BVPS di atas diestimasi dari Harga ÷ PER dan Harga ÷ PBV berjalan (data real-time), bukan angka laporan keuangan langsung.
+          </p>
+
+          {/* Input: Mean P/E & PBV 5Y + growth assumption */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="space-y-1">
+              <span className="block text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400">Rata-Rata P/E 5Y</span>
+              <input
+                type="number"
+                step={0.1}
+                value={meanPerInput}
+                onChange={(e) => setMeanPerInput(e.target.value)}
+                className="w-full text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-1.5 focus:outline-none focus:border-teal-400 dark:focus:border-teal-500"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="block text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400">Rata-Rata PBV 5Y</span>
+              <input
+                type="number"
+                step={0.01}
+                value={meanPbvInput}
+                onChange={(e) => setMeanPbvInput(e.target.value)}
+                className="w-full text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-1.5 focus:outline-none focus:border-teal-400 dark:focus:border-teal-500"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="flex items-center justify-between text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400">
+                <span>Asumsi Growth (g%)</span>
+                <button
+                  type="button"
+                  onClick={() => setUseGrowthGraham((v) => !v)}
+                  className={cn('text-[10px] px-1.5 py-0.5 border-2 border-(--neo-line) font-bold', useGrowthGraham ? 'bg-teal-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500')}
+                >
+                  {useGrowthGraham ? 'Dipakai' : 'Graham Klasik'}
+                </button>
+              </span>
+              <input
+                type="number"
+                step={0.5}
+                value={growthInput}
+                onChange={(e) => setGrowthInput(e.target.value)}
+                disabled={!useGrowthGraham}
+                className="w-full text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-1.5 focus:outline-none focus:border-teal-400 dark:focus:border-teal-500 disabled:opacity-40"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 2. Rincian Perhitungan Harga Wajar */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            🧮 2. Rincian Perhitungan Harga Wajar
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            {rows.map((r) => {
+              const u = upside(r.fv);
+              return (
+                <li key={r.key} className="flex flex-wrap items-center gap-2">
+                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Metode {r.label}:</span>
+                  <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{r.fv != null ? fmtRp(r.fv) : '–'}</span>
+                  {u != null && (
+                    <span className={cn('text-xs font-bold', u >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                      [{u >= 0 ? 'Upside' : 'Downside'} {fmtIdPct(u)}]
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 3. Rangkuman Valuasi */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📊 3. Rangkuman Valuasi
+          </h3>
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full min-w-[420px] text-sm">
+              <thead>
+                <tr className="text-zinc-400 dark:text-zinc-500 border-b-2 border-(--neo-line) text-left">
+                  <th className="font-bold uppercase py-1.5 pr-2 text-xs">Metode</th>
+                  <th className="font-bold uppercase py-1.5 px-2 text-xs text-right">Harga Wajar</th>
+                  <th className="font-bold uppercase py-1.5 px-2 text-xs">Status Valuasi</th>
+                  <th className="font-bold uppercase py-1.5 pl-2 text-xs text-right">Upside/Downside</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const u = upside(r.fv);
+                  const s = statusOf(u);
+                  return (
+                    <tr key={r.key} className="border-b border-zinc-100 dark:border-zinc-800">
+                      <td className="py-1.5 pr-2 font-semibold text-zinc-700 dark:text-zinc-300">{r.label}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{r.fv != null ? fmtRp(r.fv) : '–'}</td>
+                      <td className="py-1.5 px-2"><Pill tone={s.tone}>{s.label}</Pill></td>
+                      <td className={cn('py-1.5 pl-2 text-right font-mono font-bold', u != null && u >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                        {u != null ? fmtIdPct(u) : '–'}
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-teal-50 dark:bg-teal-500/10 font-bold">
+                  <td className="py-2 pr-2 text-zinc-900 dark:text-zinc-100">Rata-Rata Konsensus</td>
+                  <td className="py-2 px-2 text-right font-mono text-zinc-900 dark:text-zinc-100">{consensus != null ? fmtRp(consensus) : '–'}</td>
+                  <td className="py-2 px-2"><Pill tone={verdict.tone}>{verdict.label}</Pill></td>
+                  <td className={cn('py-2 pl-2 text-right font-mono', consensusUpside != null && consensusUpside >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                    {consensusUpside != null ? fmtIdPct(consensusUpside) : '–'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 4. Kesimpulan AI & Catatan Risiko */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            🎯 4. Kesimpulan & Catatan Risiko (Verdict)
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Valuasi Utama:</span>
+              <Pill tone={verdict.tone}>{verdict.label}</Pill>
+            </li>
+            {(perDiffLabel || pbvDiffLabel) && (
+              <li className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                <strong className="text-zinc-800 dark:text-zinc-200">Poin Kunci:</strong>{' '}
+                {[perDiffLabel, pbvDiffLabel].filter(Boolean).join(' ')}
+              </li>
+            )}
+            <li className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              <strong className="text-zinc-800 dark:text-zinc-200">Catatan Risiko:</strong>
+              <ul className="mt-1 space-y-1">
+                {riskNotes.map((note, i) => (
+                  <Note key={i} text={note} tone="zinc" />
+                ))}
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🧾 EQUITY RESEARCH REPORT — format 5 bagian, ringkas & scannable
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1948,10 +2210,9 @@ function HealthScoreBar({
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-type AnalysisTab = 'ai_summary' | 'teknikal' | 'fundamental' | 'berita' | 'breakout';
+type AnalysisTab = 'teknikal' | 'fundamental' | 'berita' | 'breakout';
 
 const ANALYSIS_TABS: { key: AnalysisTab; label: string; icon: React.ReactNode }[] = [
-  { key: 'ai_summary', label: 'Research Report', icon: <Sparkles className="size-4" /> },
   { key: 'teknikal', label: 'Screening Teknikal', icon: <TrendingUp className="size-4" /> },
   { key: 'fundamental', label: 'Screening Fundamental', icon: <PieChart className="size-4" /> },
   { key: 'berita', label: 'Analisis Berita', icon: <Newspaper className="size-4" /> },
@@ -2036,7 +2297,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     reload: load,
   } = useStockAnalysis(ticker);
   const [justCopied, setJustCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<AnalysisTab>('ai_summary');
+  const [activeTab, setActiveTab] = useState<AnalysisTab>('teknikal');
   const watchlist = useWatchlist();
 
   const handleShare = useCallback(async () => {
@@ -2388,25 +2649,22 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           {/* ── TAB CONTENT ─────────────────────────────────────────────── */}
           <div className="px-3 sm:px-0">
 
-            {/* Tab: Equity Research Report (ringkasan 5 bagian) */}
-            {activeTab === 'ai_summary' && (
-              <EquityResearchReportCard
-                summary={summary}
-                advisor={advisor}
-                trendEma={trendEma}
-                indicators={indicators}
-                supportResistance={supportResistance}
-                fundamentalScreening={fundamentalScreening}
-                fundamentals={fundamentals}
-                fundamentalsLoading={fundamentalsLoading}
-                newsItems={newsItems}
-                tradingPlan={tradingPlan}
-              />
-            )}
-
-            {/* Tab: Screening & Analisis Teknikal */}
+            {/* Tab: Screening & Analisis Teknikal (+ Equity Research Report sebagai ringkasan) */}
             {activeTab === 'teknikal' && (
               <div className="space-y-4 sm:space-y-5">
+                <EquityResearchReportCard
+                  summary={summary}
+                  advisor={advisor}
+                  trendEma={trendEma}
+                  indicators={indicators}
+                  supportResistance={supportResistance}
+                  fundamentalScreening={fundamentalScreening}
+                  fundamentals={fundamentals}
+                  fundamentalsLoading={fundamentalsLoading}
+                  newsItems={newsItems}
+                  tradingPlan={tradingPlan}
+                />
+
                 <div className={cn(
                   'neo-border neo-shadow-sm p-3 sm:p-4 flex items-center justify-between gap-3 rounded-xl sm:rounded-none',
                   technicalScreening.passed
@@ -2479,12 +2737,15 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
             {/* Tab: Screening & Analisis Fundamental */}
             {activeTab === 'fundamental' && (
-              <FundamentalSection
-                summary={summary}
-                screening={fundamentalScreening}
-                fundamentals={fundamentals}
-                fundamentalsLoading={fundamentalsLoading}
-              />
+              <div className="space-y-4 sm:space-y-5">
+                <FundamentalSection
+                  summary={summary}
+                  screening={fundamentalScreening}
+                  fundamentals={fundamentals}
+                  fundamentalsLoading={fundamentalsLoading}
+                />
+                <FairValueCalculatorCard summary={summary} fundamentals={fundamentals} />
+              </div>
             )}
 
             {/* Tab: Analisis Berita & Sentimen */}

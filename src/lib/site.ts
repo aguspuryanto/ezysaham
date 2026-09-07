@@ -10,7 +10,7 @@ export const BRAND = {
 };
 
 
-import { Home, Activity, BookOpen, Compass, Info, Newspaper } from 'lucide-react';
+import { Home, Activity, BookOpen, Building2, Compass, Info, Newspaper } from 'lucide-react';
 
 // ─── Navigation ────────────────────────────────────────────────────────────────
 export const NAV_ITEMS = [
@@ -43,6 +43,7 @@ export const NAV_ITEMS = [
 
 // ─── Content header links (Tutorial/Panduan/Blog/Tentang) ──────────────────────
 export const LINKS = [
+    { href: '/sektor', label: 'Sektor', icon: Building2 },
     { href: '/tutorial', label: 'Tutorial', icon: Compass },
     { href: '/panduan', label: 'Panduan', icon: BookOpen },
     { href: '/blog', label: 'Blog', icon: Newspaper },
