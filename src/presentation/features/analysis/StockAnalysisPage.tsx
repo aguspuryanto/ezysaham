@@ -65,6 +65,7 @@ import { SITE_NAME } from '@/lib/site';
 import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
 import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
 import { useStockAnalysis } from './useStockAnalysis';
+import { AiAnalystEngineCard } from './AiAnalystEngineCard';
 import { DataFreshnessPill, DataFreshnessStaleBanner } from './DataFreshnessBanner';
 import { OHLCVChart } from './OHLCVChart';
 import { useTradingStyle } from './useTradingStyle';
@@ -1732,6 +1733,18 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           {/* ── Kesimpulan Objektif ──────────────────────────────────────── */}
           <div className="px-0 sm:px-0">
             {objectiveConclusion && <ObjectiveConclusionCard conclusion={objectiveConclusion} />}
+          </div>
+
+          {/* ── AI Analyst Engine (kecocokan profil Investor/Swing/Chasing) ── */}
+          <div className="px-3 sm:px-0">
+            <AiAnalystEngineCard
+              summary={summary}
+              analysis={analysis}
+              fundamentals={fundamentals}
+              newsSummary={newsSummary}
+              fundamentalScreening={fundamentalScreening}
+              technicalScreening={technicalScreening}
+            />
           </div>
 
           {/* Data Freshness warning */}
