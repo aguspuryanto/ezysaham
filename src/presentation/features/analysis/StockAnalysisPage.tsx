@@ -1736,7 +1736,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </div>
 
           {/* ── AI Analyst Engine (kecocokan profil Investor/Swing/Chasing) ── */}
-          <div className="px-3 sm:px-0">
+          {/* <div className="px-3 sm:px-0">
             <AiAnalystEngineCard
               summary={summary}
               analysis={analysis}
@@ -1745,7 +1745,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               fundamentalScreening={fundamentalScreening}
               technicalScreening={technicalScreening}
             />
-          </div>
+          </div> */}
 
           {/* Data Freshness warning */}
           {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
