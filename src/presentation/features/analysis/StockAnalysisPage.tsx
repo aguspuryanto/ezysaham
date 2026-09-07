@@ -49,6 +49,7 @@ import {
   CandlePattern,
   IndicatorAnalysis,
   PriceActionAnalysis,
+  SupportResistanceAnalysis,
   TradingPlanAnalysis,
   TrendEmaAnalysis,
   VolumeAnalysis,
@@ -60,6 +61,10 @@ import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
 import { computeBandarScore } from '@/domain/analysis/bandarScore';
 import { computeObjectiveConclusion, ConclusionTone, ObjectiveConclusionResult } from '@/domain/analysis/objectiveConclusion';
 import { BreakoutScores } from '@/domain/screener/presets';
+import { DataFreshness } from '@/domain/analysis/dataFreshness';
+import { rsi } from '@/domain/indicators/rsi';
+import { macd } from '@/domain/indicators/macd';
+import { closes as barCloses, ema } from '@/domain/indicators/movingAverages';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
@@ -215,6 +220,76 @@ function RsiBar({ value }: { value: number }) {
         <span>0</span><span>30 OS</span><span>55</span><span>70 OB</span><span>100</span>
       </div>
     </div>
+  );
+}
+
+// ─── Mini Sparklines (MA / RSI / MACD) ─────────────────────────────────────────
+function Sparkline({ data, bands, height = 32, toneClass = 'text-blue-500' }: {
+  data: number[]; bands?: number[]; height?: number; toneClass?: string;
+}) {
+  const valid = data.filter((v) => !Number.isNaN(v));
+  if (valid.length < 2) return null;
+  const min = Math.min(...valid, ...(bands ?? []));
+  const max = Math.max(...valid, ...(bands ?? []));
+  const range = max - min || 1;
+  const width = 100;
+  const step = width / (valid.length - 1);
+  const toY = (v: number) => height - ((v - min) / range) * height;
+  const points = valid.map((v, i) => `${i * step},${toY(v)}`).join(' ');
+  const areaPoints = `0,${height} ${points} ${width},${height}`;
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={cn('w-full', toneClass)} style={{ height }}>
+      {bands?.map((b) => (
+        <line key={b} x1={0} y1={toY(b)} x2={width} y2={toY(b)} stroke="currentColor" strokeOpacity={0.25} strokeDasharray="2,2" />
+      ))}
+      <polygon points={areaPoints} fill="currentColor" fillOpacity={0.12} stroke="none" />
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function HistogramSparkline({ data, height = 32 }: { data: number[]; height?: number }) {
+  const valid = data.filter((v) => !Number.isNaN(v));
+  if (valid.length < 2) return null;
+  const maxAbs = Math.max(...valid.map((v) => Math.abs(v))) || 1;
+  const width = 100;
+  const barW = width / valid.length;
+  const mid = height / 2;
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="w-full" style={{ height }}>
+      <line x1={0} y1={mid} x2={width} y2={mid} stroke="currentColor" strokeOpacity={0.15} className="text-zinc-400" />
+      {valid.map((v, i) => {
+        const h = Math.max((Math.abs(v) / maxAbs) * mid, 0.6);
+        const y = v >= 0 ? mid - h : mid;
+        return (
+          <rect key={i} x={i * barW + barW * 0.15} y={y} width={barW * 0.7} height={h} className={v >= 0 ? 'fill-emerald-500' : 'fill-rose-500'} />
+        );
+      })}
+    </svg>
+  );
+}
+
+function PriceEmaSparkline({ closesArr, emaArr, height = 40 }: { closesArr: number[]; emaArr: number[]; height?: number }) {
+  const n = Math.min(closesArr.length, emaArr.length);
+  if (n < 2) return null;
+  const cs = closesArr.slice(-n);
+  const es = emaArr.slice(-n);
+  const validAll = [...cs, ...es].filter((v) => !Number.isNaN(v));
+  if (validAll.length < 2) return null;
+  const min = Math.min(...validAll);
+  const max = Math.max(...validAll);
+  const range = max - min || 1;
+  const width = 100;
+  const step = width / (n - 1);
+  const toY = (v: number) => height - ((v - min) / range) * height;
+  const priceLine = (i: number, v: number) => Number.isNaN(v) ? null : `${i * step},${toY(v)}`;
+  const pricePoints = cs.map((v, i) => priceLine(i, v)).filter(Boolean).join(' ');
+  const emaPoints = es.map((v, i) => priceLine(i, v)).filter(Boolean).join(' ');
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="w-full" style={{ height }}>
+      <polyline points={emaPoints} fill="none" stroke="currentColor" strokeWidth={2} vectorEffect="non-scaling-stroke" className="text-blue-400 opacity-70" />
+      <polyline points={pricePoints} fill="none" stroke="currentColor" strokeWidth={2} vectorEffect="non-scaling-stroke" className="text-zinc-700 dark:text-zinc-200" />
+    </svg>
   );
 }
 
@@ -906,16 +981,64 @@ function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 🧭 SIMILAR STOCKS (sidebar) — same sector, ranked by closest market cap
 // ─────────────────────────────────────────────────────────────────────────────
-function SimilarStocksSidebarCard({ stocks }: { stocks: StockSummary[] }) {
+function SimilarStocksSidebarCard({ current, stocks }: { current: StockSummary; stocks: StockSummary[] }) {
   if (stocks.length === 0) return null;
 
   return (
-    <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 p-4 space-y-2">
+    <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 p-4 space-y-3">
       <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
         <PieChart className="size-4 text-zinc-400" strokeWidth={2.5} />
-        Saham Sejenis
+        Peer Comparison — Saham Sejenis
       </h3>
-      <ul className="space-y-1.5">
+
+      {/* Ratio comparison table — scroll horizontal di mobile */}
+      <div className="-mx-1 overflow-x-auto">
+        <table className="w-full min-w-[280px] text-xs">
+          <thead>
+            <tr className="text-zinc-400 dark:text-zinc-500 border-b-2 border-(--neo-line)">
+              <th className="text-left font-bold uppercase py-1.5 pr-2">Ticker</th>
+              <th className="text-right font-bold uppercase py-1.5 px-1">PER</th>
+              <th className="text-right font-bold uppercase py-1.5 px-1">PBV</th>
+              <th className="text-right font-bold uppercase py-1.5 pl-1">ROE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[current, ...stocks].map((s) => {
+              const isCurrent = s.ticker === current.ticker;
+              return (
+                <tr
+                  key={s.ticker}
+                  className={cn(
+                    'border-b border-zinc-100 dark:border-zinc-800 last:border-0',
+                    isCurrent && 'bg-emerald-50 dark:bg-emerald-500/10'
+                  )}
+                >
+                  <td className={cn('py-1.5 pr-2', isCurrent && 'font-bold')}>
+                    {isCurrent ? (
+                      <span className="text-zinc-900 dark:text-zinc-100">{s.ticker}</span>
+                    ) : (
+                      <Link href={`/screener/${s.ticker}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                        {s.ticker}
+                      </Link>
+                    )}
+                  </td>
+                  <td className={cn('text-right font-mono tabular-nums py-1.5 px-1', isCurrent && 'font-bold')}>
+                    {s.per > 0 ? `${s.per.toFixed(1)}×` : '–'}
+                  </td>
+                  <td className={cn('text-right font-mono tabular-nums py-1.5 px-1', isCurrent && 'font-bold')}>
+                    {s.pbv > 0 ? `${s.pbv.toFixed(2)}×` : '–'}
+                  </td>
+                  <td className={cn('text-right font-mono tabular-nums py-1.5 pl-1', isCurrent && 'font-bold')}>
+                    {s.roe !== 0 ? `${s.roe.toFixed(1)}%` : '–'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="space-y-1.5 pt-1 border-t-2 border-(--neo-line)">
         {stocks.map((s) => {
           const up = s.percentChange1D >= 0;
           return (
@@ -974,6 +1097,7 @@ function FundamentalSection({
   };
 
   const statusList = [screening.perStatus, screening.pbvStatus, screening.roeStatus, screening.capStatus];
+  const [showDetails, setShowDetails] = useState(false);
 
   return (
     <SectionCard title="Screening & Analisis Fundamental" icon={<PieChart className="size-4" />} accentClass="bg-indigo-500">
@@ -1037,19 +1161,27 @@ function FundamentalSection({
         ))}
       </div>
 
-      {/* Dividen */}
-      <div className="border-t-2 border-(--neo-line) pt-4">
-        <h3 className="mb-3 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
-          <History className="size-4 text-zinc-400" strokeWidth={2.5} />
-          Dividen
-        </h3>
+      {/* Detail Lainnya (accordion): Dividen & Riwayat — rasio sekunder disembunyikan by default */}
+      <div className="border-t-2 border-(--neo-line) pt-3">
+        <button
+          type="button"
+          onClick={() => setShowDetails((v) => !v)}
+          aria-expanded={showDetails}
+          className="flex w-full items-center justify-between gap-2 py-1"
+        >
+          <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
+            <History className="size-4 text-zinc-400" strokeWidth={2.5} />
+            Lihat Detail Lainnya (Dividen & Riwayat)
+          </span>
+          <ChevronDown className={cn('size-4 shrink-0 text-zinc-400 transition-transform', showDetails && 'rotate-180')} strokeWidth={2.5} />
+        </button>
 
-        {fundamentalsLoading ? (
+        {showDetails && (fundamentalsLoading ? (
           <div className="flex items-center gap-2 py-3 text-sm font-semibold text-zinc-400">
             <Loader2 className="size-4 animate-spin" strokeWidth={2.5} /> Memuat data dividen…
           </div>
         ) : (
-          <>
+          <div className="pt-3">
             <div className="grid grid-cols-3 gap-3 mb-3">
               <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-3 text-center">
                 <div className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">Dividen (TTM)</div>
@@ -1087,8 +1219,8 @@ function FundamentalSection({
                 {fundamentals ? 'Tidak ada riwayat dividen tercatat untuk emiten ini.' : 'Data dividen tidak tersedia saat ini.'}
               </p>
             )}
-          </>
-        )}
+          </div>
+        ))}
       </div>
     </SectionCard>
   );
@@ -1202,11 +1334,28 @@ function NewsSection({
 // ─────────────────────────────────────────────────────────────────────────────
 // 📈 TECHNICAL SECTIONS
 // ─────────────────────────────────────────────────────────────────────────────
-function TrendEmaSection({ number, trendEma, isBullish, isBearish }: {
-  number: number; trendEma: TrendEmaAnalysis; isBullish: boolean; isBearish: boolean;
+function TrendEmaSection({ number, trendEma, isBullish, isBearish, bars }: {
+  number: number; trendEma: TrendEmaAnalysis; isBullish: boolean; isBearish: boolean; bars: OHLCVBar[];
 }) {
+  const priceEma = useMemo(() => {
+    const N = 40;
+    const cls = barCloses(bars);
+    const ema20Series = ema(cls, 20);
+    return { closes: cls.slice(-N), ema20: ema20Series.slice(-N) };
+  }, [bars]);
+
   return (
     <SectionCard number={number} title="Trend & EMA" icon={<TrendingUp className="size-4" />} accentClass="bg-blue-500">
+      <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 pt-2 pb-1 mb-4">
+        <div className="flex items-center justify-between text-[10px] font-bold uppercase text-zinc-400 mb-1">
+          <span>Harga vs EMA20 (40 bar terakhir)</span>
+          <span className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-zinc-600 dark:text-zinc-300"><span className="size-2 bg-zinc-600 dark:bg-zinc-300" />Close</span>
+            <span className="inline-flex items-center gap-1 text-blue-400"><span className="size-2 bg-blue-400" />EMA20</span>
+          </span>
+        </div>
+        <PriceEmaSparkline closesArr={priceEma.closes} emaArr={priceEma.ema20} />
+      </div>
       <div className="grid grid-cols-3 gap-3 mb-4">
         {[
           { label: 'EMA 20', value: fmtRp(trendEma.ema20) },
@@ -1300,7 +1449,10 @@ function VolumeSection({ number, volume }: { number: number; volume: VolumeAnaly
   );
 }
 
-function IndicatorsSection({ number, indicators }: { number: number; indicators: IndicatorAnalysis }) {
+function IndicatorsSection({ number, indicators, bars }: { number: number; indicators: IndicatorAnalysis; bars: OHLCVBar[] }) {
+  const rsiSeries = useMemo(() => rsi(bars, 14).slice(-40), [bars]);
+  const macdHistSeries = useMemo(() => macd(bars).histogram.slice(-40), [bars]);
+
   return (
     <SectionCard number={number} title="Indikator Teknikal" icon={<Zap className="size-4" />} accentClass="bg-amber-500">
       <div className="space-y-5">
@@ -1317,6 +1469,10 @@ function IndicatorsSection({ number, indicators }: { number: number; indicators:
             </Pill>
           </div>
           <RsiBar value={indicators.rsi14} />
+          <div className="mt-2 neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 pt-2 pb-1">
+            <div className="text-[10px] font-bold uppercase text-zinc-400 mb-1">RSI 40 bar terakhir</div>
+            <Sparkline data={rsiSeries} bands={[30, 70]} toneClass="text-amber-500" />
+          </div>
           <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{indicators.rsiNote}</p>
         </div>
 
@@ -1332,6 +1488,10 @@ function IndicatorsSection({ number, indicators }: { number: number; indicators:
             }>
               {indicators.macdSignalType.replace(/_/g, ' ')}
             </Pill>
+          </div>
+          <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 pt-2 pb-1 mb-2">
+            <div className="text-[10px] font-bold uppercase text-zinc-400 mb-1">Histogram MACD 40 bar terakhir</div>
+            <HistogramSparkline data={macdHistSeries} />
           </div>
           <div className="grid grid-cols-3 gap-3 mb-2">
             <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 text-center">
@@ -1396,6 +1556,225 @@ function BreakoutHunterSection({ ticker, scores }: { ticker: string; scores: Bre
             </div>
           </div>
         ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🧾 EQUITY RESEARCH REPORT — format 5 bagian, ringkas & scannable
+// ─────────────────────────────────────────────────────────────────────────────
+function EquityResearchReportCard({
+  summary,
+  advisor,
+  trendEma,
+  indicators,
+  supportResistance,
+  fundamentalScreening,
+  fundamentals,
+  fundamentalsLoading,
+  newsItems,
+  tradingPlan,
+}: {
+  summary: StockSummary;
+  advisor: AiStockAdvisor;
+  trendEma: TrendEmaAnalysis;
+  indicators: IndicatorAnalysis;
+  supportResistance: SupportResistanceAnalysis;
+  fundamentalScreening: FundamentalScreeningResult;
+  fundamentals: FundamentalDetail | null;
+  fundamentalsLoading: boolean;
+  newsItems: StockNewsItem[];
+  tradingPlan: TradingPlanAnalysis;
+}) {
+  type Tone = 'green' | 'red' | 'amber' | 'blue' | 'zinc';
+
+  const statusUtama: { label: string; tone: Tone } =
+    advisor.verdictTone === 'green' ? { label: 'BULLISH', tone: 'green' } :
+      advisor.verdictTone === 'red' ? { label: 'BEARISH', tone: 'red' } : { label: 'NEUTRAL', tone: 'amber' };
+
+  const trenLabel = trendEma.trend === 'bullish' ? 'Uptrend' : trendEma.trend === 'bearish' ? 'Downtrend' : 'Sideways';
+  const trenTone: Tone = trendEma.trend === 'bullish' ? 'green' : trendEma.trend === 'bearish' ? 'red' : 'amber';
+
+  const rsiStatus: { label: string; tone: Tone } =
+    indicators.rsiZone === 'oversold' ? { label: 'Oversold', tone: 'green' } :
+      indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? { label: 'Overbought', tone: 'red' } :
+        { label: 'Neutral', tone: 'zinc' };
+
+  const macdStatus: { label: string; tone: Tone } =
+    indicators.macdSignalType === 'bullish_crossover' ? { label: 'Golden Cross', tone: 'green' } :
+      indicators.macdSignalType === 'bearish_crossover' ? { label: 'Death Cross', tone: 'red' } :
+        indicators.macdSignalType === 'bullish' ? { label: 'Bullish', tone: 'green' } :
+          indicators.macdSignalType === 'bearish' ? { label: 'Bearish', tone: 'red' } : { label: 'Neutral', tone: 'zinc' };
+
+  const price = summary.lastClose;
+  const aboveMa50 = price > trendEma.ema50;
+  const aboveMa200 = price > trendEma.ema200;
+  const maLabel = `${aboveMa50 ? 'Di atas' : 'Di bawah'} MA50 · ${aboveMa200 ? 'Di atas' : 'Di bawah'} MA200`;
+
+  const nearestResistance = supportResistance.resistances[0];
+  const nearestSupport = supportResistance.supports[0];
+
+  const valuationTone = fundamentalScreening.perStatus.tone;
+  const valuationLabel =
+    valuationTone === 'green' ? 'Murah (Cheap)' : valuationTone === 'red' ? 'Mahal (Overvalued)' : 'Wajar (Fair Value)';
+
+  const der = fundamentals?.debtToEquity ?? null;
+  const solvencyLabel = der == null ? null : der <= 100 ? 'Solvent' : 'Berisiko (Risky)';
+  const solvencyTone: Tone = der == null ? 'zinc' : der <= 100 ? 'green' : 'red';
+
+  const topBullishNews = newsItems.find((n) => n.sentiment === 'bullish');
+  const topBearishNews = newsItems.find((n) => n.sentiment === 'bearish');
+
+  const bias = tradingPlan.recommendedBias === 'bearish' ? 'bearish' : 'bullish';
+  const scenario = tradingPlan[bias];
+  const strategiLabel =
+    advisor.verdict === 'SANGAT_BELI' ? 'Buy on Weakness' :
+      advisor.verdict === 'BELI' ? 'Accumulate Bertahap' :
+        advisor.verdict === 'TAHAN' ? 'Wait and See' : 'Hindari / Take Profit';
+
+  return (
+    <SectionCard title="Equity Research Report" icon={<Sparkles className="size-4" />} accentClass="bg-violet-600">
+      <div className="space-y-5">
+        {/* 1. Ringkasan Instan */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📊 1. Ringkasan Instan
+          </h3>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Utama:</span>
+              <Pill tone={statusUtama.tone}>{statusUtama.label}</Pill>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Skor AI:</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{advisor.compositeScore}/100</span>
+            </div>
+            <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
+              <strong>Highlight:</strong> {advisor.executiveSummary}
+            </p>
+          </div>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 2. Analisis Teknikal */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📈 2. Analisis Teknikal
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Tren Utama:</span>
+              <Pill tone={trenTone}>{trenLabel}</Pill>
+            </li>
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">RSI:</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fmtN(indicators.rsi14, 1)}</span>
+              <Pill tone={rsiStatus.tone}>{rsiStatus.label}</Pill>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">MACD:</span>
+              <Pill tone={macdStatus.tone}>{macdStatus.label}</Pill>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Moving Average:</span>
+              <span className="font-semibold text-zinc-700 dark:text-zinc-300">{maLabel}</span>
+            </li>
+            <li className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Area Kunci:</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                Support {nearestSupport ? fmtRp(nearestSupport.price) : '–'}
+              </span>
+              <span className="text-zinc-300 dark:text-zinc-700">|</span>
+              <span className="font-semibold text-rose-600 dark:text-rose-400">
+                Resistance {nearestResistance ? fmtRp(nearestResistance.price) : '–'}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 3. Analisis Fundamental & Valuasi */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            🏢 3. Analisis Fundamental & Valuasi
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Valuasi:</span>
+              <Pill tone={valuationTone}>{valuationLabel}</Pill>
+              <span className="text-xs text-zinc-400">
+                (PER {summary.per > 0 ? `${summary.per.toFixed(1)}×` : '–'} · PBV {summary.pbv > 0 ? `${summary.pbv.toFixed(2)}×` : '–'})
+              </span>
+            </li>
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Kesehatan Finansial:</span>
+              {fundamentalsLoading ? (
+                <span className="text-xs text-zinc-400">Memuat…</span>
+              ) : solvencyLabel ? (
+                <Pill tone={solvencyTone}>{solvencyLabel}</Pill>
+              ) : (
+                <span className="text-xs text-zinc-400">Data DER tidak tersedia</span>
+              )}
+              <span className="text-xs text-zinc-400">
+                (DER {der != null ? `${der.toFixed(1)}%` : '–'} · ROE {summary.roe !== 0 ? `${summary.roe.toFixed(1)}%` : '–'})
+              </span>
+            </li>
+            <li className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              <strong className="text-zinc-800 dark:text-zinc-200">Kunci Fundamental:</strong> {fundamentalScreening.roeStatus.detail}
+            </li>
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 4. Sentimen & Isu Terkini */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📰 4. Sentimen & Isu Terkini
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex items-start gap-2">
+              <Pill tone="green">Positif</Pill>
+              <span className="text-zinc-600 dark:text-zinc-400 leading-snug">
+                {topBullishNews ? topBullishNews.title : 'Belum ada berita positif signifikan terdeteksi.'}
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Pill tone="red">Negatif</Pill>
+              <span className="text-zinc-600 dark:text-zinc-400 leading-snug">
+                {topBearishNews ? topBearishNews.title : 'Tidak ada isu negatif signifikan terdeteksi.'}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 5. Rencana Aksi */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            🎯 5. Rencana Aksi (Actionable Takeaways)
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Strategi:</span>
+              <span className="font-bold text-zinc-900 dark:text-zinc-100">{strategiLabel}</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Area Entry Ideal:</span>
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                {fmtRp(nearestSupport ? nearestSupport.price : scenario.entry)} – {fmtRp(scenario.entry)}
+              </span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Stop Loss (Risk Limit):</span>
+              <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{fmtRp(scenario.sl)}</span>
+            </li>
+          </ul>
+        </div>
       </div>
     </SectionCard>
   );
@@ -1467,16 +1846,175 @@ function ObjectiveConclusionCard({ conclusion }: { conclusion: ObjectiveConclusi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 🌡️ HEALTH SCORE / MARKET TEMPERATURE TOP BAR
+// ─────────────────────────────────────────────────────────────────────────────
+function HealthScoreBar({
+  advisor,
+  fundamentalScreening,
+  trendEma,
+  indicators,
+  volume,
+  freshness,
+}: {
+  advisor: AiStockAdvisor;
+  fundamentalScreening: FundamentalScreeningResult;
+  trendEma: TrendEmaAnalysis;
+  indicators: IndicatorAnalysis;
+  volume: VolumeAnalysis;
+  freshness: DataFreshness | null;
+}) {
+  const toneBg = {
+    green: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    red: 'bg-rose-500',
+    blue: 'bg-blue-500',
+  };
+  const toneSoftBg = {
+    green: 'bg-emerald-50 dark:bg-emerald-500/10',
+    amber: 'bg-amber-50 dark:bg-amber-500/10',
+    red: 'bg-rose-50 dark:bg-rose-500/10',
+    blue: 'bg-blue-50 dark:bg-blue-500/10',
+  };
+  const riskToneClass =
+    advisor.riskLevel === 'HIGH' ? 'text-rose-600 dark:text-rose-400' :
+      advisor.riskLevel === 'MEDIUM' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400';
+
+  type Tone = 'green' | 'red' | 'amber' | 'blue' | 'zinc';
+  const rsiBadge: { label: string; tone: Tone } =
+    indicators.rsiZone === 'oversold' ? { label: 'RSI Oversold', tone: 'green' } :
+      indicators.rsiZone === 'overbought' ? { label: 'RSI Overbought', tone: 'red' } :
+        indicators.rsiZone === 'overbought_risk' ? { label: 'RSI Rawan Overbought', tone: 'amber' } :
+          indicators.rsiZone === 'bullish_zone' ? { label: 'RSI Bullish', tone: 'green' } :
+            { label: 'RSI Netral', tone: 'zinc' };
+
+  const valuationBadge: { label: string; tone: Tone } = {
+    label:
+      fundamentalScreening.perStatus.tone === 'green' ? 'Valuasi Menarik' :
+        fundamentalScreening.perStatus.tone === 'red' ? 'Valuasi Mahal' : 'Valuasi Wajar',
+    tone: fundamentalScreening.perStatus.tone,
+  };
+
+  const trendBadge: { label: string; tone: Tone } =
+    trendEma.trend === 'bullish' ? { label: 'Tren Bullish', tone: 'green' } :
+      trendEma.trend === 'bearish' ? { label: 'Tren Bearish', tone: 'red' } : { label: 'Tren Sideways', tone: 'amber' };
+
+  const badges: { label: string; tone: Tone }[] = [
+    trendBadge,
+    rsiBadge,
+    valuationBadge,
+    ...(volume.isHighVolume ? [{ label: 'Volume Tinggi', tone: 'green' as Tone }] : []),
+  ];
+
+  return (
+    <div className={cn('sm:neo-border sm:neo-shadow px-4 py-3 sm:px-5 sm:py-4 space-y-3 border-b border-zinc-100 dark:border-zinc-800 sm:border-b-0', toneSoftBg[advisor.verdictTone])}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={cn('flex flex-col items-center justify-center size-14 sm:size-16 neo-border shrink-0 text-white', toneBg[advisor.verdictTone])}>
+            <span className="font-mono text-lg sm:text-xl font-bold leading-none">{advisor.compositeScore}</span>
+            <span className="text-[9px] font-bold uppercase opacity-80">/100</span>
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">Skor Kesehatan Saham</div>
+            <div className="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-100 leading-tight truncate">{advisor.verdictLabel}</div>
+            <div className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
+              Risk: <span className={riskToneClass}>{advisor.riskLevel}</span>
+              {' · '}Confidence {advisor.confidenceScore}%
+            </div>
+          </div>
+        </div>
+        {freshness && (
+          <div className="hidden sm:block shrink-0 text-zinc-500 dark:text-zinc-400">
+            <DataFreshnessPill freshness={freshness} />
+          </div>
+        )}
+      </div>
+
+      <div className="-mx-4 sm:mx-0 overflow-x-auto">
+        <div className="flex items-center gap-1.5 px-4 sm:px-0 min-w-max sm:min-w-0 sm:flex-wrap">
+          {badges.map((b) => (
+            <Pill key={b.label} tone={b.tone}>{b.label}</Pill>
+          ))}
+          {freshness && (
+            <span className="sm:hidden shrink-0 text-[11px] font-semibold text-zinc-400 ml-1">
+              <DataFreshnessPill freshness={freshness} />
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 type AnalysisTab = 'ai_summary' | 'teknikal' | 'fundamental' | 'berita' | 'breakout';
 
 const ANALYSIS_TABS: { key: AnalysisTab; label: string; icon: React.ReactNode }[] = [
+  { key: 'ai_summary', label: 'Research Report', icon: <Sparkles className="size-4" /> },
   { key: 'teknikal', label: 'Screening Teknikal', icon: <TrendingUp className="size-4" /> },
   { key: 'fundamental', label: 'Screening Fundamental', icon: <PieChart className="size-4" /> },
   { key: 'berita', label: 'Analisis Berita', icon: <Newspaper className="size-4" /> },
 ];
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 💀 SKELETON LOADER (menggantikan teks "Menganalisis...")
+// ─────────────────────────────────────────────────────────────────────────────
+function SkeletonBlock({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse bg-zinc-200 dark:bg-zinc-800', className)} />;
+}
+
+function StockAnalysisSkeleton({ ticker }: { ticker: string }) {
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <span className="sr-only">Menganalisis {ticker.toUpperCase()} (Teknikal, Fundamental, Berita & AI)…</span>
+
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-800">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-3 py-2.5 sm:px-6 sm:py-3">
+          <SkeletonBlock className="h-4 w-14 rounded" />
+          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
+          <SkeletonBlock className="h-4 w-20 rounded" />
+          <div className="ml-auto flex items-center gap-2">
+            <SkeletonBlock className="h-8 w-16 rounded-lg" />
+            <SkeletonBlock className="size-8 rounded-lg" />
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-6xl px-0 sm:px-4 lg:px-6 sm:pt-4">
+        <SkeletonBlock className="h-24 sm:h-20 w-full sm:neo-border" />
+      </div>
+
+      <main className="mx-auto max-w-6xl px-0 sm:px-4 sm:py-4 lg:px-6 lg:py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-0 sm:gap-5">
+        <div className="min-w-0 space-y-4 px-4 pt-4 sm:px-0 sm:pt-0">
+          <div className="space-y-3 sm:neo-border sm:p-5">
+            <SkeletonBlock className="h-5 w-2/3 rounded" />
+            <SkeletonBlock className="h-3 w-1/3 rounded" />
+            <SkeletonBlock className="h-9 w-1/2 rounded" />
+            <div className="flex gap-3 overflow-hidden">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonBlock key={i} className="h-10 w-16 shrink-0 rounded" />
+              ))}
+            </div>
+          </div>
+          <SkeletonBlock className="h-64 w-full sm:neo-border" />
+          <SkeletonBlock className="h-28 w-full sm:neo-border" />
+          <div className="space-y-2">
+            <SkeletonBlock className="h-9 w-full rounded" />
+            <SkeletonBlock className="h-40 w-full sm:neo-border" />
+            <SkeletonBlock className="h-40 w-full sm:neo-border" />
+          </div>
+        </div>
+        <div className="hidden lg:block space-y-5">
+          <SkeletonBlock className="h-72 w-full neo-border" />
+          <SkeletonBlock className="h-56 w-full neo-border" />
+          <SkeletonBlock className="h-56 w-full neo-border" />
+        </div>
+      </main>
+    </div>
+  );
+}
 
 export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const {
@@ -1498,7 +2036,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     reload: load,
   } = useStockAnalysis(ticker);
   const [justCopied, setJustCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<AnalysisTab>('berita');
+  const [activeTab, setActiveTab] = useState<AnalysisTab>('ai_summary');
   const watchlist = useWatchlist();
 
   const handleShare = useCallback(async () => {
@@ -1532,14 +2070,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   }, [summary, bars, fundamentalScreening, technicalScreening, newsItems]);
 
   if (status === 'loading') {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white dark:bg-zinc-950">
-        <div className="flex items-center gap-3">
-          <Loader2 className="size-6 animate-spin text-emerald-500" />
-          <span className="text-zinc-500 dark:text-zinc-400">Menganalisis {ticker.toUpperCase()} (Teknikal, Fundamental, Berita & AI)…</span>
-        </div>
-      </div>
-    );
+    return <StockAnalysisSkeleton ticker={ticker} />;
   }
 
   if (status === 'error' || !analysis || !summary || !advisor || !fundamentalScreening || !technicalScreening || !breakoutScores) {
@@ -1630,6 +2161,18 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </button>
         </div>
       </header>
+
+      {/* ── Health Score / Market Temperature Top Bar ───────────────────────── */}
+      <div className="mx-auto max-w-6xl px-0 sm:px-4 lg:px-6 sm:pt-4">
+        <HealthScoreBar
+          advisor={advisor}
+          fundamentalScreening={fundamentalScreening}
+          trendEma={trendEma}
+          indicators={indicators}
+          volume={volume}
+          freshness={freshness}
+        />
+      </div>
 
       {/* ── Main Content ────────────────────────────────────────────────────── */}
       <main className="mx-auto max-w-6xl px-0 sm:px-4 sm:py-4 lg:px-6 lg:py-6 pb-16 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-0 sm:gap-5 lg:items-start">
@@ -1845,6 +2388,22 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           {/* ── TAB CONTENT ─────────────────────────────────────────────── */}
           <div className="px-3 sm:px-0">
 
+            {/* Tab: Equity Research Report (ringkasan 5 bagian) */}
+            {activeTab === 'ai_summary' && (
+              <EquityResearchReportCard
+                summary={summary}
+                advisor={advisor}
+                trendEma={trendEma}
+                indicators={indicators}
+                supportResistance={supportResistance}
+                fundamentalScreening={fundamentalScreening}
+                fundamentals={fundamentals}
+                fundamentalsLoading={fundamentalsLoading}
+                newsItems={newsItems}
+                tradingPlan={tradingPlan}
+              />
+            )}
+
             {/* Tab: Screening & Analisis Teknikal */}
             {activeTab === 'teknikal' && (
               <div className="space-y-4 sm:space-y-5">
@@ -1865,7 +2424,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   </span>
                 </div>
 
-                <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} />
+                <TrendEmaSection number={1} trendEma={trendEma} isBullish={isBullish} isBearish={isBearish} bars={bars} />
 
                 <SectionCard number={2} title="Level Penting (Resistance & Support)" icon={<Crosshair className="size-4" />} accentClass="bg-violet-500">
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -1890,7 +2449,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
                 <PriceActionSection number={3} priceAction={priceAction} />
                 <VolumeSection number={4} volume={volume} />
-                <IndicatorsSection number={5} indicators={indicators} />
+                <IndicatorsSection number={5} indicators={indicators} bars={bars} />
 
                 <SectionCard number={6} title="Rencana Trading" icon={<Target className="size-4" />} accentClass="bg-rose-500">
                   <div className="grid gap-4 sm:grid-cols-2 mb-4">
@@ -1972,13 +2531,13 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
           <BandarDetectorCard summary={summary} bars={bars} />
           <TradingPlanSidebarCard plan={tradingPlan} />
-          <SimilarStocksSidebarCard stocks={similarStocks} />
+          <SimilarStocksSidebarCard current={summary} stocks={similarStocks} />
         </aside>
 
         {/* ── SIMILAR STOCKS (mobile — below main content) ────────────── */}
         {similarStocks.length > 0 && (
           <div className="lg:hidden px-3 sm:px-0 pb-4">
-            <SimilarStocksSidebarCard stocks={similarStocks} />
+            <SimilarStocksSidebarCard current={summary} stocks={similarStocks} />
           </div>
         )}
       </main>
