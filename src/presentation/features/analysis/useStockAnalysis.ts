@@ -5,10 +5,11 @@ import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
+import { BrokerActivityDetail } from '@/domain/models/BrokerSummary';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { computeDataFreshness, DataFreshness } from '@/domain/analysis/dataFreshness';
 import { BreakoutScores, computeBreakoutScores } from '@/domain/screener/presets';
-import { getStockFundamentals, getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
+import { getStockBrokerActivity, getStockFundamentals, getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
 import { getStockNews } from '@/data/repositories/newsRepository';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import {
@@ -38,6 +39,11 @@ export interface UseStockAnalysisResult {
    *  or when unavailable for this ticker — never coerced to zero. */
   fundamentals: FundamentalDetail | null;
   fundamentalsLoading: boolean;
+  /** Real broker buy/sell + foreign-flow activity from Index Alpha. Null while loading,
+   *  when INDEX_ALPHA_API_KEY isn't configured, or when the quota/upstream call fails —
+   *  never coerced to zero. */
+  brokerActivity: BrokerActivityDetail | null;
+  brokerActivityLoading: boolean;
   reload: (forceRefresh?: boolean) => Promise<void>;
 }
 
@@ -67,6 +73,8 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
   const [allSummaries, setAllSummaries] = useState<StockSummary[]>([]);
   const [fundamentals, setFundamentals] = useState<FundamentalDetail | null>(null);
   const [fundamentalsLoading, setFundamentalsLoading] = useState(false);
+  const [brokerActivity, setBrokerActivity] = useState<BrokerActivityDetail | null>(null);
+  const [brokerActivityLoading, setBrokerActivityLoading] = useState(false);
 
   const load = useCallback(async (forceRefresh = false) => {
     const code = ticker.toUpperCase();
@@ -178,6 +186,26 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
     };
   }, [ticker]);
 
+  // Real broker/foreign-flow data (Index Alpha, paid & quota-limited) is fetched
+  // independently too — same rationale as fundamentals above, plus it must never
+  // block rendering when INDEX_ALPHA_API_KEY isn't configured or quota is spent.
+  useEffect(() => {
+    const code = ticker.toUpperCase();
+    let cancelled = false;
+    setBrokerActivity(null);
+    setBrokerActivityLoading(true);
+    getStockBrokerActivity(code)
+      .then((data) => {
+        if (!cancelled) setBrokerActivity(data);
+      })
+      .finally(() => {
+        if (!cancelled) setBrokerActivityLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
+
   const breakoutScores = useMemo(() => {
     if (!summary || bars.length === 0) return null;
     return computeBreakoutScores(summary, bars);
@@ -208,6 +236,8 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
     technicalScreening,
     fundamentals,
     fundamentalsLoading,
+    brokerActivity,
+    brokerActivityLoading,
     reload: load,
   };
 }

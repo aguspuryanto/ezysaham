@@ -27,6 +27,7 @@ import {
   History,
   Loader2,
   Newspaper,
+  NotebookPen,
   PieChart,
   RefreshCw,
   Rocket,
@@ -56,6 +57,7 @@ import {
 } from '@/domain/models/StockAnalysis';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
+import { BrokerActivityDetail, BrokerSummaryRow } from '@/domain/models/BrokerSummary';
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
 import { computeBandarScore } from '@/domain/analysis/bandarScore';
@@ -68,6 +70,7 @@ import { closes as barCloses, ema } from '@/domain/indicators/movingAverages';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
+import { useJournal } from '@/presentation/features/journal/hooks/useJournal';
 import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
 import { useStockAnalysis } from './useStockAnalysis';
 import { AiAnalystEngineCard } from './AiAnalystEngineCard';
@@ -614,7 +617,17 @@ function ScoringCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // 🕵️ BANDAR DETECTOR (Price + Volume + OBV Wyckoff proxy — no real broker/foreign data)
 // ─────────────────────────────────────────────────────────────────────────────
-function BandarDetectorCard({ summary, bars }: { summary: StockSummary; bars: OHLCVBar[] }) {
+function BandarDetectorCard({
+  summary,
+  bars,
+  brokerActivity,
+  brokerActivityLoading,
+}: {
+  summary: StockSummary;
+  bars: OHLCVBar[];
+  brokerActivity?: BrokerActivityDetail | null;
+  brokerActivityLoading?: boolean;
+}) {
   const { total, max, factors, classification, phaseLabel, hiddenDistributionWarning, dataNotes } = useMemo(
     () => computeBandarScore(summary, bars),
     [summary, bars]
@@ -704,6 +717,72 @@ function BandarDetectorCard({ summary, bars }: { summary: StockSummary; bars: OH
           <Note key={note} text={note} tone="zinc" />
         ))}
       </ul>
+
+      {brokerActivityLoading && (
+        <div className="flex items-center gap-2 pt-2 border-t-2 border-(--neo-line) text-[11px] font-semibold text-zinc-400">
+          <Loader2 className="size-3.5 animate-spin" strokeWidth={2.5} /> Memuat data broker riil…
+        </div>
+      )}
+
+      {!brokerActivityLoading && brokerActivity && (
+        <BrokerActivityPanel activity={brokerActivity} />
+      )}
+    </div>
+  );
+}
+
+// ─── Broker Summary Riil (Index Alpha) — real per-broker net buy/sell + foreign flow ──
+function BrokerActivityPanel({ activity }: { activity: BrokerActivityDetail }) {
+  const BrokerRow = ({ row, tone }: { row: BrokerSummaryRow; tone: 'green' | 'red' }) => (
+    <div className="flex items-center justify-between gap-2 text-[11px]">
+      <span className="font-mono font-bold text-zinc-700 dark:text-zinc-300">{row.code}</span>
+      <span className={cn('font-mono font-bold', tone === 'green' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+        {tone === 'green' ? '+' : ''}Rp{formatCompact(row.netValue)}
+      </span>
+    </div>
+  );
+
+  const foreignFlow = activity.foreignFlow;
+  const foreignNet = foreignFlow?.netForeign ?? null;
+
+  return (
+    <div className="pt-2 border-t-2 border-(--neo-line) space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-[11px] font-bold uppercase tracking-wide text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
+          📡 Broker Summary Riil
+        </h4>
+        <span className="text-[10px] font-semibold text-zinc-400">via Index Alpha</span>
+      </div>
+      <p className="text-[10px] text-zinc-400">
+        {activity.rangeFrom} – {activity.rangeTo}
+      </p>
+
+      {foreignNet != null && (
+        <div className={cn(
+          'neo-border px-3 py-2 flex items-center justify-between gap-2',
+          foreignNet >= 0 ? 'bg-emerald-50 dark:bg-emerald-500/10' : 'bg-rose-50 dark:bg-rose-500/10'
+        )}>
+          <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400">Net Foreign Flow</span>
+          <span className={cn('font-mono text-sm font-bold', foreignNet >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+            {foreignNet >= 0 ? '+' : ''}Rp{formatCompact(foreignNet)}
+          </span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">Top Net Buyer</p>
+          {activity.topBuyers.length > 0
+            ? activity.topBuyers.map((row) => <BrokerRow key={row.code} row={row} tone="green" />)
+            : <p className="text-[11px] text-zinc-400">–</p>}
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-400">Top Net Seller</p>
+          {activity.topSellers.length > 0
+            ? activity.topSellers.map((row) => <BrokerRow key={row.code} row={row} tone="red" />)
+            : <p className="text-[11px] text-zinc-400">–</p>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2370,12 +2449,48 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     technicalScreening,
     fundamentals,
     fundamentalsLoading,
+    brokerActivity,
+    brokerActivityLoading,
     reload: load,
   } = useStockAnalysis(ticker);
   const [justCopied, setJustCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<AnalysisTab>('teknikal');
   const watchlist = useWatchlist();
+  const journal = useJournal();
   const fairValue = useFairValueCalculator(summary, fundamentals);
+  const [addingToJournal, setAddingToJournal] = useState(false);
+  const [journalStatus, setJournalStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleAddToJournal = useCallback(async () => {
+    if (!summary || !analysis) return;
+    setAddingToJournal(true);
+    setJournalStatus(null);
+    try {
+      const scenario =
+        analysis.tradingPlan.recommendedBias === 'bearish' ? analysis.tradingPlan.bearish : analysis.tradingPlan.bullish;
+      const res = await journal.addEntries([
+        {
+          ticker: summary.ticker,
+          presetId: null,
+          entry: scenario.entry,
+          tp1: scenario.tp1,
+          tp2: scenario.tp2,
+          sl: scenario.sl,
+          riskRewardPlanned: scenario.riskRewardRatio,
+          reasonBuy: analysis.conclusion.summary,
+          reasonAvoid: analysis.conclusion.watchOut,
+        },
+      ]);
+      setJournalStatus(
+        res.ok
+          ? { type: 'success', text: `${summary.ticker} ditambahkan ke Jurnal.` }
+          : { type: 'error', text: res.message ?? 'Gagal menyimpan ke Jurnal.' }
+      );
+    } finally {
+      setAddingToJournal(false);
+      setTimeout(() => setJournalStatus(null), 3000);
+    }
+  }, [summary, analysis, journal]);
 
   const handleShare = useCallback(async () => {
     if (!summary) return;
@@ -2488,6 +2603,21 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             ))}
           </nav>
 
+          {/* Tambah ke Jurnal */}
+          <button
+            type="button"
+            onClick={handleAddToJournal}
+            disabled={addingToJournal}
+            title="Tambah ke Jurnal"
+            className="neo-press flex shrink-0 size-8 items-center justify-center neo-border neo-shadow-sm bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 rounded-lg sm:rounded-none sm:size-9 disabled:opacity-50"
+          >
+            {addingToJournal ? (
+              <Loader2 className="size-3.5 sm:size-4 animate-spin" strokeWidth={2.5} />
+            ) : (
+              <NotebookPen className="size-3.5 sm:size-4" strokeWidth={2.5} />
+            )}
+          </button>
+
           {/* Reload */}
           <button
             type="button"
@@ -2499,6 +2629,19 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </button>
         </div>
       </header>
+
+      {journalStatus && (
+        <div
+          className={cn(
+            'fixed inset-x-0 top-16 z-40 mx-auto w-fit max-w-xs neo-border neo-shadow-sm px-3 py-2 text-center text-xs font-bold',
+            journalStatus.type === 'success'
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300'
+              : 'bg-rose-100 text-rose-800 dark:bg-rose-400/10 dark:text-rose-300'
+          )}
+        >
+          {journalStatus.text}
+        </div>
+      )}
 
       {/* ── Health Score / Market Temperature Top Bar ───────────────────────── */}
       <div className="mx-auto max-w-6xl px-0 sm:px-4 lg:px-6 sm:pt-4">
@@ -2644,7 +2787,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             <AiStockAdvisorSidebar advisor={advisor} />
             <TradingPlanSidebarCard plan={tradingPlan} />
             <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
-            <BandarDetectorCard summary={summary} bars={bars} />
+            <BandarDetectorCard summary={summary} bars={bars} brokerActivity={brokerActivity} brokerActivityLoading={brokerActivityLoading} />
           </div>
 
           {/* ── Quick Stat Cards ─────────────────────────────────────────── */}
@@ -2872,7 +3015,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         <aside className="hidden lg:block space-y-5 lg:sticky lg:top-20">
           <AiStockAdvisorSidebar advisor={advisor} />
           <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
-          <BandarDetectorCard summary={summary} bars={bars} />
+          <BandarDetectorCard summary={summary} bars={bars} brokerActivity={brokerActivity} brokerActivityLoading={brokerActivityLoading} />
           <TradingPlanSidebarCard plan={tradingPlan} />
           <SimilarStocksSidebarCard current={summary} stocks={similarStocks} />
         </aside>

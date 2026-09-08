@@ -1,6 +1,6 @@
 'use client';
 
-import { BookOpen, GitCompare, Newspaper, Search, SlidersHorizontal, TrendingUp } from 'lucide-react';
+import { BookOpen, GitCompare, Newspaper, NotebookPen, Search, SlidersHorizontal, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_NAME, SITE_SLOGAN } from '@/lib/site';
 import { AuthButton } from '@/presentation/features/auth/AuthButton';
@@ -64,6 +64,15 @@ export function AppHeader({
           className="neo-press flex size-9 shrink-0 items-center justify-center neo-border bg-white text-zinc-900 neo-shadow-sm dark:bg-zinc-900 dark:text-zinc-100"
         >
           <GitCompare className="size-4" strokeWidth={2.5} />
+        </Link>
+
+        <Link
+          href="/jurnal"
+          aria-label="Jurnal trading"
+          title="Jurnal Trading"
+          className="neo-press flex size-9 shrink-0 items-center justify-center neo-border bg-white text-zinc-900 neo-shadow-sm dark:bg-zinc-900 dark:text-zinc-100"
+        >
+          <NotebookPen className="size-4" strokeWidth={2.5} />
         </Link>
 
         <Link

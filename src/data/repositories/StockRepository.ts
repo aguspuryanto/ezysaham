@@ -2,6 +2,7 @@ import { HistoryResponse, OHLCVBar } from '@/domain/models/History';
 import { IntradayResponse } from '@/domain/models/Intraday';
 import { StockSummary } from '@/domain/models/Stock';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
+import { BrokerActivityDetail, BrokerActivityResponse } from '@/domain/models/BrokerSummary';
 import { mapToStockSummary, PasardanaStockItem } from '@/data/external/pasardana';
 import { AnalysisCacheManager } from '@/data/cache/analysisCache';
 
@@ -95,6 +96,20 @@ export async function getStockFundamentals(ticker: string): Promise<FundamentalD
     const response = await fetch(`/api/stocks/${ticker}/fundamentals`);
     if (!response.ok) return null;
     return (await response.json()) as FundamentalDetail | null;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns null when Index Alpha data is unavailable (no API key configured, quota
+ *  exhausted, or a real data gap) — callers must treat that as "unknown", not zero,
+ *  and simply hide the real-broker panel rather than showing an error. */
+export async function getStockBrokerActivity(ticker: string): Promise<BrokerActivityDetail | null> {
+  try {
+    const response = await fetch(`/api/stocks/${ticker}/broker-summary`);
+    if (!response.ok) return null;
+    const result = (await response.json()) as BrokerActivityResponse;
+    return result.ok ? result.data : null;
   } catch {
     return null;
   }

@@ -10,6 +10,7 @@ import {
   GitCompare,
   LayoutGrid,
   Loader2,
+  NotebookPen,
   RefreshCw,
   Rocket,
   ShieldCheck,
@@ -21,11 +22,14 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStockFundamentals, getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
+import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
+import { NewJournalEntryInput } from '@/domain/models/JournalEntry';
 import { StockSummary } from '@/domain/models/Stock';
 import { ScreenerPresetId, SCREENER_PRESETS } from '@/domain/screener/presets';
 import { mapWithConcurrency } from '@/lib/concurrency';
 import { cn } from '@/lib/format';
 import { AppHeader } from '@/presentation/components/layout/AppHeader';
+import { useJournal } from '@/presentation/features/journal/hooks/useJournal';
 import { BottomNav } from './components/BottomNav';
 import { FilterChipItem, PresetTabs } from './components/PresetTabs';
 import { ResultsTable, ResultsView, ScreenerResult } from './components/ResultsTable';
@@ -34,6 +38,9 @@ import { TickerTape } from './components/TickerTape';
 import { useWatchlist } from './hooks/useWatchlist';
 import { PhilosophyBanner } from './components/PhilosophyBanner';
 import { IhsgChart } from './components/IhsgChart';
+
+const JOURNAL_PRESETS: ScreenerPresetId[] = ['dayTrading', 'swingHunter'];
+const JOURNAL_TOP_N = 5;
 
 const HISTORY_CONCURRENCY = 6;
 const RESULTS_LIMIT = 50;
@@ -81,7 +88,10 @@ export function ScreenerPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(RESULTS_LIMIT);
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
+  const [creatingJurnal, setCreatingJurnal] = useState(false);
+  const [jurnalMessage, setJurnalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const watchlist = useWatchlist();
+  const journal = useJournal();
 
   const toggleCompare = useCallback((ticker: string) => {
     setCompareSelection((prev) => {
@@ -230,6 +240,55 @@ export function ScreenerPage() {
 
   const isBusy = status === 'scanning' || status === 'loading-summary';
   const progressPct = progress.total > 0 ? Math.round((progress.checked / progress.total) * 100) : 0;
+  const canCreateJurnal = JOURNAL_PRESETS.includes(filterId as ScreenerPresetId) && results.length > 0;
+
+  const handleCreateJurnal = useCallback(async () => {
+    if (!JOURNAL_PRESETS.includes(filterId as ScreenerPresetId)) return;
+    const presetId = filterId as 'dayTrading' | 'swingHunter';
+    setCreatingJurnal(true);
+    setJurnalMessage(null);
+    try {
+      const top5 = [...results]
+        .sort((a, b) => b.summary.percentChange1D - a.summary.percentChange1D)
+        .slice(0, JOURNAL_TOP_N);
+
+      const inputs: NewJournalEntryInput[] = [];
+      for (const result of top5) {
+        const bars = await getStockHistory(result.summary.ticker);
+        if (bars.length === 0) continue;
+        const analysis = computeStockAnalysis(result.summary, bars);
+        const scenario =
+          analysis.tradingPlan.recommendedBias === 'bearish'
+            ? analysis.tradingPlan.bearish
+            : analysis.tradingPlan.bullish;
+        inputs.push({
+          ticker: result.summary.ticker,
+          presetId,
+          entry: scenario.entry,
+          tp1: scenario.tp1,
+          tp2: scenario.tp2,
+          sl: scenario.sl,
+          riskRewardPlanned: scenario.riskRewardRatio,
+          reasonBuy: result.evaluation.reasons.join(', '),
+          reasonAvoid: analysis.conclusion.watchOut,
+        });
+      }
+
+      if (inputs.length === 0) {
+        setJurnalMessage({ type: 'error', text: 'Gagal mengambil data historis untuk kandidat teratas.' });
+        return;
+      }
+
+      const res = await journal.addEntries(inputs);
+      setJurnalMessage(
+        res.ok
+          ? { type: 'success', text: `${inputs.length} saham ditambahkan ke Jurnal.` }
+          : { type: 'error', text: res.message ?? 'Gagal menyimpan ke Jurnal.' }
+      );
+    } finally {
+      setCreatingJurnal(false);
+    }
+  }, [filterId, results, journal]);
 
   return (
     <div className="flex w-full min-h-screen flex-col bg-white dark:bg-black">
@@ -393,6 +452,23 @@ export function ScreenerPage() {
                 </button>
               </div>
 
+              {canCreateJurnal && (
+                <button
+                  type="button"
+                  onClick={handleCreateJurnal}
+                  disabled={creatingJurnal}
+                  title={`Simpan top ${JOURNAL_TOP_N} saham (berdasarkan perubahan) ke Jurnal`}
+                  className="neo-press inline-flex items-center justify-center gap-2 neo-border neo-shadow-sm bg-(--neo-accent) px-3 py-2 text-xs font-bold uppercase tracking-wide text-black disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {creatingJurnal ? (
+                    <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />
+                  ) : (
+                    <NotebookPen className="size-4" strokeWidth={2.5} />
+                  )}
+                  <span className="hidden sm:inline">Create Jurnal</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -407,6 +483,24 @@ export function ScreenerPage() {
               </button>
             </div>
           </div>
+
+          {jurnalMessage && (
+            <div
+              className={cn(
+                'flex items-center justify-between gap-2 neo-border neo-shadow-sm px-3.5 py-2.5 text-sm font-semibold',
+                jurnalMessage.type === 'success'
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300'
+                  : 'bg-rose-100 text-rose-800 dark:bg-rose-400/10 dark:text-rose-300'
+              )}
+            >
+              <span>{jurnalMessage.text}</span>
+              {jurnalMessage.type === 'success' && (
+                <Link href="/jurnal" className="shrink-0 underline underline-offset-2">
+                  Lihat Jurnal →
+                </Link>
+              )}
+            </div>
+          )}
 
           <ResultsTable
             results={visibleResults}
