@@ -115,25 +115,43 @@ function SectionCard({
   icon,
   accentClass,
   children,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   number?: number | string;
   title: string;
   icon: React.ReactNode;
   accentClass: string;
   children: React.ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const showBody = !collapsible || isOpen;
+
+  const header = (
+    <div className={cn('flex items-center gap-3 px-5 py-4 border-b-[3px] border-(--neo-line)')}>
+      <span className={cn('flex size-9 shrink-0 items-center justify-center neo-border text-white text-sm', accentClass)}>
+        {icon}
+      </span>
+      <h2 className="font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100 flex items-center gap-1.5 flex-1 min-w-0">
+        {number !== undefined && <span className="text-zinc-400 dark:text-zinc-600 mr-1.5">{number}.</span>}
+        {title}
+      </h2>
+      {collapsible && (
+        <ChevronDown className={cn('size-4 shrink-0 text-zinc-400 transition-transform', isOpen && 'rotate-180')} strokeWidth={2.5} />
+      )}
+    </div>
+  );
+
   return (
     <section className="neo-border neo-shadow overflow-hidden bg-white dark:bg-zinc-900">
-      <div className={cn('flex items-center gap-3 px-5 py-4 border-b-[3px] border-(--neo-line)')}>
-        <span className={cn('flex size-9 shrink-0 items-center justify-center neo-border text-white text-sm', accentClass)}>
-          {icon}
-        </span>
-        <h2 className="font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100 flex items-center gap-1.5">
-          {number !== undefined && <span className="text-zinc-400 dark:text-zinc-600 mr-1.5">{number}.</span>}
-          {title}
-        </h2>
-      </div>
-      <div className="px-5 py-4">{children}</div>
+      {collapsible ? (
+        <button type="button" onClick={() => setIsOpen((v) => !v)} aria-expanded={isOpen} className="w-full text-left">
+          {header}
+        </button>
+      ) : header}
+      {showBody && <div className="px-5 py-4">{children}</div>}
     </section>
   );
 }
@@ -1070,6 +1088,120 @@ function SimilarStocksSidebarCard({ current, stocks }: { current: StockSummary; 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 💹 FAIR VALUE CALCULATOR (shared state/hook) — dipakai oleh kartu Kalkulator
+// Nilai Wajar (di atas tab) & bagian Rangkuman Valuasi + Verdict (tab Fundamental)
+// ─────────────────────────────────────────────────────────────────────────────
+type FairValueTone = 'green' | 'amber' | 'red' | 'zinc';
+type FairValueRow = { key: string; label: string; fv: number | null };
+
+interface FairValueCalculation {
+  price: number;
+  eps: number | null;
+  bvps: number | null;
+  meanPerInput: string;
+  setMeanPerInput: (v: string) => void;
+  meanPbvInput: string;
+  setMeanPbvInput: (v: string) => void;
+  growthInput: string;
+  setGrowthInput: (v: string) => void;
+  useGrowthGraham: boolean;
+  setUseGrowthGraham: React.Dispatch<React.SetStateAction<boolean>>;
+  rows: FairValueRow[];
+  upside: (fv: number | null) => number | null;
+  statusOf: (u: number | null) => { label: string; tone: FairValueTone };
+  consensus: number | null;
+  consensusUpside: number | null;
+  verdict: { label: string; tone: FairValueTone };
+  perDiffLabel: string | null;
+  pbvDiffLabel: string | null;
+  riskNotes: string[];
+}
+
+function useFairValueCalculator(summary: StockSummary | null, fundamentals: FundamentalDetail | null): FairValueCalculation {
+  const price = summary?.lastClose ?? 0;
+  const eps = summary && summary.per > 0 ? price / summary.per : null;
+  const bvps = summary && summary.pbv > 0 ? price / summary.pbv : null;
+
+  const [meanPerInput, setMeanPerInput] = useState('15');
+  const [meanPbvInput, setMeanPbvInput] = useState('1.5');
+  const [growthInput, setGrowthInput] = useState('8');
+  const [useGrowthGraham, setUseGrowthGraham] = useState(false);
+
+  // Sinkronkan input rata-rata P/E & PBV dengan PER/PBV berjalan begitu data emiten
+  // tersedia/berganti ticker — pola "adjust state on prop change" (bukan efek terpisah),
+  // sebelumnya ini adalah initial state per-mount saat kartu ini masih mount belakangan.
+  const [syncedTicker, setSyncedTicker] = useState<string | null>(null);
+  if (summary && summary.ticker !== syncedTicker) {
+    setSyncedTicker(summary.ticker);
+    setMeanPerInput(summary.per > 0 ? summary.per.toFixed(1) : '15');
+    setMeanPbvInput(summary.pbv > 0 ? summary.pbv.toFixed(2) : '1.5');
+  }
+
+  const meanPer = parseFloat(meanPerInput);
+  const meanPbv = parseFloat(meanPbvInput);
+  const g = parseFloat(growthInput);
+
+  const fvPe = eps != null && eps > 0 && !Number.isNaN(meanPer) ? eps * meanPer : null;
+  const fvPbv = bvps != null && bvps > 0 && !Number.isNaN(meanPbv) ? bvps * meanPbv : null;
+  const fvGraham =
+    eps == null || eps <= 0 ? null :
+      useGrowthGraham
+        ? (!Number.isNaN(g) ? eps * (8.5 + 2 * g) : null)
+        : (bvps != null && bvps > 0 ? Math.sqrt(22.5 * eps * bvps) : null);
+
+  const upside = (fv: number | null) => (fv != null && price > 0 ? ((fv - price) / price) * 100 : null);
+  const statusOf = (u: number | null): { label: string; tone: FairValueTone } => {
+    if (u == null) return { label: '–', tone: 'zinc' };
+    if (u >= 15) return { label: 'Undervalued', tone: 'green' };
+    if (u <= -15) return { label: 'Overvalued', tone: 'red' };
+    return { label: 'Fair Value', tone: 'amber' };
+  };
+
+  const rows: FairValueRow[] = [
+    { key: 'pe', label: 'P/E Ratio', fv: fvPe },
+    { key: 'pbv', label: 'PBV Ratio', fv: fvPbv },
+    { key: 'graham', label: 'Graham Value', fv: fvGraham },
+  ];
+  const validFvs = rows.map((r) => r.fv).filter((v): v is number => v != null);
+  const consensus = validFvs.length > 0 ? validFvs.reduce((a, b) => a + b, 0) / validFvs.length : null;
+  const consensusUpside = upside(consensus);
+
+  const verdict: { label: string; tone: FairValueTone } =
+    consensusUpside == null ? { label: '–', tone: 'zinc' } :
+      consensusUpside >= 25 ? { label: 'DEEPLY UNDERVALUED', tone: 'green' } :
+        consensusUpside <= -15 ? { label: 'OVERVALUED', tone: 'red' } : { label: 'FAIR VALUE', tone: 'amber' };
+
+  const perDiffLabel = summary && summary.per > 0 && !Number.isNaN(meanPer)
+    ? `PER saat ini ${fmtIdNum(summary.per, 1)}× ${summary.per < meanPer ? 'lebih rendah' : 'lebih tinggi'} dibanding rata-rata input Anda (${fmtIdNum(meanPer, 1)}×).`
+    : null;
+  const pbvDiffLabel = summary && summary.pbv > 0 && !Number.isNaN(meanPbv)
+    ? `PBV saat ini ${fmtIdNum(summary.pbv, 2)}× ${summary.pbv < meanPbv ? 'lebih rendah' : 'lebih tinggi'} dibanding rata-rata input Anda (${fmtIdNum(meanPbv, 2)}×).`
+    : null;
+
+  const riskNotes: string[] = [];
+  if (eps == null || eps <= 0) riskNotes.push('EPS negatif/tidak tersedia — metode P/E dan Graham tidak valid untuk emiten ini.');
+  if (bvps == null || bvps <= 0) riskNotes.push('BVPS negatif/tidak tersedia — metode PBV dan Graham tidak valid untuk emiten ini.');
+  if (fundamentals?.debtToEquity != null && fundamentals.debtToEquity > 100) {
+    riskNotes.push(`DER ${fmtIdNum(fundamentals.debtToEquity, 1)}% tergolong tinggi — cek beban bunga & risiko solvabilitas sebelum mengandalkan valuasi ini.`);
+  }
+  if (fundamentals?.revenueGrowth != null && fundamentals.revenueGrowth < 0) {
+    riskNotes.push(`Pertumbuhan pendapatan YoY negatif (${fmtIdNum(fundamentals.revenueGrowth, 1)}%) — verifikasi tren laba sebelum memakai asumsi pertumbuhan di atas.`);
+  }
+  riskNotes.push('Rata-rata P/E & PBV historis di atas adalah input manual Anda, bukan data historis 5 tahun yang diambil otomatis — verifikasi dengan data riil sebelum mengambil keputusan.');
+
+  return {
+    price, eps, bvps,
+    meanPerInput, setMeanPerInput,
+    meanPbvInput, setMeanPbvInput,
+    growthInput, setGrowthInput,
+    useGrowthGraham, setUseGrowthGraham,
+    rows, upside, statusOf,
+    consensus, consensusUpside, verdict,
+    perDiffLabel, pbvDiffLabel, riskNotes,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 📊 FUNDAMENTAL SCREENING SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 function FundamentalSection({
@@ -1077,11 +1209,13 @@ function FundamentalSection({
   screening,
   fundamentals,
   fundamentalsLoading,
+  fv,
 }: {
   summary: StockSummary;
   screening: FundamentalScreeningResult;
   fundamentals: FundamentalDetail | null;
   fundamentalsLoading: boolean;
+  fv: FairValueCalculation;
 }) {
   const { per, pbv, roe } = summary;
 
@@ -1221,6 +1355,80 @@ function FundamentalSection({
             )}
           </div>
         ))}
+      </div>
+
+      <div className="h-[2px] bg-(--neo-line) mt-4" />
+
+      {/* 📊 Rangkuman Valuasi (dari Kalkulator Nilai Wajar) */}
+      <div className="mt-4">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+          📊 Rangkuman Valuasi (Fair Value)
+        </h3>
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full min-w-[420px] text-sm">
+            <thead>
+              <tr className="text-zinc-400 dark:text-zinc-500 border-b-2 border-(--neo-line) text-left">
+                <th className="font-bold uppercase py-1.5 pr-2 text-xs">Metode</th>
+                <th className="font-bold uppercase py-1.5 px-2 text-xs text-right">Harga Wajar</th>
+                <th className="font-bold uppercase py-1.5 px-2 text-xs">Status Valuasi</th>
+                <th className="font-bold uppercase py-1.5 pl-2 text-xs text-right">Upside/Downside</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fv.rows.map((r) => {
+                const u = fv.upside(r.fv);
+                const s = fv.statusOf(u);
+                return (
+                  <tr key={r.key} className="border-b border-zinc-100 dark:border-zinc-800">
+                    <td className="py-1.5 pr-2 font-semibold text-zinc-700 dark:text-zinc-300">{r.label}</td>
+                    <td className="py-1.5 px-2 text-right font-mono">{r.fv != null ? fmtRp(r.fv) : '–'}</td>
+                    <td className="py-1.5 px-2"><Pill tone={s.tone}>{s.label}</Pill></td>
+                    <td className={cn('py-1.5 pl-2 text-right font-mono font-bold', u != null && u >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                      {u != null ? fmtIdPct(u) : '–'}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="bg-teal-50 dark:bg-teal-500/10 font-bold">
+                <td className="py-2 pr-2 text-zinc-900 dark:text-zinc-100">Rata-Rata Konsensus</td>
+                <td className="py-2 px-2 text-right font-mono text-zinc-900 dark:text-zinc-100">{fv.consensus != null ? fmtRp(fv.consensus) : '–'}</td>
+                <td className="py-2 px-2"><Pill tone={fv.verdict.tone}>{fv.verdict.label}</Pill></td>
+                <td className={cn('py-2 pl-2 text-right font-mono', fv.consensusUpside != null && fv.consensusUpside >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                  {fv.consensusUpside != null ? fmtIdPct(fv.consensusUpside) : '–'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="h-[2px] bg-(--neo-line) mt-4" />
+
+      {/* 🎯 Kesimpulan & Catatan Risiko (Verdict) */}
+      <div className="mt-4">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+          🎯 Kesimpulan & Catatan Risiko (Verdict)
+        </h3>
+        <ul className="space-y-1.5 text-sm">
+          <li className="flex items-center gap-2">
+            <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Valuasi Utama:</span>
+            <Pill tone={fv.verdict.tone}>{fv.verdict.label}</Pill>
+          </li>
+          {(fv.perDiffLabel || fv.pbvDiffLabel) && (
+            <li className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              <strong className="text-zinc-800 dark:text-zinc-200">Poin Kunci:</strong>{' '}
+              {[fv.perDiffLabel, fv.pbvDiffLabel].filter(Boolean).join(' ')}
+            </li>
+          )}
+          <li className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+            <strong className="text-zinc-800 dark:text-zinc-200">Catatan Risiko:</strong>
+            <ul className="mt-1 space-y-1">
+              {fv.riskNotes.map((note, i) => (
+                <Note key={i} text={note} tone="zinc" />
+              ))}
+            </ul>
+          </li>
+        </ul>
       </div>
     </SectionCard>
   );
@@ -1577,74 +1785,13 @@ function fmtIdPct(n: number, dec = 1): string {
 // ─────────────────────────────────────────────────────────────────────────────
 function FairValueCalculatorCard({
   summary,
-  fundamentals,
+  fv,
 }: {
   summary: StockSummary;
-  fundamentals: FundamentalDetail | null;
+  fv: FairValueCalculation;
 }) {
-  const price = summary.lastClose;
-  const eps = summary.per > 0 ? price / summary.per : null;
-  const bvps = summary.pbv > 0 ? price / summary.pbv : null;
-
-  const [meanPerInput, setMeanPerInput] = useState(summary.per > 0 ? summary.per.toFixed(1) : '15');
-  const [meanPbvInput, setMeanPbvInput] = useState(summary.pbv > 0 ? summary.pbv.toFixed(2) : '1.5');
-  const [growthInput, setGrowthInput] = useState('8');
-  const [useGrowthGraham, setUseGrowthGraham] = useState(false);
-
-  const meanPer = parseFloat(meanPerInput);
-  const meanPbv = parseFloat(meanPbvInput);
-  const g = parseFloat(growthInput);
-
-  const fvPe = eps != null && eps > 0 && !Number.isNaN(meanPer) ? eps * meanPer : null;
-  const fvPbv = bvps != null && bvps > 0 && !Number.isNaN(meanPbv) ? bvps * meanPbv : null;
-  const fvGraham =
-    eps == null || eps <= 0 ? null :
-      useGrowthGraham
-        ? (!Number.isNaN(g) ? eps * (8.5 + 2 * g) : null)
-        : (bvps != null && bvps > 0 ? Math.sqrt(22.5 * eps * bvps) : null);
-
-  const upside = (fv: number | null) => (fv != null ? ((fv - price) / price) * 100 : null);
-  const statusOf = (u: number | null): { label: string; tone: 'green' | 'amber' | 'red' | 'zinc' } => {
-    if (u == null) return { label: '–', tone: 'zinc' };
-    if (u >= 15) return { label: 'Undervalued', tone: 'green' };
-    if (u <= -15) return { label: 'Overvalued', tone: 'red' };
-    return { label: 'Fair Value', tone: 'amber' };
-  };
-
-  const rows = [
-    { key: 'pe', label: 'P/E Ratio', fv: fvPe },
-    { key: 'pbv', label: 'PBV Ratio', fv: fvPbv },
-    { key: 'graham', label: 'Graham Value', fv: fvGraham },
-  ];
-  const validFvs = rows.map((r) => r.fv).filter((v): v is number => v != null);
-  const consensus = validFvs.length > 0 ? validFvs.reduce((a, b) => a + b, 0) / validFvs.length : null;
-  const consensusUpside = upside(consensus);
-
-  const verdict: { label: string; tone: 'green' | 'amber' | 'red' | 'zinc' } =
-    consensusUpside == null ? { label: '–', tone: 'zinc' } :
-      consensusUpside >= 25 ? { label: 'DEEPLY UNDERVALUED', tone: 'green' } :
-        consensusUpside <= -15 ? { label: 'OVERVALUED', tone: 'red' } : { label: 'FAIR VALUE', tone: 'amber' };
-
-  const perDiffLabel = summary.per > 0 && !Number.isNaN(meanPer)
-    ? `PER saat ini ${fmtIdNum(summary.per, 1)}× ${summary.per < meanPer ? 'lebih rendah' : 'lebih tinggi'} dibanding rata-rata input Anda (${fmtIdNum(meanPer, 1)}×).`
-    : null;
-  const pbvDiffLabel = summary.pbv > 0 && !Number.isNaN(meanPbv)
-    ? `PBV saat ini ${fmtIdNum(summary.pbv, 2)}× ${summary.pbv < meanPbv ? 'lebih rendah' : 'lebih tinggi'} dibanding rata-rata input Anda (${fmtIdNum(meanPbv, 2)}×).`
-    : null;
-
-  const riskNotes: string[] = [];
-  if (eps == null || eps <= 0) riskNotes.push('EPS negatif/tidak tersedia — metode P/E dan Graham tidak valid untuk emiten ini.');
-  if (bvps == null || bvps <= 0) riskNotes.push('BVPS negatif/tidak tersedia — metode PBV dan Graham tidak valid untuk emiten ini.');
-  if (fundamentals?.debtToEquity != null && fundamentals.debtToEquity > 100) {
-    riskNotes.push(`DER ${fmtIdNum(fundamentals.debtToEquity, 1)}% tergolong tinggi — cek beban bunga & risiko solvabilitas sebelum mengandalkan valuasi ini.`);
-  }
-  if (fundamentals?.revenueGrowth != null && fundamentals.revenueGrowth < 0) {
-    riskNotes.push(`Pertumbuhan pendapatan YoY negatif (${fmtIdNum(fundamentals.revenueGrowth, 1)}%) — verifikasi tren laba sebelum memakai asumsi pertumbuhan di atas.`);
-  }
-  riskNotes.push('Rata-rata P/E & PBV historis di atas adalah input manual Anda, bukan data historis 5 tahun yang diambil otomatis — verifikasi dengan data riil sebelum mengambil keputusan.');
-
   return (
-    <SectionCard title="Kalkulator Nilai Wajar (Fair Value)" icon={<Crosshair className="size-4" />} accentClass="bg-teal-600">
+    <SectionCard title="Kalkulator Nilai Wajar (Fair Value)" icon={<Crosshair className="size-4" />} accentClass="bg-teal-600" collapsible defaultOpen>
       <div className="space-y-5">
         {/* 1. Data Dasar Emiten */}
         <div>
@@ -1654,15 +1801,15 @@ function FairValueCalculatorCard({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-3">
             <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2.5 text-center">
               <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">Harga Saat Ini</div>
-              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{fmtRp(price)}</div>
+              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{fmtRp(fv.price)}</div>
             </div>
             <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2.5 text-center">
               <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">EPS (TTM, estimasi)</div>
-              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{eps != null ? fmtRp(eps) : '–'}</div>
+              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{fv.eps != null ? fmtRp(fv.eps) : '–'}</div>
             </div>
             <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2.5 text-center">
               <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">BVPS (estimasi)</div>
-              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{bvps != null ? fmtRp(bvps) : '–'}</div>
+              <div className="mt-1 font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{fv.bvps != null ? fmtRp(fv.bvps) : '–'}</div>
             </div>
             <div className="neo-border bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2.5 text-center">
               <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">PER / PBV Saat Ini</div>
@@ -1682,8 +1829,8 @@ function FairValueCalculatorCard({
               <input
                 type="number"
                 step={0.1}
-                value={meanPerInput}
-                onChange={(e) => setMeanPerInput(e.target.value)}
+                value={fv.meanPerInput}
+                onChange={(e) => fv.setMeanPerInput(e.target.value)}
                 className="w-full text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-1.5 focus:outline-none focus:border-teal-400 dark:focus:border-teal-500"
               />
             </label>
@@ -1692,8 +1839,8 @@ function FairValueCalculatorCard({
               <input
                 type="number"
                 step={0.01}
-                value={meanPbvInput}
-                onChange={(e) => setMeanPbvInput(e.target.value)}
+                value={fv.meanPbvInput}
+                onChange={(e) => fv.setMeanPbvInput(e.target.value)}
                 className="w-full text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-1.5 focus:outline-none focus:border-teal-400 dark:focus:border-teal-500"
               />
             </label>
@@ -1702,18 +1849,18 @@ function FairValueCalculatorCard({
                 <span>Asumsi Growth (g%)</span>
                 <button
                   type="button"
-                  onClick={() => setUseGrowthGraham((v) => !v)}
-                  className={cn('text-[10px] px-1.5 py-0.5 border-2 border-(--neo-line) font-bold', useGrowthGraham ? 'bg-teal-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500')}
+                  onClick={() => fv.setUseGrowthGraham((v) => !v)}
+                  className={cn('text-[10px] px-1.5 py-0.5 border-2 border-(--neo-line) font-bold', fv.useGrowthGraham ? 'bg-teal-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500')}
                 >
-                  {useGrowthGraham ? 'Dipakai' : 'Graham Klasik'}
+                  {fv.useGrowthGraham ? 'Dipakai' : 'Graham Klasik'}
                 </button>
               </span>
               <input
                 type="number"
                 step={0.5}
-                value={growthInput}
-                onChange={(e) => setGrowthInput(e.target.value)}
-                disabled={!useGrowthGraham}
+                value={fv.growthInput}
+                onChange={(e) => fv.setGrowthInput(e.target.value)}
+                disabled={!fv.useGrowthGraham}
                 className="w-full text-center font-mono text-sm font-bold border-2 border-(--neo-line) bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-1.5 focus:outline-none focus:border-teal-400 dark:focus:border-teal-500 disabled:opacity-40"
               />
             </label>
@@ -1728,8 +1875,8 @@ function FairValueCalculatorCard({
             🧮 2. Rincian Perhitungan Harga Wajar
           </h3>
           <ul className="space-y-1.5 text-sm">
-            {rows.map((r) => {
-              const u = upside(r.fv);
+            {fv.rows.map((r) => {
+              const u = fv.upside(r.fv);
               return (
                 <li key={r.key} className="flex flex-wrap items-center gap-2">
                   <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Metode {r.label}:</span>
@@ -1743,80 +1890,9 @@ function FairValueCalculatorCard({
               );
             })}
           </ul>
-        </div>
-
-        <div className="h-[2px] bg-(--neo-line)" />
-
-        {/* 3. Rangkuman Valuasi */}
-        <div>
-          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
-            📊 3. Rangkuman Valuasi
-          </h3>
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full min-w-[420px] text-sm">
-              <thead>
-                <tr className="text-zinc-400 dark:text-zinc-500 border-b-2 border-(--neo-line) text-left">
-                  <th className="font-bold uppercase py-1.5 pr-2 text-xs">Metode</th>
-                  <th className="font-bold uppercase py-1.5 px-2 text-xs text-right">Harga Wajar</th>
-                  <th className="font-bold uppercase py-1.5 px-2 text-xs">Status Valuasi</th>
-                  <th className="font-bold uppercase py-1.5 pl-2 text-xs text-right">Upside/Downside</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const u = upside(r.fv);
-                  const s = statusOf(u);
-                  return (
-                    <tr key={r.key} className="border-b border-zinc-100 dark:border-zinc-800">
-                      <td className="py-1.5 pr-2 font-semibold text-zinc-700 dark:text-zinc-300">{r.label}</td>
-                      <td className="py-1.5 px-2 text-right font-mono">{r.fv != null ? fmtRp(r.fv) : '–'}</td>
-                      <td className="py-1.5 px-2"><Pill tone={s.tone}>{s.label}</Pill></td>
-                      <td className={cn('py-1.5 pl-2 text-right font-mono font-bold', u != null && u >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                        {u != null ? fmtIdPct(u) : '–'}
-                      </td>
-                    </tr>
-                  );
-                })}
-                <tr className="bg-teal-50 dark:bg-teal-500/10 font-bold">
-                  <td className="py-2 pr-2 text-zinc-900 dark:text-zinc-100">Rata-Rata Konsensus</td>
-                  <td className="py-2 px-2 text-right font-mono text-zinc-900 dark:text-zinc-100">{consensus != null ? fmtRp(consensus) : '–'}</td>
-                  <td className="py-2 px-2"><Pill tone={verdict.tone}>{verdict.label}</Pill></td>
-                  <td className={cn('py-2 pl-2 text-right font-mono', consensusUpside != null && consensusUpside >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                    {consensusUpside != null ? fmtIdPct(consensusUpside) : '–'}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="h-[2px] bg-(--neo-line)" />
-
-        {/* 4. Kesimpulan AI & Catatan Risiko */}
-        <div>
-          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
-            🎯 4. Kesimpulan & Catatan Risiko (Verdict)
-          </h3>
-          <ul className="space-y-1.5 text-sm">
-            <li className="flex items-center gap-2">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Valuasi Utama:</span>
-              <Pill tone={verdict.tone}>{verdict.label}</Pill>
-            </li>
-            {(perDiffLabel || pbvDiffLabel) && (
-              <li className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                <strong className="text-zinc-800 dark:text-zinc-200">Poin Kunci:</strong>{' '}
-                {[perDiffLabel, pbvDiffLabel].filter(Boolean).join(' ')}
-              </li>
-            )}
-            <li className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
-              <strong className="text-zinc-800 dark:text-zinc-200">Catatan Risiko:</strong>
-              <ul className="mt-1 space-y-1">
-                {riskNotes.map((note, i) => (
-                  <Note key={i} text={note} tone="zinc" />
-                ))}
-              </ul>
-            </li>
-          </ul>
+          <p className="text-[11px] text-zinc-400 mt-2">
+            Rangkuman valuasi lengkap & catatan risiko ada di tab <strong>Fundamental</strong>.
+          </p>
         </div>
       </div>
     </SectionCard>
@@ -2299,6 +2375,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const [justCopied, setJustCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<AnalysisTab>('teknikal');
   const watchlist = useWatchlist();
+  const fairValue = useFairValueCalculator(summary, fundamentals);
 
   const handleShare = useCallback(async () => {
     if (!summary) return;
@@ -2534,6 +2611,11 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             </div>
           )}
 
+          {/* ── Kalkulator Nilai Wajar (Fair Value) ───────────────────────── */}
+          {/* <div className="px-3 sm:px-0">
+            <FairValueCalculatorCard summary={summary} fv={fairValue} />
+          </div> */}
+
           {/* ── Kesimpulan Objektif ──────────────────────────────────────── */}
           <div className="px-0 sm:px-0">
             {objectiveConclusion && <ObjectiveConclusionCard conclusion={objectiveConclusion} />}
@@ -2743,8 +2825,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   screening={fundamentalScreening}
                   fundamentals={fundamentals}
                   fundamentalsLoading={fundamentalsLoading}
+                  fv={fairValue}
                 />
-                <FairValueCalculatorCard summary={summary} fundamentals={fundamentals} />
               </div>
             )}
 
