@@ -2643,7 +2643,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           <div className="lg:hidden space-y-3 px-3 sm:px-0">
             <AiStockAdvisorSidebar advisor={advisor} />
             <TradingPlanSidebarCard plan={tradingPlan} />
-            <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
+            {/* <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} /> */}
             <BandarDetectorCard summary={summary} bars={bars} />
           </div>
 
@@ -2871,7 +2871,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         {/* ── RIGHT SIDEBAR (desktop only — lg+) ──────────────────────── */}
         <aside className="hidden lg:block space-y-5 lg:sticky lg:top-20">
           <AiStockAdvisorSidebar advisor={advisor} />
-          <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} />
+          {/* <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} /> */}
           <BandarDetectorCard summary={summary} bars={bars} />
           <TradingPlanSidebarCard plan={tradingPlan} />
           <SimilarStocksSidebarCard current={summary} stocks={similarStocks} />
