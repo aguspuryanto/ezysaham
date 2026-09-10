@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { JournalEntry, NewJournalEntryInput } from '@/domain/models/JournalEntry';
+import type { JournalEntryEditableFields } from '@/data/repositories/JournalRepository';
 
 export function useJournal() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -36,9 +37,20 @@ export function useJournal() {
     return data as { ok: boolean; message?: string; entries: JournalEntry[] };
   }, []);
 
+  const updateEntry = useCallback(async (id: string, patch: Partial<JournalEntryEditableFields>) => {
+    const response = await fetch(`/api/journal/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const data = await response.json();
+    if (data.ok) setEntries(data.entries);
+    return data as { ok: boolean; message?: string; entries: JournalEntry[] };
+  }, []);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  return { entries, loading, refresh, addEntries, removeEntry };
+  return { entries, loading, refresh, addEntries, removeEntry, updateEntry };
 }

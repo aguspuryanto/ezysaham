@@ -217,8 +217,11 @@ export interface ScreenerPreset {
   /** Cheap, summary-only check used to shortlist candidates before fetching OHLCV history. */
   coarseFilter: (s: StockSummary) => boolean;
   /** Full check once OHLCV bars are available for a shortlisted candidate. `fundamentals` is
-   *  only populated when `needsFundamentals` is true; other presets can ignore the 3rd param. */
-  evaluate: (s: StockSummary, bars: OHLCVBar[], fundamentals?: FundamentalDetail | null) => PresetEvaluation;
+   *  only populated when `needsFundamentals` is true; other presets can ignore the 3rd param.
+   *  `asOf` lets a caller replay the preset against a historical "as of" date (e.g. a backtest
+   *  walking bar-by-bar) so the freshness gate compares against that day instead of the real
+   *  current date; presets that don't declare it simply ignore it and keep using `new Date()`. */
+  evaluate: (s: StockSummary, bars: OHLCVBar[], fundamentals?: FundamentalDetail | null, asOf?: Date) => PresetEvaluation;
   /** Set to false to skip the per-ticker OHLCV fetch entirely (preset only needs summary fields). Defaults to true. */
   needsHistory?: boolean;
   /** Set to true to fetch per-ticker Yahoo Finance fundamentals (dividend, debt/equity, current ratio) for shortlisted candidates. Defaults to false. */
@@ -1024,7 +1027,7 @@ const swingHunterPreset: ScreenerPreset = {
     'Nilai transaksi > Rp 20 miliar',
   ],
   coarseFilter: (s) => s.value > 20_000_000_000 && s.percentChange1D > -5,
-  evaluate: (s, bars) => {
+  evaluate: (s, bars, _fundamentals, asOf) => {
     const closes = bars.map((b) => b.close);
     const ema20 = lastValid(ema(closes, 20));
     const ema50 = lastValid(ema(closes, 50));
@@ -1046,7 +1049,7 @@ const swingHunterPreset: ScreenerPreset = {
     return {
       ...result,
       relativeVolume: Number.isNaN(rvol) ? undefined : rvol,
-      freshness: computeDataFreshness(bars, new Date()) ?? undefined,
+      freshness: computeDataFreshness(bars, asOf ?? new Date()) ?? undefined,
     };
   },
 };
@@ -1226,7 +1229,7 @@ const dayTradingPreset: ScreenerPreset = {
     s.value > 10_000_000_000 &&
     s.percentChange1D > -3 &&
     s.percentChange1D < 10,
-  evaluate: (s, bars) => {
+  evaluate: (s, bars, _fundamentals, asOf) => {
     const closes = bars.map((b) => b.close);
     const volumes = bars.map((b) => b.volume);
 
@@ -1255,7 +1258,7 @@ const dayTradingPreset: ScreenerPreset = {
 
     // RVOL approx: volume hari ini vs MA5 volume
     const rvolApprox = !Number.isNaN(volMa5) && volMa5 > 0 ? s.volume / volMa5 : NaN;
-    const freshness = computeDataFreshness(bars, new Date());
+    const freshness = computeDataFreshness(bars, asOf ?? new Date());
 
     const result = verdict([
       [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],

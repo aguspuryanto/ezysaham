@@ -1,8 +1,8 @@
 /**
  * Trading journal entry — a deliberate snapshot of a screener/analysis pick's
- * Entry/TP1/TP2/SL plan, graded against the single next trading day's EOD bar
- * (backtest-style: Win/Loss is read off the next day's data, not a multi-day
- * walk-forward) until it resolves.
+ * Entry/TP1/TP2/SL plan, graded against the single next trading day's EOD
+ * closing price (H+1, not intraday high/low, not a multi-day walk-forward)
+ * until it resolves.
  */
 
 export type JournalStatus = 'open' | 'tp_hit' | 'sl_hit' | 'sideways';

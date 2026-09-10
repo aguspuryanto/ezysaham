@@ -1,9 +1,10 @@
 'use client';
 
-import { ArrowLeft, Loader2, NotebookPen, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, Loader2, NotebookPen, Pencil, RefreshCw, Trash2, X, XCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { JournalEntry, JournalStatus } from '@/domain/models/JournalEntry';
+import type { JournalEntryEditableFields } from '@/data/repositories/JournalRepository';
 import { cn, formatPercent, formatRupiah } from '@/lib/format';
 import { useJournal } from './hooks/useJournal';
 
@@ -32,29 +33,68 @@ function formatDate(iso: string): string {
 }
 
 export function JournalPage() {
-  const { entries, loading, refresh, removeEntry } = useJournal();
+  const { entries, loading, refresh, removeEntry, updateEntry } = useJournal();
+
+  const [tickerFilter, setTickerFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
 
   const sorted = useMemo(
     () => [...entries].sort((a, b) => b.addedAt.localeCompare(a.addedAt)),
     [entries]
   );
 
+  const tickers = useMemo(
+    () => Array.from(new Set(entries.map((e) => e.ticker))).sort(),
+    [entries]
+  );
+
+  const filtered = useMemo(() => {
+    return sorted.filter((e) => {
+      if (tickerFilter !== 'all' && e.ticker !== tickerFilter) return false;
+      const entryDate = e.addedAt.slice(0, 10);
+      if (dateFrom && entryDate < dateFrom) return false;
+      if (dateTo && entryDate > dateTo) return false;
+      return true;
+    });
+  }, [sorted, tickerFilter, dateFrom, dateTo]);
+
+  const hasActiveFilter = tickerFilter !== 'all' || dateFrom !== '' || dateTo !== '';
+
+  const resetFilters = () => {
+    setTickerFilter('all');
+    setDateFrom('');
+    setDateTo('');
+  };
+
   const stats = useMemo(() => {
-    const resolved = entries.filter((e) => e.status !== 'open');
+    const resolved = filtered.filter((e) => e.status !== 'open');
     const wins = resolved.filter((e) => e.status === 'tp_hit');
     const gains = resolved.map((e) => e.gainLossPct ?? 0);
     const avgGainLoss = gains.length > 0 ? gains.reduce((a, b) => a + b, 0) / gains.length : 0;
     return {
-      total: entries.length,
+      total: filtered.length,
       resolved: resolved.length,
       winRate: resolved.length > 0 ? (wins.length / resolved.length) * 100 : null,
       avgGainLoss,
     };
-  }, [entries]);
+  }, [filtered]);
+
+  const winRateLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (tickerFilter !== 'all') parts.push(tickerFilter);
+    if (dateFrom || dateTo) parts.push('Periode');
+    return parts.length > 0 ? `Win Rate (${parts.join(', ')})` : 'Win Rate';
+  }, [tickerFilter, dateFrom, dateTo]);
 
   const handleDelete = async (id: string, ticker: string) => {
     if (!confirm(`Hapus entri jurnal ${ticker}?`)) return;
     await removeEntry(id);
+  };
+
+  const handleSave = async (id: string, patch: JournalEntryEditableFields) => {
+    const result = await updateEntry(id, patch);
+    return result.ok;
   };
 
   return (
@@ -88,11 +128,58 @@ export function JournalPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+        {/* Filter row */}
+        <div className="flex flex-wrap items-end gap-2 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 px-3 py-2.5">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide font-bold text-zinc-400 dark:text-zinc-500">Ticker</span>
+            <select
+              value={tickerFilter}
+              onChange={(e) => setTickerFilter(e.target.value)}
+              className="neo-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 outline-none dark:bg-zinc-950 dark:text-zinc-200"
+            >
+              <option value="all">Semua Ticker</option>
+              {tickers.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide font-bold text-zinc-400 dark:text-zinc-500">Dari Tanggal</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="neo-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 outline-none dark:bg-zinc-950 dark:text-zinc-200"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide font-bold text-zinc-400 dark:text-zinc-500">Sampai Tanggal</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="neo-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 outline-none dark:bg-zinc-950 dark:text-zinc-200"
+            />
+          </label>
+          {hasActiveFilter && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="neo-press flex items-center gap-1.5 neo-border bg-white px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 hover:text-zinc-900 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              <XCircle className="size-3.5" strokeWidth={2.5} />
+              Reset Filter
+            </button>
+          )}
+        </div>
+
         {/* Summary stat row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <StatCard label="Total Entri" value={String(stats.total)} />
           <StatCard label="Selesai" value={`${stats.resolved} dari ${stats.total}`} />
-          <StatCard label="Win Rate" value={stats.winRate !== null ? formatPercent(stats.winRate) : '–'} />
+          <StatCard label={winRateLabel} value={stats.winRate !== null ? formatPercent(stats.winRate) : '–'} />
           <StatCard
             label="Avg Gain/Loss"
             value={stats.resolved > 0 ? formatPercent(stats.avgGainLoss) : '–'}
@@ -111,6 +198,20 @@ export function JournalPage() {
             <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 max-w-xs">
               Belum ada entri jurnal — tambahkan dari Screener (Day Trading / Swing Hunter) atau halaman Analisa saham.
             </p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center px-4">
+            <NotebookPen className="size-8 text-zinc-300 dark:text-zinc-700" />
+            <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 max-w-xs">
+              Tidak ada entri yang cocok dengan filter saat ini.
+            </p>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="neo-press neo-border bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+            >
+              Reset Filter
+            </button>
           </div>
         ) : (
           <div className="neo-border neo-shadow-sm bg-white dark:bg-zinc-900 overflow-x-auto">
@@ -131,8 +232,13 @@ export function JournalPage() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((entry) => (
-                  <JournalRow key={entry.id} entry={entry} onDelete={() => handleDelete(entry.id, entry.ticker)} />
+                {filtered.map((entry) => (
+                  <JournalRow
+                    key={entry.id}
+                    entry={entry}
+                    onDelete={() => handleDelete(entry.id, entry.ticker)}
+                    onSave={(patch) => handleSave(entry.id, patch)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -163,18 +269,92 @@ function StatCard({ label, value, positive }: { label: string; value: string; po
   );
 }
 
-function JournalRow({ entry, onDelete }: { entry: JournalEntry; onDelete: () => void }) {
+function toEditableFields(entry: JournalEntry): JournalEntryEditableFields {
+  return {
+    entry: entry.entry,
+    tp1: entry.tp1,
+    tp2: entry.tp2,
+    sl: entry.sl,
+    reasonBuy: entry.reasonBuy,
+    reasonAvoid: entry.reasonAvoid,
+  };
+}
+
+function JournalRow({
+  entry,
+  onDelete,
+  onSave,
+}: {
+  entry: JournalEntry;
+  onDelete: () => void;
+  onSave: (patch: JournalEntryEditableFields) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<JournalEntryEditableFields>(() => toEditableFields(entry));
   const gain = entry.gainLossPct;
+
+  const startEdit = () => {
+    setDraft(toEditableFields(entry));
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+  };
+
+  const setNumberField = (field: 'entry' | 'tp1' | 'tp2' | 'sl') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDraft((d) => ({ ...d, [field]: Number(e.target.value) }));
+  };
+
+  const setTextField = (field: 'reasonBuy' | 'reasonAvoid') => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft((d) => ({ ...d, [field]: e.target.value }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const ok = await onSave(draft);
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+
+  const numberInputClass =
+    'w-full min-w-0 border border-(--neo-line) bg-white px-2 py-1 text-right font-mono tabular-nums text-xs dark:bg-zinc-950';
+  const textareaClass =
+    'w-full min-w-[180px] resize-y border border-(--neo-line) bg-white px-2 py-1 text-xs dark:bg-zinc-950';
+
   return (
     <tr className="border-b border-(--neo-line) last:border-b-0 align-top">
       <td className="px-3 py-2 whitespace-nowrap font-mono text-zinc-500 dark:text-zinc-400">{formatDate(entry.addedAt)}</td>
       <td className="px-3 py-2 whitespace-nowrap font-bold text-zinc-900 dark:text-zinc-100">{entry.ticker}</td>
-      <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums">{formatRupiah(entry.entry)}</td>
       <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums">
-        {formatRupiah(entry.tp1)}
-        <span className="text-zinc-400 dark:text-zinc-600"> / {formatRupiah(entry.tp2)}</span>
+        {editing ? (
+          <input type="number" value={draft.entry} onChange={setNumberField('entry')} className={numberInputClass} />
+        ) : (
+          formatRupiah(entry.entry)
+        )}
       </td>
-      <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums text-rose-600 dark:text-rose-400">{formatRupiah(entry.sl)}</td>
+      <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums">
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <input type="number" value={draft.tp1} onChange={setNumberField('tp1')} className={numberInputClass} />
+            <span className="text-zinc-400 dark:text-zinc-600">/</span>
+            <input type="number" value={draft.tp2} onChange={setNumberField('tp2')} className={numberInputClass} />
+          </div>
+        ) : (
+          <>
+            {formatRupiah(entry.tp1)}
+            <span className="text-zinc-400 dark:text-zinc-600"> / {formatRupiah(entry.tp2)}</span>
+          </>
+        )}
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums text-rose-600 dark:text-rose-400">
+        {editing ? (
+          <input type="number" value={draft.sl} onChange={setNumberField('sl')} className={numberInputClass} />
+        ) : (
+          formatRupiah(entry.sl)
+        )}
+      </td>
       <td className="px-3 py-2 whitespace-nowrap">
         <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2 py-0.5 text-[10px] font-bold tracking-wide', STATUS_STYLES[entry.status])}>
           {STATUS_LABEL[entry.status]}
@@ -192,17 +372,62 @@ function JournalRow({ entry, onDelete }: { entry: JournalEntry; onDelete: () => 
       )}>
         {gain === null ? '–' : formatPercent(gain)}
       </td>
-      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{entry.reasonBuy || '–'}</td>
-      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{entry.reasonAvoid || '–'}</td>
+      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
+        {editing ? (
+          <textarea value={draft.reasonBuy} onChange={setTextField('reasonBuy')} className={textareaClass} rows={3} />
+        ) : (
+          entry.reasonBuy || '–'
+        )}
+      </td>
+      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
+        {editing ? (
+          <textarea value={draft.reasonAvoid} onChange={setTextField('reasonAvoid')} className={textareaClass} rows={3} />
+        ) : (
+          entry.reasonAvoid || '–'
+        )}
+      </td>
       <td className="px-3 py-2 whitespace-nowrap">
-        <button
-          type="button"
-          onClick={onDelete}
-          aria-label={`Hapus entri ${entry.ticker}`}
-          className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-rose-600 dark:bg-zinc-900 dark:hover:text-rose-400"
-        >
-          <Trash2 className="size-3.5" strokeWidth={2.5} />
-        </button>
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              aria-label={`Simpan entri ${entry.ticker}`}
+              className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-emerald-600 disabled:opacity-50 dark:bg-zinc-900 dark:hover:text-emerald-400"
+            >
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" strokeWidth={2.5} />}
+            </button>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              disabled={saving}
+              aria-label={`Batal edit ${entry.ticker}`}
+              className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-zinc-700 disabled:opacity-50 dark:bg-zinc-900 dark:hover:text-zinc-200"
+            >
+              <X className="size-3.5" strokeWidth={2.5} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={startEdit}
+              aria-label={`Edit entri ${entry.ticker}`}
+              className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-zinc-700 dark:bg-zinc-900 dark:hover:text-zinc-200"
+            >
+              <Pencil className="size-3.5" strokeWidth={2.5} />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              aria-label={`Hapus entri ${entry.ticker}`}
+              className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-rose-600 dark:bg-zinc-900 dark:hover:text-rose-400"
+            >
+              <Trash2 className="size-3.5" strokeWidth={2.5} />
+            </button>
+          </div>
+        )}
       </td>
     </tr>
   );

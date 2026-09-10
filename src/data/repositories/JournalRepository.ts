@@ -55,20 +55,41 @@ export async function deleteEntry(id: string): Promise<JournalEntry[]> {
   return updated;
 }
 
+export type JournalEntryEditableFields = Pick<
+  JournalEntry,
+  'entry' | 'tp1' | 'tp2' | 'sl' | 'reasonBuy' | 'reasonAvoid'
+>;
+
+export async function updateEntry(
+  id: string,
+  patch: Partial<JournalEntryEditableFields>
+): Promise<JournalEntry[]> {
+  const entries = await readJournal();
+  if (!entries.some((e) => e.id === id)) {
+    throw new Error('Entri jurnal tidak ditemukan');
+  }
+  const updated = entries.map((e) => (e.id === id ? { ...e, ...patch } : e));
+  await writeJournal(updated);
+  return updated;
+}
+
 /**
- * Backtest-style grading: resolves an entry off the single next trading day's
- * EOD bar (H+1), not a multi-day walk-forward — Win/Loss is read straight from
- * "the next day's data", per the Trading Log's backtesting methodology.
+ * EOD closing-based grading: resolves an entry off the single next trading
+ * day's closing price (H+1) — not intraday high/low, and not a multi-day
+ * walk-forward. As soon as that day's close is available: close >= tp1 is a
+ * win (tp_hit), close <= sl is a loss (sl_hit), otherwise the position is
+ * closed out as "sideways" at that day's actual close. If no next-day bar is
+ * available yet, the entry stays "open" for the next gradeAndRead() call.
  */
 function resolveEntry(
   entry: JournalEntry,
-  bars: Array<{ date: string; high: number; low: number; close: number }>
+  bars: Array<{ date: string; close: number }>
 ): JournalEntry {
   const addedDate = entry.addedAt.slice(0, 10);
   const nextBar = bars.find((b) => b.date > addedDate);
   if (!nextBar) return entry;
 
-  if (nextBar.high >= entry.tp1) {
+  if (nextBar.close >= entry.tp1) {
     return {
       ...entry,
       status: 'tp_hit',
@@ -78,7 +99,7 @@ function resolveEntry(
       daysTracked: 1,
     };
   }
-  if (nextBar.low <= entry.sl) {
+  if (nextBar.close <= entry.sl) {
     return {
       ...entry,
       status: 'sl_hit',
