@@ -13,7 +13,7 @@ import { formatCompact } from '@/lib/format';
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector' | 'swingTrend' | 'swingMomentum' | 'fundamentalQuality';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector' | 'swingTrend' | 'swingMomentum' | 'fundamentalQuality' | 'highGrowth';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -1643,6 +1643,63 @@ const fundamentalQualityPreset: ScreenerPreset = {
   },
 };
 
+// ── High Growth (Small & Mid Cap) ──────────────────────────────────────────────
+// Panduan features_high_growth.md: mengejar emiten lapis kedua/ketiga dengan
+// ekspansi pendapatan & laba riil, ROE kuat, neraca terjaga, dan likuiditas
+// transaksi memadai agar modal aman masuk-keluar. Revenue/Net Profit Growth
+// & DER berasal dari Yahoo Finance (per-ticker) — bisa null bila fetch gagal,
+// diperlakukan sebagai gagal syarat growth (data growth adalah inti tesis
+// preset ini) kecuali untuk DER yang dilewati bila tidak tersedia (umum utk
+// saham keuangan), konsisten dengan preset Fundamental Quality.
+
+const highGrowthPreset: ScreenerPreset = {
+  id: 'highGrowth',
+  label: 'High Growth',
+  description: 'Saham Small & Mid Cap (Rp500 miliar – Rp5 triliun) dengan pertumbuhan pendapatan dan laba bersih yang riil, ROE kuat, DER terjaga, dan likuiditas transaksi memadai — sesuai panduan screening High Growth di features_high_growth.md.',
+  criteria: [
+    'Market Cap Rp500 Miliar – Rp5 Triliun (Small/Mid Cap)',
+    'Revenue Growth (YoY/TTM) > 15% — via Yahoo Finance',
+    'Net Profit Growth (YoY/TTM) > 20% — via Yahoo Finance',
+    'ROE > 15%',
+    'DER < 1,5x (ideal < 1,0x) — via Yahoo Finance, dilewati bila tidak tersedia',
+    'Nilai transaksi harian > Rp1 Miliar — hindari saham illikuid',
+  ],
+  needsHistory: false,
+  needsFundamentals: true,
+  coarseFilter: (s) =>
+    s.capitalization >= 500_000_000_000 &&
+    s.capitalization <= 5_000_000_000_000 &&
+    s.roe > 15 &&
+    s.value > 1_000_000_000,
+  evaluate: (s, _bars, fundamentals) => {
+    const der = fundamentals?.debtToEquity ?? null;
+    const revenueGrowth = fundamentals?.revenueGrowth ?? null;
+    const netProfitGrowth = fundamentals?.earningsGrowth ?? null;
+    const capInRange = s.capitalization >= 500_000_000_000 && s.capitalization <= 5_000_000_000_000;
+
+    const result = verdict([
+      [capInRange, `Market Cap ${formatCompact(s.capitalization)} (Rp500M–Rp5T)`],
+      [
+        revenueGrowth != null && revenueGrowth > 15,
+        revenueGrowth != null ? `Revenue Growth ${revenueGrowth.toFixed(1)}% (>15%)` : 'Revenue Growth tidak tersedia dari Yahoo Finance',
+      ],
+      [
+        netProfitGrowth != null && netProfitGrowth > 20,
+        netProfitGrowth != null ? `Net Profit Growth ${netProfitGrowth.toFixed(1)}% (>20%)` : 'Net Profit Growth tidak tersedia dari Yahoo Finance',
+      ],
+      [s.roe > 15, `ROE ${s.roe.toFixed(1)}% (>15%)`],
+      [
+        der == null || der < 150,
+        der == null
+          ? 'DER tidak tersedia — dilewati (umum untuk saham keuangan)'
+          : `DER ${(der / 100).toFixed(2)}x (${der <= 100 ? 'ideal <1,0x' : '<1,5x'})`,
+      ],
+      [s.value > 1_000_000_000, `Nilai transaksi ${formatCompact(s.value)}/hari (>Rp1 Miliar)`],
+    ]);
+    return result;
+  },
+};
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
@@ -1660,6 +1717,7 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   swingTrend: swingTrendPreset,
   swingMomentum: swingMomentumPreset,
   fundamentalQuality: fundamentalQualityPreset,
+  highGrowth: highGrowthPreset,
 };
 
 export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
@@ -1677,4 +1735,5 @@ export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
   swingTrendPreset,
   swingMomentumPreset,
   fundamentalQualityPreset,
+  highGrowthPreset,
 ];

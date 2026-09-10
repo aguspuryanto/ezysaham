@@ -36,6 +36,8 @@ export interface FundamentalDetail {
   netMargin: number | null;
   /** % — year-over-year revenue growth (most recent quarter). */
   revenueGrowth: number | null;
+  /** % — year-over-year earnings growth (most recent quarter), used as a Net Profit Growth proxy. */
+  earningsGrowth: number | null;
   source: 'yahoo';
   fetchedAt: string;
 }

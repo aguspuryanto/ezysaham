@@ -175,6 +175,7 @@ export async function fetchYahooFundamentals(code: string): Promise<FundamentalD
     const payoutRatioRaw = pickRaw(summaryDetail?.payoutRatio);
     const profitMarginsRaw = pickRaw(financialData?.profitMargins);
     const revenueGrowthRaw = pickRaw(financialData?.revenueGrowth);
+    const earningsGrowthRaw = pickRaw(financialData?.earningsGrowth);
     // trailingAnnualDividendRate is already Rupiah/share (not a fraction), unlike
     // dividendYield/payoutRatio above.
     const dividendPerShareTtm = pickRaw(summaryDetail?.trailingAnnualDividendRate);
@@ -190,6 +191,7 @@ export async function fetchYahooFundamentals(code: string): Promise<FundamentalD
       currentRatio: pickRaw(financialData?.currentRatio),
       netMargin: profitMarginsRaw != null ? profitMarginsRaw * 100 : null,
       revenueGrowth: revenueGrowthRaw != null ? revenueGrowthRaw * 100 : null,
+      earningsGrowth: earningsGrowthRaw != null ? earningsGrowthRaw * 100 : null,
       source: 'yahoo',
       fetchedAt: new Date().toISOString(),
     };

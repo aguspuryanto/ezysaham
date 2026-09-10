@@ -57,6 +57,7 @@ const FILTER_ITEMS: FilterChipItem[] = [
   // { id: 'smartMoneyHunter', label: 'Early Accumulation', icon: Eye },
   // { id: 'tradingPlan', label: 'Trading Plan', icon: Target },
   { id: 'fundamental', label: 'Fundamental', icon: Building2 },
+  { id: 'highGrowth', label: 'High Growth', icon: Rocket },
   // { id: 'bandarDetector', label: 'Bandar Detector', icon: Eye },
   // { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
   // { id: 'ara', label: 'ARA', icon: Flame },

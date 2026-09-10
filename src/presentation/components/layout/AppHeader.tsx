@@ -75,14 +75,14 @@ export function AppHeader({
           <NotebookPen className="size-4" strokeWidth={2.5} />
         </Link>
 
-        <Link
+        {/* <Link
           href="/backtest"
           aria-label="Backtest preset screener"
           title="Backtest"
           className="neo-press flex size-9 shrink-0 items-center justify-center neo-border bg-white text-zinc-900 neo-shadow-sm dark:bg-zinc-900 dark:text-zinc-100"
         >
           <FlaskConical className="size-4" strokeWidth={2.5} />
-        </Link>
+        </Link> */}
 
         <Link
           href="/panduan"
