@@ -74,6 +74,7 @@ import { useJournal } from '@/presentation/features/journal/hooks/useJournal';
 import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
 import { useStockAnalysis } from './useStockAnalysis';
 import { AiAnalystEngineCard } from './AiAnalystEngineCard';
+import { AnalisisReasearchReport } from './AnalisisReasearchReport';
 import { DataFreshnessPill, DataFreshnessStaleBanner } from './DataFreshnessBanner';
 import { OHLCVChart } from './OHLCVChart';
 import { useTradingStyle } from './useTradingStyle';
@@ -2877,7 +2878,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             {/* Tab: Screening & Analisis Teknikal (+ Equity Research Report sebagai ringkasan) */}
             {activeTab === 'teknikal' && (
               <div className="space-y-4 sm:space-y-5">
-                <EquityResearchReportCard
+                {/* <EquityResearchReportCard
                   summary={summary}
                   advisor={advisor}
                   trendEma={trendEma}
@@ -2888,6 +2889,16 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   fundamentalsLoading={fundamentalsLoading}
                   newsItems={newsItems}
                   tradingPlan={tradingPlan}
+                /> */}
+
+                {/* Analisis Reasearch Report By AI, refer: feature_analisa_saham.md */}
+                <AnalisisReasearchReport
+                  summary={summary}
+                  analysis={analysis}
+                  fundamentals={fundamentals}
+                  newsSummary={newsSummary}
+                  fundamentalScreening={fundamentalScreening}
+                  technicalScreening={technicalScreening}
                 />
 
                 <div className={cn(
