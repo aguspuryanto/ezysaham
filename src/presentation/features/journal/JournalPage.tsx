@@ -326,7 +326,11 @@ function JournalRow({
   return (
     <tr className="border-b border-(--neo-line) last:border-b-0 align-top">
       <td className="px-3 py-2 whitespace-nowrap font-mono text-zinc-500 dark:text-zinc-400">{formatDate(entry.addedAt)}</td>
-      <td className="px-3 py-2 whitespace-nowrap font-bold text-zinc-900 dark:text-zinc-100">{entry.ticker}</td>
+      <td className="px-3 py-2 whitespace-nowrap font-bold">
+        <Link href={`/screener/${entry.ticker}`} className="text-blue-600 hover:underline dark:text-blue-400">
+          {entry.ticker}
+        </Link>
+      </td>
       <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums">
         {editing ? (
           <input type="number" value={draft.entry} onChange={setNumberField('entry')} className={numberInputClass} />
