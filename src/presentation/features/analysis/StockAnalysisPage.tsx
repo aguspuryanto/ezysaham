@@ -2259,6 +2259,14 @@ function ObjectiveConclusionCard({ conclusion }: { conclusion: ObjectiveConclusi
           ))}
         </div>
       )}
+
+      <div className="neo-border mt-4 px-4 py-3 bg-amber-50 dark:bg-amber-400/10 border-amber-400">
+        <p className="font-bold text-sm mb-1 text-amber-700 dark:text-amber-400">⚠️ Disclaimer</p>
+        <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
+          Analisis ini bertujuan untuk memberikan gambaran teknikal dan fundamental dasar. Keputusan investasi dan
+          manajemen risiko sepenuhnya menjadi tanggung jawab masing-masing investor.
+        </p>
+      </div>
     </SectionCard>
   );
 }
