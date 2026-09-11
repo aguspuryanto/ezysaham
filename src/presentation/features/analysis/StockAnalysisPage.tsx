@@ -497,7 +497,7 @@ function AiStockAdvisorSidebar({ advisor }: { advisor: AiStockAdvisor }) {
       </div>
 
       {/* Executive Summary & Actionable Trade Plan (collapsible, default hidden) */}
-      <div className="neo-border bg-white dark:bg-zinc-900 p-3 space-y-2">
+      {/* <div className="neo-border bg-white dark:bg-zinc-900 p-3 space-y-2">
         <button
           type="button"
           onClick={() => setShowExecutiveSummary((v) => !v)}
@@ -522,7 +522,7 @@ function AiStockAdvisorSidebar({ advisor }: { advisor: AiStockAdvisor }) {
             </div>
           </>
         )}
-      </div>
+      </div> */}
 
     </div>
   );
