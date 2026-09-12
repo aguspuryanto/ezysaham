@@ -138,6 +138,42 @@
   }
 }
 
+/* ── Terminal theme (light, institutional trading-terminal look) ───────
+   Scoped entirely under .terminal-theme so it never leaks into the rest
+   of the app's neobrutalist system. Used only by /terminal. */
+.terminal-theme {
+  --term-bg: #eef2f7;
+  --term-surface: #ffffff;
+  --term-surface-sunken: #f4f7fa;
+  --term-surface-tint: #f0f9ff;
+  --term-border: #e1e7ee;
+  --term-border-strong: #cbd5e1;
+  --term-text: #101828;
+  --term-muted: #64748b;
+  --term-cyan: #0284c7;
+  --term-cyan-strong: #0369a1;
+  --term-cyan-tint: #e0f2fe;
+  --term-cyan-border: #bae6fd;
+  --term-emerald: #059669;
+  --term-emerald-tint: #e7f7ef;
+  --term-emerald-border: #a7e8cb;
+  --term-crimson: #dc2626;
+  --term-crimson-tint: #fdedec;
+  --term-crimson-border: #f8c9c4;
+  --term-amber: #b45309;
+  --term-amber-tint: #fdf3e3;
+  --term-amber-border: #f5deb0;
+  --term-gold: #ca8a04;
+  font-family: var(--font-terminal-sans), 'Inter', system-ui, sans-serif;
+  background: var(--term-bg);
+  color: var(--term-text);
+}
+
+.terminal-theme .font-terminal-mono {
+  font-family: var(--font-terminal-mono), 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

@@ -1923,6 +1923,38 @@ const corePortofolioPreset: ScreenerPreset = {
   },
 };
 
+// ── Quick score (universal "Skor AI" fallback) ────────────────────────────────
+// Presets without a dedicated composite score (all/dayTrading/swingHunter) still
+// need something to show in a "Skor AI" column. Reuses the same building blocks
+// as FundamentalScore/CorePortofolioScore/HighGrowthScore (profitability from
+// ROE, valuation from PER/PBV, quality gate from free float & liquidity) — no
+// new scoring logic, just a lighter combination that needs only StockSummary
+// (no Yahoo Finance fetch), so it's always available instantly for every row.
+export interface QuickScore {
+  composite: number;
+  status: 'EXCELLENT' | 'GOOD' | 'FAIR' | 'WEAK';
+}
+
+export function computeQuickScore(s: StockSummary): QuickScore {
+  const profitability = calcProfitabilityScore(s.roe);
+  const valuation = calcValuationScore(s.per, s.pbv);
+  const qualityGate = calcFundamentalQualityGate(s);
+
+  const composite = weightedComposite([
+    { score: profitability, weight: 45 },
+    { score: valuation, weight: 35 },
+    { score: qualityGate, weight: 20 },
+  ]);
+
+  let status: QuickScore['status'];
+  if (composite >= 80) status = 'EXCELLENT';
+  else if (composite >= 65) status = 'GOOD';
+  else if (composite >= 50) status = 'FAIR';
+  else status = 'WEAK';
+
+  return { composite, status };
+}
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
