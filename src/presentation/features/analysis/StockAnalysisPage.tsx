@@ -20,6 +20,7 @@ import {
   BookmarkCheck,
   CheckCircle2,
   ChevronDown,
+  Copy,
   Crosshair,
   ExternalLink,
   Eye,
@@ -121,6 +122,7 @@ function SectionCard({
   children,
   collapsible = false,
   defaultOpen = true,
+  headerAction,
 }: {
   number?: number | string;
   title: string;
@@ -129,12 +131,13 @@ function SectionCard({
   children: React.ReactNode;
   collapsible?: boolean;
   defaultOpen?: boolean;
+  headerAction?: React.ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const showBody = !collapsible || isOpen;
 
-  const header = (
-    <div className={cn('flex items-center gap-3 px-5 py-4 border-b-[3px] border-(--neo-line)')}>
+  const titleRow = (
+    <>
       <span className={cn('flex size-9 shrink-0 items-center justify-center neo-border text-white text-sm', accentClass)}>
         {icon}
       </span>
@@ -145,16 +148,19 @@ function SectionCard({
       {collapsible && (
         <ChevronDown className={cn('size-4 shrink-0 text-zinc-400 transition-transform', isOpen && 'rotate-180')} strokeWidth={2.5} />
       )}
-    </div>
+    </>
   );
 
   return (
     <section className="neo-border neo-shadow overflow-hidden bg-white dark:bg-zinc-900">
-      {collapsible ? (
-        <button type="button" onClick={() => setIsOpen((v) => !v)} aria-expanded={isOpen} className="w-full text-left">
-          {header}
-        </button>
-      ) : header}
+      <div className="flex items-center gap-3 px-5 py-4 border-b-[3px] border-(--neo-line)">
+        {collapsible ? (
+          <button type="button" onClick={() => setIsOpen((v) => !v)} aria-expanded={isOpen} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+            {titleRow}
+          </button>
+        ) : titleRow}
+        {headerAction}
+      </div>
       {showBody && <div className="px-5 py-4">{children}</div>}
     </section>
   );
@@ -1979,6 +1985,30 @@ function FairValueCalculatorCard({
   );
 }
 
+// ─── Copy-as-text share button ─────────────────────────────────────────────────
+function CopyShareButton({ getText }: { getText: () => string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(getText());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard unavailable */ }
+  }, [getText]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="neo-press flex items-center gap-1 px-2.5 py-1.5 neo-border neo-shadow-sm bg-white text-xs font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 shrink-0"
+    >
+      {copied ? <CheckCircle2 className="size-3.5" strokeWidth={2.5} /> : <Copy className="size-3.5" strokeWidth={2.5} />}
+      <span className="hidden sm:inline">{copied ? 'Disalin!' : 'Salin Teks'}</span>
+    </button>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🧾 EQUITY RESEARCH REPORT — format 5 bagian, ringkas & scannable
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2051,8 +2081,44 @@ function EquityResearchReportCard({
       advisor.verdict === 'BELI' ? 'Accumulate Bertahap' :
         advisor.verdict === 'TAHAN' ? 'Wait and See' : 'Hindari / Take Profit';
 
+  const entryZoneLow = nearestSupport ? nearestSupport.price : scenario.entry;
+  const entryZoneHigh = scenario.entry;
+  const gainPct = (target: number) => Math.abs(((target - scenario.entry) / scenario.entry) * 100);
+  const riskPct = Math.abs(((scenario.sl - scenario.entry) / scenario.entry) * 100);
+
+  const buildShareText = () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    return [
+      `🚨 [EQUITY RESEARCH REPORT] - $${summary.ticker} (Status: ${statusUtama.label})`,
+      '',
+      `📌 Strategi: ${strategiLabel}`,
+      '--------------------------------------------------',
+      `🔹 Entry Zone    : ${fmtRp(entryZoneLow)} - ${fmtRp(entryZoneHigh)}`,
+      `🔹 Target Price 1: ${fmtRp(scenario.tp1)} (Potensi Gain: +${fmtN(gainPct(scenario.tp1), 1)}%)`,
+      `🔹 Target Price 2: ${fmtRp(scenario.tp2)} (Potensi Gain: +${fmtN(gainPct(scenario.tp2), 1)}%)`,
+      `🔹 Stop Loss     : ${fmtRp(scenario.sl)} (Risk: -${fmtN(riskPct, 1)}%) -> Cut loss jika Close < ${fmtRp(scenario.sl)}`,
+      '',
+      '📊 Analisis Alignment:',
+      `1. Technical    : Tren ${trenLabel}, RSI ${fmtN(indicators.rsi14, 1)} (${rsiStatus.label}), MACD ${macdStatus.label}. Area kunci: Support ${nearestSupport ? fmtRp(nearestSupport.price) : '–'} | Resistance ${nearestResistance ? fmtRp(nearestResistance.price) : '–'}.`,
+      `2. Fundamental  : Valuasi ${valuationLabel} (PER ${summary.per > 0 ? `${summary.per.toFixed(1)}x` : '–'} · PBV ${summary.pbv > 0 ? `${summary.pbv.toFixed(2)}x` : '–'})${solvencyLabel ? `, ${solvencyLabel} (DER ${der != null ? `${der.toFixed(1)}%` : '–'})` : ''}.`,
+      `3. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title}` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title}` : ''}`,
+      '',
+      '⚠️ Catatan Manajemen Risiko:',
+      `- Skor AI: ${advisor.compositeScore}/100 — ${advisor.executiveSummary}`,
+      '- Sesuaikan alokasi modal dengan profil risiko & disiplin cut loss di level Stop Loss.',
+      '',
+      `Sumber: ${SITE_NAME}${url ? ` — ${url}` : ''}`,
+    ].join('\n');
+  };
+
   return (
-    <SectionCard title="Equity Research Report" icon={<Sparkles className="size-4" />} accentClass="bg-violet-600">
+    <SectionCard
+      title="Equity Research Report"
+      icon={<Sparkles className="size-4" />}
+      accentClass="bg-violet-600"
+      headerAction={<CopyShareButton getText={buildShareText} />}
+    >
+
       <div className="space-y-5">
         {/* 1. Ringkasan Instan */}
         <div>

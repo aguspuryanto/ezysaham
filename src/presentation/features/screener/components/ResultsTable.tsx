@@ -1,9 +1,9 @@
-import { Building2, Eye, GitCompare, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Building2, Eye, GitCompare, ShieldCheck, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { StockSummary } from '@/domain/models/Stock';
-import { AraProbabilityScore, BreakoutScores, FundamentalScore, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
+import { AraProbabilityScore, BreakoutScores, CorePortofolioScore, FundamentalScore, HighGrowthScore, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
 import { BandarScoreResult } from '@/domain/analysis/bandarScore';
 import { DataFreshness } from '@/domain/analysis/dataFreshness';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
@@ -434,6 +434,125 @@ function FundamentalBadge({ score }: { score: FundamentalScore }) {
   );
 }
 
+// ── Core Portofolio ───────────────────────────────────────────────────────────
+const CORE_PORTOFOLIO_STATUS_STYLES: Record<CorePortofolioScore['status'], string> = {
+  EXCELLENT: 'bg-emerald-600 text-white dark:bg-emerald-600',
+  GOOD: 'bg-emerald-500 text-white dark:bg-emerald-600',
+  FAIR: 'bg-amber-400 text-white dark:bg-amber-500',
+  WEAK: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+};
+
+function CorePortofolioBadge({ score }: { score: CorePortofolioScore }) {
+  const bars: Array<{ label: string; value: number }> = [
+    { label: 'Profitability', value: score.profitability },
+    ...(score.financialHealth != null ? [{ label: 'Financial Health', value: score.financialHealth }] : []),
+    ...(score.growth != null ? [{ label: 'Growth', value: score.growth }] : []),
+    { label: 'Quality Gate', value: score.qualityGate },
+  ];
+
+  return (
+    <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
+      {/* Status pill + composite */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2.5 py-1 text-[11px] font-bold tracking-wide', CORE_PORTOFOLIO_STATUS_STYLES[score.status])}>
+          <ShieldCheck className="size-3" />
+          {score.status}
+        </span>
+        <span className="font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+          Score <span className="font-bold text-zinc-700 dark:text-zinc-200">{score.composite}</span>/100
+        </span>
+      </div>
+
+      {/* Mini score bars */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {bars.map(({ label, value }) => (
+          <div key={label}>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
+              <span className="text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300">{value}</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden border border-(--neo-line) bg-zinc-100 dark:bg-zinc-800">
+              <div
+                className={cn('h-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
+                style={{ width: `${value}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {score.dataNotes.length > 0 && (
+        <div className="space-y-0.5">
+          {score.dataNotes.map((note) => (
+            <p key={note} className="text-[10px] text-amber-600 dark:text-amber-400">⚠️ {note}</p>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Berbasis ROE, Debt/Equity, EPS/Net Profit Growth, free float & nilai transaksi — fokus kualitas & pertumbuhan blue-chip, bukan valuasi.</p>
+    </div>
+  );
+}
+
+// ── High Growth ────────────────────────────────────────────────────────────────
+const HIGH_GROWTH_STATUS_STYLES: Record<HighGrowthScore['status'], string> = {
+  EXCELLENT: 'bg-emerald-600 text-white dark:bg-emerald-600',
+  GOOD: 'bg-emerald-500 text-white dark:bg-emerald-600',
+  FAIR: 'bg-amber-400 text-white dark:bg-amber-500',
+  WEAK: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+};
+
+function HighGrowthBadge({ score }: { score: HighGrowthScore }) {
+  const bars: Array<{ label: string; value: number }> = [
+    ...(score.revenueGrowth != null ? [{ label: 'Revenue Growth', value: score.revenueGrowth }] : []),
+    ...(score.netProfitGrowth != null ? [{ label: 'Net Profit Growth', value: score.netProfitGrowth }] : []),
+    { label: 'Profitability', value: score.profitability },
+    ...(score.financialHealth != null ? [{ label: 'Financial Health', value: score.financialHealth }] : []),
+    { label: 'Quality Gate', value: score.qualityGate },
+  ];
+
+  return (
+    <div className="mt-3 border-t-2 border-(--neo-line) pt-3 space-y-2">
+      {/* Status pill + composite */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2.5 py-1 text-[11px] font-bold tracking-wide', HIGH_GROWTH_STATUS_STYLES[score.status])}>
+          <Rocket className="size-3" />
+          {score.status}
+        </span>
+        <span className="font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+          Score <span className="font-bold text-zinc-700 dark:text-zinc-200">{score.composite}</span>/100
+        </span>
+      </div>
+
+      {/* Mini score bars */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {bars.map(({ label, value }) => (
+          <div key={label}>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{label}</span>
+              <span className="text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300">{value}</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden border border-(--neo-line) bg-zinc-100 dark:bg-zinc-800">
+              <div
+                className={cn('h-full', value >= 70 ? 'bg-emerald-500' : value >= 45 ? 'bg-amber-400' : 'bg-rose-400')}
+                style={{ width: `${value}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {score.dataNotes.length > 0 && (
+        <div className="space-y-0.5">
+          {score.dataNotes.map((note) => (
+            <p key={note} className="text-[10px] text-amber-600 dark:text-amber-400">⚠️ {note}</p>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Berbasis Revenue Growth, Net Profit Growth, ROE, Debt/Equity, free float & nilai transaksi — fokus ekspansi riil emiten lapis dua/tiga.</p>
+    </div>
+  );
+}
+
 // ── Bandar Detector ──────────────────────────────────────────────────────────
 const BANDAR_STATUS_STYLES: Record<BandarScoreResult['classification']['label'], string> = {
   'Strong Accumulation': 'bg-emerald-600 text-white dark:bg-emerald-600',
@@ -523,6 +642,8 @@ function StockCard({
   const tradingPlan = evaluation.tradingPlan;
   const araProbability = evaluation.araProbability;
   const fundamentalScore = evaluation.fundamentalScore;
+  const corePortofolioScore = evaluation.corePortofolioScore;
+  const highGrowthScore = evaluation.highGrowthScore;
   const bandarScore = evaluation.bandarScore;
 
   return (
@@ -585,6 +706,10 @@ function StockCard({
         <AraProbabilityBadge score={araProbability} />
       ) : fundamentalScore ? (
         <FundamentalBadge score={fundamentalScore} />
+      ) : corePortofolioScore ? (
+        <CorePortofolioBadge score={corePortofolioScore} />
+      ) : highGrowthScore ? (
+        <HighGrowthBadge score={highGrowthScore} />
       ) : bandarScore ? (
         <BandarBadge score={bandarScore} />
       ) : evaluation.reasons.length + evaluation.failed.length > 0 ? (
@@ -628,6 +753,14 @@ function compositeScoreInfo(evaluation: PresetEvaluation): { label: string; comp
   if (evaluation.fundamentalScore) {
     const f = evaluation.fundamentalScore;
     return { label: f.status, composite: f.composite, className: FUNDAMENTAL_STATUS_STYLES[f.status] };
+  }
+  if (evaluation.corePortofolioScore) {
+    const c = evaluation.corePortofolioScore;
+    return { label: c.status, composite: c.composite, className: CORE_PORTOFOLIO_STATUS_STYLES[c.status] };
+  }
+  if (evaluation.highGrowthScore) {
+    const h = evaluation.highGrowthScore;
+    return { label: h.status, composite: h.composite, className: HIGH_GROWTH_STATUS_STYLES[h.status] };
   }
   if (evaluation.bandarScore) {
     const b = evaluation.bandarScore;

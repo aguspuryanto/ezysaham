@@ -13,7 +13,7 @@ import { formatCompact } from '@/lib/format';
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector' | 'swingTrend' | 'swingMomentum' | 'fundamentalQuality' | 'highGrowth';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector' | 'swingTrend' | 'swingMomentum' | 'fundamentalQuality' | 'highGrowth' | 'corePortofolio';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -98,6 +98,10 @@ export interface PresetEvaluation {
   araProbability?: AraProbabilityScore;
   /** Only present for the Fundamental preset */
   fundamentalScore?: FundamentalScore;
+  /** Only present for the Core Portofolio preset */
+  corePortofolioScore?: CorePortofolioScore;
+  /** Only present for the High Growth preset */
+  highGrowthScore?: HighGrowthScore;
   /** Only present for the Bandar Detector preset */
   bandarScore?: BandarScoreResult;
   /** Relative volume (volume hari ini / volume MA20) — diisi oleh preset yang menghitungnya */
@@ -1647,10 +1651,91 @@ const fundamentalQualityPreset: ScreenerPreset = {
 // Panduan features_high_growth.md: mengejar emiten lapis kedua/ketiga dengan
 // ekspansi pendapatan & laba riil, ROE kuat, neraca terjaga, dan likuiditas
 // transaksi memadai agar modal aman masuk-keluar. Revenue/Net Profit Growth
-// & DER berasal dari Yahoo Finance (per-ticker) — bisa null bila fetch gagal,
-// diperlakukan sebagai gagal syarat growth (data growth adalah inti tesis
-// preset ini) kecuali untuk DER yang dilewati bila tidak tersedia (umum utk
-// saham keuangan), konsisten dengan preset Fundamental Quality.
+// & DER berasal dari Yahoo Finance (per-ticker) dan bisa null bila fetch
+// gagal — DER dilewati bila tidak tersedia (umum utk saham keuangan),
+// konsisten dengan preset Fundamental Quality & Core Portofolio. Skor
+// komposit mengikuti pola FundamentalScore/CorePortofolioScore, dengan bobot
+// terbesar pada Revenue & Net Profit Growth karena itu tesis inti preset ini.
+
+export interface HighGrowthScore {
+  /** 0-100 — dari Revenue Growth YoY/TTM (Yahoo Finance). Null bila data tidak tersedia. */
+  revenueGrowth: number | null;
+  /** 0-100 — dari Net Profit Growth YoY/TTM (proksi earningsGrowth, Yahoo Finance). Null bila data tidak tersedia. */
+  netProfitGrowth: number | null;
+  /** 0-100 — dari ROE: seberapa efisien perusahaan menghasilkan laba dari modal */
+  profitability: number;
+  /** 0-100 — dari Debt/Equity (Yahoo Finance). Null bila data tidak tersedia (umum untuk bank). */
+  financialHealth: number | null;
+  /** 0-100 — dari free float & nilai transaksi: proxy keandalan & likuiditas saham lapis dua/tiga */
+  qualityGate: number;
+  /** Komposit tertimbang atas dimensi yang tersedia: Revenue Growth 25 / Net Profit Growth 25 / Profitability 20 / Financial Health 20 / Quality Gate 10 */
+  composite: number;
+  status: 'EXCELLENT' | 'GOOD' | 'FAIR' | 'WEAK';
+  /** Catatan transparansi ketika satu atau lebih dimensi tidak tersedia untuk saham ini. */
+  dataNotes: string[];
+}
+
+function calcRevenueGrowthScore(revenueGrowth: number | null): number | null {
+  if (revenueGrowth == null) return null;
+  if (revenueGrowth >= 30) return 100;
+  if (revenueGrowth >= 20) return 85;
+  if (revenueGrowth >= 15) return 65;
+  if (revenueGrowth >= 8) return 40;
+  if (revenueGrowth >= 0) return 20;
+  return 5;
+}
+
+function calcNetProfitGrowthScore(netProfitGrowth: number | null): number | null {
+  if (netProfitGrowth == null) return null;
+  if (netProfitGrowth >= 40) return 100;
+  if (netProfitGrowth >= 25) return 85;
+  if (netProfitGrowth >= 20) return 65;
+  if (netProfitGrowth >= 10) return 40;
+  if (netProfitGrowth >= 0) return 20;
+  return 5;
+}
+
+export function computeHighGrowthScore(s: StockSummary, fundamentals: FundamentalDetail | null): HighGrowthScore {
+  const revenueGrowth = fundamentals ? calcRevenueGrowthScore(fundamentals.revenueGrowth) : null;
+  const netProfitGrowth = fundamentals ? calcNetProfitGrowthScore(fundamentals.earningsGrowth) : null;
+  const profitability = calcProfitabilityScore(s.roe);
+  const financialHealth = fundamentals ? calcFinancialHealthScore(fundamentals.debtToEquity, null) : null;
+  const qualityGate = calcFundamentalQualityGate(s);
+
+  const composite = weightedComposite([
+    { score: revenueGrowth, weight: 25 },
+    { score: netProfitGrowth, weight: 25 },
+    { score: profitability, weight: 20 },
+    { score: financialHealth, weight: 20 },
+    { score: qualityGate, weight: 10 },
+  ]);
+
+  let status: HighGrowthScore['status'];
+  if (composite >= 80) status = 'EXCELLENT';
+  else if (composite >= 65) status = 'GOOD';
+  else if (composite >= 50) status = 'FAIR';
+  else status = 'WEAK';
+
+  const dataNotes: string[] = [];
+  if (!fundamentals) {
+    dataNotes.push('Revenue Growth, Net Profit Growth & Debt/Equity tidak berhasil diambil dari Yahoo Finance — skor hanya berbasis Profitability dan Quality Gate.');
+  } else {
+    if (revenueGrowth == null) dataNotes.push('Revenue Growth tidak tersedia dari Yahoo Finance untuk saham ini.');
+    if (netProfitGrowth == null) dataNotes.push('Net Profit Growth tidak tersedia dari Yahoo Finance untuk saham ini.');
+    if (financialHealth == null) dataNotes.push('Financial Health (Debt/Equity) tidak tersedia untuk saham ini (umum terjadi pada saham perbankan).');
+  }
+
+  return {
+    revenueGrowth,
+    netProfitGrowth,
+    profitability: Math.round(profitability),
+    financialHealth,
+    qualityGate: Math.round(qualityGate),
+    composite,
+    status,
+    dataNotes,
+  };
+}
 
 const highGrowthPreset: ScreenerPreset = {
   id: 'highGrowth',
@@ -1658,11 +1743,13 @@ const highGrowthPreset: ScreenerPreset = {
   description: 'Saham Small & Mid Cap (Rp500 miliar – Rp5 triliun) dengan pertumbuhan pendapatan dan laba bersih yang riil, ROE kuat, DER terjaga, dan likuiditas transaksi memadai — sesuai panduan screening High Growth di features_high_growth.md.',
   criteria: [
     'Market Cap Rp500 Miliar – Rp5 Triliun (Small/Mid Cap)',
-    'Revenue Growth (YoY/TTM) > 15% — via Yahoo Finance',
-    'Net Profit Growth (YoY/TTM) > 20% — via Yahoo Finance',
+    'Revenue Growth 25% & Net Profit Growth 25% — via Yahoo Finance',
+    'Profitability 20% — ROE (Return on Equity)',
+    'Financial Health 20% — Debt/Equity (via Yahoo Finance, dilewati bila tidak tersedia)',
+    'Quality Gate 10% — free float & nilai transaksi (proxy likuiditas)',
     'ROE > 15%',
-    'DER < 1,5x (ideal < 1,0x) — via Yahoo Finance, dilewati bila tidak tersedia',
     'Nilai transaksi harian > Rp1 Miliar — hindari saham illikuid',
+    'High Growth Score ≥ 55',
   ],
   needsHistory: false,
   needsFundamentals: true,
@@ -1672,31 +1759,167 @@ const highGrowthPreset: ScreenerPreset = {
     s.roe > 15 &&
     s.value > 1_000_000_000,
   evaluate: (s, _bars, fundamentals) => {
-    const der = fundamentals?.debtToEquity ?? null;
-    const revenueGrowth = fundamentals?.revenueGrowth ?? null;
-    const netProfitGrowth = fundamentals?.earningsGrowth ?? null;
+    const highGrowthScore = computeHighGrowthScore(s, fundamentals ?? null);
     const capInRange = s.capitalization >= 500_000_000_000 && s.capitalization <= 5_000_000_000_000;
+    const passed = highGrowthScore.composite >= 55 && capInRange && s.roe > 15 && s.value > 1_000_000_000;
 
-    const result = verdict([
-      [capInRange, `Market Cap ${formatCompact(s.capitalization)} (Rp500M–Rp5T)`],
-      [
-        revenueGrowth != null && revenueGrowth > 15,
-        revenueGrowth != null ? `Revenue Growth ${revenueGrowth.toFixed(1)}% (>15%)` : 'Revenue Growth tidak tersedia dari Yahoo Finance',
-      ],
-      [
-        netProfitGrowth != null && netProfitGrowth > 20,
-        netProfitGrowth != null ? `Net Profit Growth ${netProfitGrowth.toFixed(1)}% (>20%)` : 'Net Profit Growth tidak tersedia dari Yahoo Finance',
-      ],
-      [s.roe > 15, `ROE ${s.roe.toFixed(1)}% (>15%)`],
-      [
-        der == null || der < 150,
-        der == null
-          ? 'DER tidak tersedia — dilewati (umum untuk saham keuangan)'
-          : `DER ${(der / 100).toFixed(2)}x (${der <= 100 ? 'ideal <1,0x' : '<1,5x'})`,
-      ],
-      [s.value > 1_000_000_000, `Nilai transaksi ${formatCompact(s.value)}/hari (>Rp1 Miliar)`],
-    ]);
-    return result;
+    const reasons: string[] = [];
+    const failed: string[] = [];
+
+    if (capInRange) reasons.push(`Market Cap ${formatCompact(s.capitalization)} (Rp500M–Rp5T)`);
+    else failed.push(`Market Cap ${formatCompact(s.capitalization)} (di luar Rp500M–Rp5T)`);
+
+    if (highGrowthScore.composite >= 55) reasons.push(`High Growth Score ${highGrowthScore.composite}/100`);
+    else failed.push(`High Growth Score lemah (${highGrowthScore.composite}/100)`);
+
+    if (highGrowthScore.revenueGrowth != null) {
+      if (highGrowthScore.revenueGrowth >= 60) reasons.push(`Revenue Growth kuat (skor ${highGrowthScore.revenueGrowth}/100)`);
+      else failed.push(`Revenue Growth lemah (skor ${highGrowthScore.revenueGrowth}/100)`);
+    }
+
+    if (highGrowthScore.netProfitGrowth != null) {
+      if (highGrowthScore.netProfitGrowth >= 60) reasons.push(`Net Profit Growth kuat (skor ${highGrowthScore.netProfitGrowth}/100)`);
+      else failed.push(`Net Profit Growth lemah (skor ${highGrowthScore.netProfitGrowth}/100)`);
+    }
+
+    if (s.roe > 15) reasons.push(`ROE ${s.roe.toFixed(1)}% (>15%)`);
+    else failed.push(`ROE ${s.roe.toFixed(1)}% (≤15%)`);
+
+    if (highGrowthScore.financialHealth != null) {
+      if (highGrowthScore.financialHealth >= 60) reasons.push(`Financial Health sehat (skor ${highGrowthScore.financialHealth}/100)`);
+      else failed.push(`Financial Health lemah (skor ${highGrowthScore.financialHealth}/100)`);
+    }
+
+    if (s.value > 1_000_000_000) reasons.push(`Nilai transaksi ${formatCompact(s.value)}/hari (>Rp1 Miliar)`);
+    else failed.push(`Nilai transaksi ${formatCompact(s.value)}/hari (≤Rp1 Miliar)`);
+
+    return { passed, reasons, failed, highGrowthScore };
+  },
+};
+
+// ── Core Portfolio (Quality & Growth) ─────────────────────────────────────────
+// Panduan features_core_portofolio.md: saham unggulan berkapitalisasi besar,
+// profitabilitas tinggi, dan neraca sehat untuk dikoleksi jangka panjang
+// (dibedakan dari Satellite Portfolio yang mengincar saham undervalued/
+// turnaround). EPS Growth dan DER berasal dari Yahoo Finance (per-ticker) —
+// EPS Growth memakai earningsGrowth sebagai proksi (lihat Fundamentals.ts),
+// dan baik DER maupun Growth dilewati (bukan otomatis gagal) bila tidak
+// tersedia, konsisten dengan preset Fundamental Quality & High Growth. Skor
+// komposit mengikuti pola FundamentalScore, tapi bobotnya ditekankan pada
+// profitabilitas, kesehatan neraca, dan pertumbuhan — bukan valuasi/dividen,
+// karena Core Portfolio adalah tesis kualitas & pertumbuhan, bukan value.
+// Free Cash Flow tidak tersedia pada sumber data saat ini sehingga tidak
+// disertakan sebagai dimensi skor.
+
+export interface CorePortofolioScore {
+  /** 0-100 — dari ROE: seberapa efisien perusahaan menghasilkan laba dari modal */
+  profitability: number;
+  /** 0-100 — dari Debt/Equity (Yahoo Finance). Null bila data tidak tersedia (umum untuk bank). */
+  financialHealth: number | null;
+  /** 0-100 — dari EPS/Net Profit Growth (proksi earningsGrowth, Yahoo Finance). Null bila data tidak tersedia. */
+  growth: number | null;
+  /** 0-100 — dari free float & nilai transaksi: proxy keandalan & likuiditas saham blue-chip */
+  qualityGate: number;
+  /** Komposit tertimbang atas dimensi yang tersedia: Profitability 35 / Financial Health 30 / Growth 25 / Quality Gate 10 */
+  composite: number;
+  status: 'EXCELLENT' | 'GOOD' | 'FAIR' | 'WEAK';
+  /** Catatan transparansi ketika satu atau lebih dimensi tidak tersedia untuk saham ini. */
+  dataNotes: string[];
+}
+
+function calcCoreGrowthScore(epsGrowth: number | null): number | null {
+  if (epsGrowth == null) return null;
+  if (epsGrowth >= 20) return 100;
+  if (epsGrowth >= 12) return 80;
+  if (epsGrowth >= 8) return 60;
+  if (epsGrowth >= 0) return 35;
+  return 10;
+}
+
+export function computeCorePortofolioScore(s: StockSummary, fundamentals: FundamentalDetail | null): CorePortofolioScore {
+  const profitability = calcProfitabilityScore(s.roe);
+  const financialHealth = fundamentals ? calcFinancialHealthScore(fundamentals.debtToEquity, null) : null;
+  const growth = fundamentals ? calcCoreGrowthScore(fundamentals.earningsGrowth) : null;
+  const qualityGate = calcFundamentalQualityGate(s);
+
+  const composite = weightedComposite([
+    { score: profitability, weight: 35 },
+    { score: financialHealth, weight: 30 },
+    { score: growth, weight: 25 },
+    { score: qualityGate, weight: 10 },
+  ]);
+
+  let status: CorePortofolioScore['status'];
+  if (composite >= 80) status = 'EXCELLENT';
+  else if (composite >= 65) status = 'GOOD';
+  else if (composite >= 50) status = 'FAIR';
+  else status = 'WEAK';
+
+  const dataNotes: string[] = [];
+  if (!fundamentals) {
+    dataNotes.push('Debt/Equity & EPS Growth tidak berhasil diambil dari Yahoo Finance — skor hanya berbasis Profitability dan Quality Gate.');
+  } else {
+    if (financialHealth == null) dataNotes.push('Financial Health (Debt/Equity) tidak tersedia untuk saham ini (umum terjadi pada saham perbankan).');
+    if (growth == null) dataNotes.push('EPS/Net Profit Growth tidak tersedia dari Yahoo Finance untuk saham ini.');
+  }
+
+  return {
+    profitability: Math.round(profitability),
+    financialHealth,
+    growth,
+    qualityGate: Math.round(qualityGate),
+    composite,
+    status,
+    dataNotes,
+  };
+}
+
+const corePortofolioPreset: ScreenerPreset = {
+  id: 'corePortofolio',
+  label: 'Core Portofolio',
+  description: 'Saham unggulan berkapitalisasi besar (>Rp10 triliun) dengan profitabilitas tinggi, neraca sehat, dan pertumbuhan laba konsisten — cocok dikoleksi jangka panjang sebagai inti portofolio, sesuai panduan Core Portfolio di features_core_portofolio.md.',
+  criteria: [
+    'Market Cap > Rp 10 triliun (saham likuid, papan utama)',
+    'Profitability 35% — ROE (Return on Equity)',
+    'Financial Health 30% — Debt/Equity (via Yahoo Finance, dilewati bila tidak tersedia)',
+    'Growth 25% — EPS/Net Profit Growth (via Yahoo Finance)',
+    'Quality Gate 10% — free float & nilai transaksi (proxy likuiditas blue-chip)',
+    'ROE > 15% — profitabilitas kuat',
+    'Core Portofolio Score ≥ 55',
+  ],
+  needsHistory: false,
+  needsFundamentals: true,
+  coarseFilter: (s) => s.capitalization > 10_000_000_000_000 && s.roe > 15,
+  evaluate: (s, _bars, fundamentals) => {
+    const corePortofolioScore = computeCorePortofolioScore(s, fundamentals ?? null);
+    const capOk = s.capitalization > 10_000_000_000_000;
+    const passed = corePortofolioScore.composite >= 55 && capOk && s.roe > 15;
+
+    const reasons: string[] = [];
+    const failed: string[] = [];
+
+    if (capOk) reasons.push(`Market Cap ${formatCompact(s.capitalization)} (>Rp10 triliun)`);
+    else failed.push(`Market Cap ${formatCompact(s.capitalization)} (<Rp10 triliun)`);
+
+    if (corePortofolioScore.composite >= 55) reasons.push(`Core Portofolio Score ${corePortofolioScore.composite}/100`);
+    else failed.push(`Core Portofolio Score lemah (${corePortofolioScore.composite}/100)`);
+
+    if (s.roe > 15) reasons.push(`ROE ${s.roe.toFixed(1)}% — profitabilitas kuat`);
+    else failed.push(`ROE ${s.roe.toFixed(1)}% — profitabilitas kurang kuat`);
+
+    if (corePortofolioScore.financialHealth != null) {
+      if (corePortofolioScore.financialHealth >= 60) reasons.push(`Financial Health sehat (skor ${corePortofolioScore.financialHealth}/100)`);
+      else failed.push(`Financial Health lemah (skor ${corePortofolioScore.financialHealth}/100)`);
+    }
+
+    if (corePortofolioScore.growth != null) {
+      if (corePortofolioScore.growth >= 60) reasons.push(`Growth kuat (skor ${corePortofolioScore.growth}/100)`);
+      else failed.push(`Growth lemah (skor ${corePortofolioScore.growth}/100)`);
+    }
+
+    if (corePortofolioScore.qualityGate >= 55) reasons.push('Free float & likuiditas memadai');
+
+    return { passed, reasons, failed, corePortofolioScore };
   },
 };
 
@@ -1718,6 +1941,7 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   swingMomentum: swingMomentumPreset,
   fundamentalQuality: fundamentalQualityPreset,
   highGrowth: highGrowthPreset,
+  corePortofolio: corePortofolioPreset,
 };
 
 export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
@@ -1736,4 +1960,5 @@ export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
   swingMomentumPreset,
   fundamentalQualityPreset,
   highGrowthPreset,
+  corePortofolioPreset,
 ];
