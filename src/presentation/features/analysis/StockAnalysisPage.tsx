@@ -62,6 +62,8 @@ import { BrokerActivityDetail, BrokerSummaryRow } from '@/domain/models/BrokerSu
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
 import { computeBandarScore } from '@/domain/analysis/bandarScore';
+import { computeEntryTiming } from '@/domain/analysis/entryTiming';
+import { roundToTick } from '@/domain/analysis/idxTick';
 import { computeObjectiveConclusion, ConclusionTone, ObjectiveConclusionResult } from '@/domain/analysis/objectiveConclusion';
 import { BreakoutScores } from '@/domain/screener/presets';
 import { DataFreshness } from '@/domain/analysis/dataFreshness';
@@ -2014,6 +2016,7 @@ function CopyShareButton({ getText }: { getText: () => string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function EquityResearchReportCard({
   summary,
+  bars,
   advisor,
   trendEma,
   indicators,
@@ -2025,6 +2028,7 @@ function EquityResearchReportCard({
   tradingPlan,
 }: {
   summary: StockSummary;
+  bars: OHLCVBar[];
   advisor: AiStockAdvisor;
   trendEma: TrendEmaAnalysis;
   indicators: IndicatorAnalysis;
@@ -2035,6 +2039,8 @@ function EquityResearchReportCard({
   newsItems: StockNewsItem[];
   tradingPlan: TradingPlanAnalysis;
 }) {
+  const bandarScore = useMemo(() => computeBandarScore(summary, bars ?? []), [summary, bars]);
+  const entryTiming = useMemo(() => computeEntryTiming(bandarScore, indicators), [bandarScore, indicators]);
   type Tone = 'green' | 'red' | 'amber' | 'blue' | 'zinc';
 
   const statusUtama: { label: string; tone: Tone } =
@@ -2106,6 +2112,9 @@ function EquityResearchReportCard({
       '⚠️ Catatan Manajemen Risiko:',
       `- Skor AI: ${advisor.compositeScore}/100 — ${advisor.executiveSummary}`,
       '- Sesuaikan alokasi modal dengan profil risiko & disiplin cut loss di level Stop Loss.',
+      '',
+      '⚠️ Disclaimer:',
+      'Analisis ini bertujuan untuk memberikan gambaran teknikal dan fundamental dasar. Keputusan investasi dan manajemen risiko sepenuhnya menjadi tanggung jawab masing-masing investor.',
       '',
       `Sumber: ${SITE_NAME}${url ? ` — ${url}` : ''}`,
     ].join('\n');
@@ -2214,10 +2223,48 @@ function EquityResearchReportCard({
 
         <div className="h-[2px] bg-(--neo-line)" />
 
-        {/* 4. Sentimen & Isu Terkini */}
+        {/* 4. Akumulasi Bandar & Entry Timing */}
         <div>
           <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
-            📰 4. Sentimen & Isu Terkini
+            🐋 4. Akumulasi Bandar &amp; Entry Timing
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Fase Bandar:</span>
+              <Pill tone={bandarScore.classification.tone === 'red' ? 'red' : bandarScore.classification.tone === 'orange' ? 'amber' : bandarScore.classification.tone === 'green' ? 'green' : 'amber'}>
+                {bandarScore.classification.label}
+              </Pill>
+              <span className="text-xs text-zinc-400">{bandarScore.phaseLabel}</span>
+            </li>
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Entry Timing:</span>
+              <Pill tone={entryTiming.tone}>{entryTiming.label}</Pill>
+            </li>
+            <li className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              {entryTiming.headline}
+            </li>
+            <li className="space-y-1 pt-0.5">
+              {entryTiming.reasons.map((r) => (
+                <div key={r} className="flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                  <span className="mt-1 size-1 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+                  {r}
+                </div>
+              ))}
+            </li>
+            {bandarScore.hiddenDistributionWarning && (
+              <li className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/5 dark:text-rose-300">
+                ⚠️ Waspada hidden distribution — harga naik namun OBV melemah, indikasi smart money bisa jadi menjual ke pembeli baru.
+              </li>
+            )}
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 5. Sentimen & Isu Terkini */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📰 5. Sentimen &amp; Isu Terkini
           </h3>
           <ul className="space-y-1.5 text-sm">
             <li className="flex items-start gap-2">
@@ -2237,10 +2284,10 @@ function EquityResearchReportCard({
 
         <div className="h-[2px] bg-(--neo-line)" />
 
-        {/* 5. Rencana Aksi */}
+        {/* 6. Rencana Aksi */}
         <div>
           <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
-            🎯 5. Rencana Aksi (Actionable Takeaways)
+            🎯 6. Rencana Aksi (Actionable Takeaways)
           </h3>
           <ul className="space-y-1.5 text-sm">
             <li className="flex items-center gap-2">
@@ -2256,6 +2303,379 @@ function EquityResearchReportCard({
             <li className="flex items-center gap-2">
               <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Stop Loss (Risk Limit):</span>
               <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{fmtRp(scenario.sl)}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+// ─── Equity Research Report V2 (fixes: tick-valid SL, explicit RRR, PER-band valuation, ──
+// ─── strategy-consistent scoring — see features_bandarmology.md evaluation notes) ────────
+const ROUND_TRIP_FEE_PCT = 0.35; // approx. combined buy+sell broker fee, IDX retail avg
+
+function valuationFromPer(per: number): { label: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc' } {
+  if (!(per > 0)) return { label: 'Data Tidak Tersedia', tone: 'zinc' };
+  if (per <= 12) return { label: 'Murah (Undervalued)', tone: 'green' };
+  if (per <= 20) return { label: 'Wajar (Fair Value)', tone: 'green' };
+  if (per <= 35) return { label: 'Premium', tone: 'amber' };
+  return { label: 'Mahal (Overvalued)', tone: 'red' };
+}
+
+function EquityResearchReportCard2({
+  summary,
+  bars,
+  advisor,
+  trendEma,
+  indicators,
+  supportResistance,
+  fundamentalScreening,
+  fundamentals,
+  fundamentalsLoading,
+  newsItems,
+  tradingPlan,
+}: {
+  summary: StockSummary;
+  bars: OHLCVBar[];
+  advisor: AiStockAdvisor;
+  trendEma: TrendEmaAnalysis;
+  indicators: IndicatorAnalysis;
+  supportResistance: SupportResistanceAnalysis;
+  fundamentalScreening: FundamentalScreeningResult;
+  fundamentals: FundamentalDetail | null;
+  fundamentalsLoading: boolean;
+  newsItems: StockNewsItem[];
+  tradingPlan: TradingPlanAnalysis;
+}) {
+  const bandarScore = useMemo(() => computeBandarScore(summary, bars ?? []), [summary, bars]);
+  const entryTiming = useMemo(() => computeEntryTiming(bandarScore, indicators), [bandarScore, indicators]);
+  type Tone = 'green' | 'red' | 'amber' | 'blue' | 'zinc';
+
+  const statusUtama: { label: string; tone: Tone } =
+    advisor.verdictTone === 'green' ? { label: 'BULLISH', tone: 'green' } :
+      advisor.verdictTone === 'red' ? { label: 'BEARISH', tone: 'red' } : { label: 'NEUTRAL', tone: 'amber' };
+
+  const trenLabel = trendEma.trend === 'bullish' ? 'Uptrend' : trendEma.trend === 'bearish' ? 'Downtrend' : 'Sideways';
+  const trenTone: Tone = trendEma.trend === 'bullish' ? 'green' : trendEma.trend === 'bearish' ? 'red' : 'amber';
+
+  const rsiStatus: { label: string; tone: Tone } =
+    indicators.rsiZone === 'oversold' ? { label: 'Oversold', tone: 'green' } :
+      indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? { label: 'Overbought', tone: 'red' } :
+        { label: 'Neutral', tone: 'zinc' };
+
+  const macdStatus: { label: string; tone: Tone } =
+    indicators.macdSignalType === 'bullish_crossover' ? { label: 'Golden Cross', tone: 'green' } :
+      indicators.macdSignalType === 'bearish_crossover' ? { label: 'Death Cross', tone: 'red' } :
+        indicators.macdSignalType === 'bullish' ? { label: 'Bullish', tone: 'green' } :
+          indicators.macdSignalType === 'bearish' ? { label: 'Bearish', tone: 'red' } : { label: 'Neutral', tone: 'zinc' };
+
+  const price = summary.lastClose;
+  const aboveMa50 = price > trendEma.ema50;
+  const aboveMa200 = price > trendEma.ema200;
+  const maLabel = `${aboveMa50 ? 'Di atas' : 'Di bawah'} MA50 · ${aboveMa200 ? 'Di atas' : 'Di bawah'} MA200`;
+
+  const nearestResistance = supportResistance.resistances[0];
+  const nearestSupport = supportResistance.supports[0];
+
+  // Fix 2A: derive valuation label from actual PER band (matches evaluateFundamentalScreening's
+  // own thresholds) instead of collapsing every "green" tone into "Cheap" — a PER of 19.8x sits in
+  // the 12–20x "Fair Value" band, not "Undervalued", even though its screening tone is green.
+  const valuation = valuationFromPer(summary.per);
+
+  const der = fundamentals?.debtToEquity ?? null;
+  const solvencyLabel = der == null ? null : der <= 100 ? 'Solvent' : 'Berisiko (Risky)';
+  const solvencyTone: Tone = der == null ? 'zinc' : der <= 100 ? 'green' : 'red';
+
+  const topBullishNews = newsItems.find((n) => n.sentiment === 'bullish');
+  const topBearishNews = newsItems.find((n) => n.sentiment === 'bearish');
+
+  const bias = tradingPlan.recommendedBias === 'bearish' ? 'bearish' : 'bullish';
+  const scenario = tradingPlan[bias];
+  const strategiLabel =
+    advisor.verdict === 'SANGAT_BELI' ? 'Buy on Weakness' :
+      advisor.verdict === 'BELI' ? 'Accumulate Bertahap' :
+        advisor.verdict === 'TAHAN' ? 'Wait and See' : 'Hindari / Take Profit';
+  // Fix 2B: "Gaya" must describe how the scenario's entry price is actually constructed, not the
+  // AI's buy/hold/avoid verdict — the bullish scenario is always a pullback-to-support entry
+  // (see stockAnalysisEngine's "Entry buy saat pullback" note), so labeling it "Momentum / Breakout"
+  // whenever the verdict happened to be TAHAN/HINDARI (as before) contradicted the entry zone itself,
+  // which always sits at/near support regardless of verdict. Base it on `bias`, not on `verdict`.
+  const gayaLabel = bias === 'bullish' ? 'Mean Reversion / Buy on Support' : 'Breakdown / Short on Rejection';
+
+  // Fix 1A: every actionable order price shown here — Entry Zone bounds, both targets, and the
+  // Stop Loss — must snap to a valid IDX tick before display. JATS rejects raw fractions like
+  // Rp 31.840 or Rp 31.343 for a stock trading above Rp 5.000 (valid tick there is Rp 25); rounding
+  // only the Stop Loss and leaving the Entry Zone raw (as an earlier version did) still leaves an
+  // unorderable Entry Zone and throws off the risk-range math in Fix 1C below.
+  const entryZoneLowRaw = nearestSupport ? nearestSupport.price : scenario.entry;
+  const entryZoneHighRaw = scenario.entry;
+  const entryZoneLow = roundToTick(entryZoneLowRaw);
+  const entryZoneHigh = roundToTick(entryZoneHighRaw);
+  const slPrice = roundToTick(scenario.sl);
+  const tp1Price = roundToTick(scenario.tp1);
+  const tp2Price = roundToTick(scenario.tp2);
+
+  const gainPct = (target: number) => Math.abs(((target - entryZoneHigh) / entryZoneHigh) * 100);
+  const netGainPct = (target: number) => Math.max(0, gainPct(target) - ROUND_TRIP_FEE_PCT);
+  // Fix 1C: risk range is computed from the same tick-rounded Entry Zone / Stop Loss shown to the
+  // user, not the raw pre-rounding prices — otherwise the displayed percentages don't match the
+  // displayed price levels. Buying near the bottom of the zone carries meaningfully less risk than
+  // buying near the top, so both ends are shown.
+  const riskPctFromLow = Math.abs(((slPrice - entryZoneLow) / entryZoneLow) * 100);
+  const riskPctFromHigh = Math.abs(((slPrice - entryZoneHigh) / entryZoneHigh) * 100);
+  const riskRangeLabel =
+    Math.abs(riskPctFromLow - riskPctFromHigh) < 0.05
+      ? `-${fmtN(riskPctFromHigh, 1)}%`
+      : `-${fmtN(riskPctFromLow, 1)}% s.d. -${fmtN(riskPctFromHigh, 1)}%`;
+
+  // Fix 1B: RRR computed against the worst-case (top-of-zone) entry, so it stays conservative.
+  const rrr = (target: number) => (riskPctFromHigh > 0 ? gainPct(target) / riskPctFromHigh : 0);
+
+  const buildShareText = () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    return [
+      `🚨 [EQUITY RESEARCH REPORT] - $${summary.ticker} (Status: ${statusUtama.label})`,
+      '',
+      `📌 Strategi: ${strategiLabel} (Gaya: ${gayaLabel})`,
+      '--------------------------------------------------',
+      `🔹 Entry Zone    : ${fmtRp(entryZoneLow)} - ${fmtRp(entryZoneHigh)}`,
+      `🔹 Target Price 1: ${fmtRp(tp1Price)} (Gain: +${fmtN(gainPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netGainPct(tp1Price), 1)}% · RRR 1:${fmtN(rrr(tp1Price), 2)})`,
+      `🔹 Target Price 2: ${fmtRp(tp2Price)} (Gain: +${fmtN(gainPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netGainPct(tp2Price), 1)}% · RRR 1:${fmtN(rrr(tp2Price), 2)})`,
+      `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> Cut loss jika Close < ${fmtRp(slPrice)}`,
+      '',
+      '📊 Analisis Alignment:',
+      `1. Technical    : Tren ${trenLabel}, RSI ${fmtN(indicators.rsi14, 1)} (${rsiStatus.label}), MACD ${macdStatus.label}. Area kunci: Support ${nearestSupport ? fmtRp(nearestSupport.price) : '–'} | Resistance ${nearestResistance ? fmtRp(nearestResistance.price) : '–'}.`,
+      `2. Fundamental  : Valuasi ${valuation.label} (PER ${summary.per > 0 ? `${summary.per.toFixed(1)}x` : '–'} · PBV ${summary.pbv > 0 ? `${summary.pbv.toFixed(2)}x` : '–'}) · Skor Fundamental AI ${fundamentalScreening.score}/100${solvencyLabel ? `, ${solvencyLabel} (DER ${der != null ? `${der.toFixed(1)}%` : '–'})` : ''}.`,
+      `3. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title}` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title}` : ''}`,
+      '',
+      '⚠️ Catatan Manajemen Risiko:',
+      `- Skor AI: ${advisor.compositeScore}/100 — ${advisor.executiveSummary}`,
+      '- Sesuaikan alokasi modal dengan profil risiko & disiplin cut loss di level Stop Loss.',
+      '',
+      '⚠️ Disclaimer:',
+      'Analisis ini bertujuan untuk memberikan gambaran teknikal dan fundamental dasar. Keputusan investasi dan manajemen risiko sepenuhnya menjadi tanggung jawab masing-masing investor.',
+      '',
+      `Sumber: ${SITE_NAME}${url ? ` — ${url}` : ''}`,
+    ].join('\n');
+  };
+
+  return (
+    <SectionCard
+      title="Equity Research Report"
+      icon={<Sparkles className="size-4" />}
+      accentClass="bg-violet-600"
+      headerAction={<CopyShareButton getText={buildShareText} />}
+    >
+
+      <div className="space-y-5">
+        {/* 1. Ringkasan Instan */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📊 1. Ringkasan Instan
+          </h3>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Utama:</span>
+              <Pill tone={statusUtama.tone}>{statusUtama.label}</Pill>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Skor AI:</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{advisor.compositeScore}/100</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Gaya Sinyal:</span>
+              <span className="font-semibold text-zinc-700 dark:text-zinc-300">{gayaLabel}</span>
+            </div>
+            <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
+              <strong>Highlight:</strong> {advisor.executiveSummary}
+            </p>
+          </div>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 2. Analisis Teknikal */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📈 2. Analisis Teknikal
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Tren Utama:</span>
+              <Pill tone={trenTone}>{trenLabel}</Pill>
+            </li>
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">RSI:</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fmtN(indicators.rsi14, 1)}</span>
+              <Pill tone={rsiStatus.tone}>{rsiStatus.label}</Pill>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">MACD:</span>
+              <Pill tone={macdStatus.tone}>{macdStatus.label}</Pill>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Moving Average:</span>
+              <span className="font-semibold text-zinc-700 dark:text-zinc-300">{maLabel}</span>
+            </li>
+            <li className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Area Kunci:</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                Support {nearestSupport ? fmtRp(nearestSupport.price) : '–'}
+              </span>
+              <span className="text-zinc-300 dark:text-zinc-700">|</span>
+              <span className="font-semibold text-rose-600 dark:text-rose-400">
+                Resistance {nearestResistance ? fmtRp(nearestResistance.price) : '–'}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 3. Analisis Fundamental & Valuasi */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            🏢 3. Analisis Fundamental & Valuasi
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Valuasi:</span>
+              <Pill tone={valuation.tone}>{valuation.label}</Pill>
+              <span className="text-xs text-zinc-400">
+                (PER {summary.per > 0 ? `${summary.per.toFixed(1)}×` : '–'} · PBV {summary.pbv > 0 ? `${summary.pbv.toFixed(2)}×` : '–'})
+              </span>
+            </li>
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Skor Fundamental AI:</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fundamentalScreening.score}/100</span>
+            </li>
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Kesehatan Finansial:</span>
+              {fundamentalsLoading ? (
+                <span className="text-xs text-zinc-400">Memuat…</span>
+              ) : solvencyLabel ? (
+                <Pill tone={solvencyTone}>{solvencyLabel}</Pill>
+              ) : (
+                <span className="text-xs text-zinc-400">Data DER tidak tersedia</span>
+              )}
+              <span className="text-xs text-zinc-400">
+                (DER {der != null ? `${der.toFixed(1)}%` : '–'} · ROE {summary.roe !== 0 ? `${summary.roe.toFixed(1)}%` : '–'})
+              </span>
+            </li>
+            <li className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              <strong className="text-zinc-800 dark:text-zinc-200">Kunci Fundamental:</strong> {fundamentalScreening.roeStatus.detail}
+            </li>
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 4. Akumulasi Bandar & Entry Timing */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            🐋 4. Akumulasi Bandar &amp; Entry Timing
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Fase Bandar:</span>
+              <Pill tone={bandarScore.classification.tone === 'red' ? 'red' : bandarScore.classification.tone === 'orange' ? 'amber' : bandarScore.classification.tone === 'green' ? 'green' : 'amber'}>
+                {bandarScore.classification.label}
+              </Pill>
+              <span className="text-xs text-zinc-400">{bandarScore.phaseLabel}</span>
+            </li>
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Entry Timing:</span>
+              <Pill tone={entryTiming.tone}>{entryTiming.label}</Pill>
+            </li>
+            <li className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              {entryTiming.headline}
+            </li>
+            <li className="space-y-1 pt-0.5">
+              {entryTiming.reasons.map((r) => (
+                <div key={r} className="flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                  <span className="mt-1 size-1 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+                  {r}
+                </div>
+              ))}
+            </li>
+            {bandarScore.hiddenDistributionWarning && (
+              <li className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/5 dark:text-rose-300">
+                ⚠️ Waspada hidden distribution — harga naik namun OBV melemah, indikasi smart money bisa jadi menjual ke pembeli baru.
+              </li>
+            )}
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 5. Sentimen & Isu Terkini */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            📰 5. Sentimen &amp; Isu Terkini
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex items-start gap-2">
+              <Pill tone="green">Positif</Pill>
+              <span className="text-zinc-600 dark:text-zinc-400 leading-snug">
+                {topBullishNews ? topBullishNews.title : 'Belum ada berita positif signifikan terdeteksi.'}
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Pill tone="red">Negatif</Pill>
+              <span className="text-zinc-600 dark:text-zinc-400 leading-snug">
+                {topBearishNews ? topBearishNews.title : 'Tidak ada isu negatif signifikan terdeteksi.'}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 6. Rencana Aksi */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            🎯 6. Rencana Aksi (Actionable Takeaways)
+          </h3>
+          <ul className="space-y-1.5 text-sm">
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Strategi:</span>
+              <span className="font-bold text-zinc-900 dark:text-zinc-100">{strategiLabel}</span>
+              <span className="text-xs text-zinc-400">({gayaLabel})</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Area Entry Ideal:</span>
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                {fmtRp(entryZoneLow)} – {fmtRp(entryZoneHigh)}
+              </span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Stop Loss (Risk Limit):</span>
+              <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{fmtRp(slPrice)}</span>
+              <span className="text-xs text-zinc-400">(Risk: {riskRangeLabel})</span>
+            </li>
+            <li className="flex flex-wrap items-center gap-3">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Target &amp; RRR:</span>
+              <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">
+                TP1 {fmtRp(tp1Price)} <span className="text-emerald-600 dark:text-emerald-400">+{fmtN(gainPct(tp1Price), 1)}%</span>
+                <span className="text-zinc-400"> (net +{fmtN(netGainPct(tp1Price), 1)}%)</span>
+                <span className={cn('ml-1.5 font-bold', rrr(tp1Price) >= 2 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+                  RRR 1:{fmtN(rrr(tp1Price), 2)}
+                </span>
+              </span>
+            </li>
+            <li className="flex flex-wrap items-center gap-3">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0 opacity-0 select-none">Target &amp; RRR:</span>
+              <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">
+                TP2 {fmtRp(tp2Price)} <span className="text-emerald-600 dark:text-emerald-400">+{fmtN(gainPct(tp2Price), 1)}%</span>
+                <span className="text-zinc-400"> (net +{fmtN(netGainPct(tp2Price), 1)}%)</span>
+                <span className={cn('ml-1.5 font-bold', rrr(tp2Price) >= 2 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+                  RRR 1:{fmtN(rrr(tp2Price), 2)}
+                </span>
+              </span>
+            </li>
+            <li className="text-xs text-zinc-400 leading-relaxed pt-0.5">
+              Gain/RRR dihitung dari batas atas Entry Zone (skenario entry paling konservatif) dan sudah memperhitungkan estimasi fee round-trip ~{fmtN(ROUND_TRIP_FEE_PCT, 2)}% pada kolom &quot;net&quot;. Stop Loss dibulatkan ke fraksi harga (tick) IDX yang valid.
             </li>
           </ul>
         </div>
@@ -2952,8 +3372,25 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             {/* Tab: Screening & Analisis Teknikal (+ Equity Research Report sebagai ringkasan) */}
             {activeTab === 'teknikal' && (
               <div className="space-y-4 sm:space-y-5">
-                <EquityResearchReportCard
+                {/* <EquityResearchReportCard
                   summary={summary}
+                  bars={bars}
+                  advisor={advisor}
+                  trendEma={trendEma}
+                  indicators={indicators}
+                  supportResistance={supportResistance}
+                  fundamentalScreening={fundamentalScreening}
+                  fundamentals={fundamentals}
+                  fundamentalsLoading={fundamentalsLoading}
+                  newsItems={newsItems}
+                  tradingPlan={tradingPlan}
+                /> */}
+                {/* Ganti ke EquityResearchReportCard2 jika versi di atas dirasa kurang cocok — sudah
+                    memperbaiki kalibrasi tick Stop Loss, RRR eksplisit, label valuasi berbasis
+                    band PER, dan penanda gaya sinyal (Mean Reversion vs Breakout). */}
+                <EquityResearchReportCard2
+                  summary={summary}
+                  bars={bars}
                   advisor={advisor}
                   trendEma={trendEma}
                   indicators={indicators}
