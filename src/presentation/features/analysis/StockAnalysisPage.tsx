@@ -401,9 +401,9 @@ function AiStockAdvisorSidebar({ advisor }: { advisor: AiStockAdvisor }) {
           </span>
           <div className="min-w-0">
             <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 leading-tight">AI Stock Advisor</h2>
-            <p className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 leading-tight truncate">
+            {/* <p className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 leading-tight truncate">
               Fundamental · Teknikal · Berita · Breakout
-            </p>
+            </p> */}
           </div>
         </div>
         <div className="flex items-center justify-between gap-2">
@@ -415,7 +415,7 @@ function AiStockAdvisorSidebar({ advisor }: { advisor: AiStockAdvisor }) {
             <div className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-200">{advisor.confidenceScore}%</div>
           </div>
         </div>
-        <div className="flex items-center justify-between text-[11px]">
+        {/* <div className="flex items-center justify-between text-[11px]">
           <span className="font-bold uppercase text-zinc-400">Risk Score</span>
           <span className={cn(
             'font-mono font-bold',
@@ -423,11 +423,11 @@ function AiStockAdvisorSidebar({ advisor }: { advisor: AiStockAdvisor }) {
           )}>
             {advisor.riskScore}/100 · {advisor.riskLevel}
           </span>
-        </div>
+        </div> */}
       </div>
 
       {/* Scores Breakdown, stacked */}
-      <div className="space-y-2.5">
+      {/* <div className="space-y-2.5">
         {scoreItems.map((item) => (
           <div key={item.label}>
             <div className="flex justify-between items-baseline text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
@@ -450,7 +450,7 @@ function AiStockAdvisorSidebar({ advisor }: { advisor: AiStockAdvisor }) {
             </div>
           </div>
         ))}
-      </div>
+      </div> */}
 
       {/* Reasons to Buy (collapsible, default hidden) */}
       <div className="neo-border bg-emerald-50 dark:bg-emerald-500/10 p-3 space-y-2">
@@ -594,7 +594,7 @@ function ScoringCard({
         />
       </div>
 
-      <div className="space-y-2.5 pt-1">
+      {/* <div className="space-y-2.5 pt-1">
         {factors.map((f) => (
           <div key={f.label}>
             <div className="flex justify-between items-baseline text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
@@ -618,7 +618,7 @@ function ScoringCard({
             <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug">{f.detail}</p>
           </div>
         ))}
-      </div>
+      </div> */}
     </div>
   );
 }
@@ -695,7 +695,7 @@ function BandarDetectorCard({
         </div>
       )}
 
-      <div className="space-y-2.5 pt-1">
+      {/* <div className="space-y-2.5 pt-1">
         {factors.map((f) => (
           <div key={f.label}>
             <div className="flex justify-between items-baseline text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
@@ -719,13 +719,13 @@ function BandarDetectorCard({
             <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug">{f.detail}</p>
           </div>
         ))}
-      </div>
+      </div> */}
 
-      <ul className="space-y-1 pt-1 border-t-2 border-(--neo-line)">
+      {/* <ul className="space-y-1 pt-1 border-t-2 border-(--neo-line)">
         {dataNotes.map((note) => (
           <Note key={note} text={note} tone="zinc" />
         ))}
-      </ul>
+      </ul> */}
 
       {brokerActivityLoading && (
         <div className="flex items-center gap-2 pt-2 border-t-2 border-(--neo-line) text-[11px] font-semibold text-zinc-400">
@@ -2746,13 +2746,13 @@ function ObjectiveConclusionCard({ conclusion }: { conclusion: ObjectiveConclusi
         </div>
       )}
 
-      <div className="neo-border mt-4 px-4 py-3 bg-amber-50 dark:bg-amber-400/10 border-amber-400">
+      {/* <div className="neo-border mt-4 px-4 py-3 bg-amber-50 dark:bg-amber-400/10 border-amber-400">
         <p className="font-bold text-sm mb-1 text-amber-700 dark:text-amber-400">⚠️ Disclaimer</p>
         <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
           Analisis ini bertujuan untuk memberikan gambaran teknikal dan fundamental dasar. Keputusan investasi dan
           manajemen risiko sepenuhnya menjadi tanggung jawab masing-masing investor.
         </p>
-      </div>
+      </div> */}
     </SectionCard>
   );
 }
@@ -3497,9 +3497,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           </div>
 
           {/* Philosophy Banner */}
-          <div className="px-3 sm:px-0">
+          {/* <div className="px-3 sm:px-0">
             <PhilosophyBanner />
-          </div>
+          </div> */}
 
           {/* Disclaimer */}
           <div className="mx-3 sm:mx-0 flex gap-2.5 neo-border bg-amber-50 dark:bg-amber-400/10 px-3 sm:px-4 py-3 rounded-xl sm:rounded-none">

@@ -359,7 +359,8 @@ function analyzeIndicators(bars: OHLCVBar[]): IndicatorAnalysis {
 function buildTradingPlan(
   summary: StockSummary,
   sr: SupportResistanceAnalysis,
-  trend: Trend
+  trend: Trend,
+  indicators: IndicatorAnalysis
 ): TradingPlanAnalysis {
   const price = summary.lastClose;
 
@@ -369,11 +370,35 @@ function buildTradingPlan(
   const s2 = sr.supports[1]?.price ?? round2(price * 0.94);
 
   // Bullish scenario
-  const bullEntry = round2(price * 0.995); // small pullback
+  //
+  // Entering at "current price" (the old, unconditional formula) is only sound
+  // when there's still enough room left to the nearest resistance relative to
+  // the risk down to support. When price already sits close to resistance —
+  // whether because RSI is overbought or simply because it drifted to the top
+  // of its recent range — that entry ends up a hair below TP1 while SL stays
+  // far down at support, producing a terrible risk/reward. This is "the
+  // biggest problem" flagged in features_equity_report.md: ULTJ (RSI 78.8,
+  // R:R ~1:0.14) and SNLK (RSI a healthy 64.7, but still R:R ~1:0.33 at the
+  // current price) both fail for the same underlying reason — reward-to-risk,
+  // not RSI alone. So gate directly on the resulting R:R (plus an RSI >= 75
+  // safety net for "don't chase an overbought spike" even if R:R looks
+  // borderline-acceptable): if chasing price doesn't clear a conservative
+  // minimum, switch to a pullback-buy plan anchored at support instead.
+  const MIN_ACCEPTABLE_RR = 1.5;
+  const chaseEntry = round2(price * 0.995);
+  const chaseSl = round2(s1 * 0.995);
+  const chaseRR = round2((r1 - chaseEntry) / Math.max(chaseEntry - chaseSl, 1));
+  const needsPullback = chaseRR < MIN_ACCEPTABLE_RR || indicators.rsi14 >= 75;
+
+  const bullEntry = needsPullback ? round2(s1 * 1.01) : chaseEntry; // pullback zone near support, not chasing price
   const bullSl = round2(s1 * 0.995);
-  const bullTp1 = r1;
-  const bullTp2 = r2;
-  const bullRR = round2((bullTp1 - bullEntry) / Math.max(bullEntry - bullSl, 1));
+  // Pullback plan: TP1 is an interim level on the way up (not right next to
+  // entry), TP2 is the resistance itself — mirrors the two-tier target used
+  // for the healthy (chase) case, just anchored further out since entry sits
+  // near support rather than near price.
+  const bullTp1 = needsPullback ? round2((bullEntry + r1) / 2) : r1;
+  const bullTp2 = needsPullback ? r1 : r2;
+  const bullRR = needsPullback ? round2((bullTp1 - bullEntry) / Math.max(bullEntry - bullSl, 1)) : chaseRR;
   // Average-down zone: halfway between entry and stop loss — a level to add to
   // the position if price dips before invalidating the setup, tightening cost basis.
   const bullAvgDown = round2((bullEntry + bullSl) / 2);
@@ -392,7 +417,9 @@ function buildTradingPlan(
     bullish: {
       entry: bullEntry, avgDown: bullAvgDown, tp1: bullTp1, tp2: bullTp2, sl: bullSl,
       riskRewardRatio: bullRR,
-      notes: `Entry buy saat pullback ke area ${bullEntry.toLocaleString('id-ID')} – ${round2(price * 1.002).toLocaleString('id-ID')}. Konfirmasi: volume > MA20.`,
+      notes: needsPullback
+        ? `Jangan mengejar harga sekarang — entry di harga saat ini memberi risk/reward buruk (≈1:${chaseRR.toFixed(2)})${indicators.rsi14 >= 75 ? ` dan RSI ${indicators.rsi14.toFixed(1)} sudah overbought` : ''}. Tunggu pullback sehat ke area Rp${bullEntry.toLocaleString('id-ID')} (dekat support) dengan konfirmasi RSI turun & volume jual mengecil sebelum entry.`
+        : `Entry buy saat pullback ke area ${bullEntry.toLocaleString('id-ID')} – ${round2(price * 1.002).toLocaleString('id-ID')}. Konfirmasi: volume > MA20.`,
     },
     bearish: {
       entry: bearEntry, tp1: bearTp1, tp2: bearTp2, sl: bearSl,
@@ -514,7 +541,7 @@ export function computeStockAnalysis(
   const priceAction = analyzePriceAction(bars, summary, trendEma);
   const volume = analyzeVolume(bars, summary);
   const indicators = analyzeIndicators(bars);
-  const tradingPlan = buildTradingPlan(summary, supportResistance, trendEma.trend);
+  const tradingPlan = buildTradingPlan(summary, supportResistance, trendEma.trend, indicators);
   const conclusion = buildConclusion(summary, trendEma, supportResistance, priceAction, volume, indicators);
 
   return {

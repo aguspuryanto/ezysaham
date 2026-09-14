@@ -136,3 +136,303 @@ Saya akan memberikan:
 **Yang paling penting:** menurut saya algoritma EzySaham Anda perlu diperbaiki pada bagian **Entry Zone + TP + RRR**. Signal bisa mengatakan **BULLISH 75/100**, tetapi kalau TP hanya 1,2% sementara risiko bisa 10%+, maka sistem seharusnya **menolak signal tersebut sebagai entry konservatif**.
 
 Kalau Anda mau, saya bisa buatkan **rumus SQL/PostgreSQL “Conservative Entry Score”** yang otomatis mengubah signal seperti ULTJ menjadi **BUY / WAIT / NO TRADE**, berdasarkan **RSI + support + resistance + ATR + volume + R:R + breakout + fase bullish/breakout/extended/distribution/pullback/bearish**.
+
+Untuk **SNLK**, justru contoh ini menunjukkan kenapa **Conservative Entry Score** yang kita buat diperlukan.
+
+## 🔍 Evaluasi SNLK
+
+Saya pisahkan antara **"sahamnya bagus/bullish"** dan **"harga sekarang layak dibeli"**.
+
+| Faktor                    | Data SNLK | Penilaian |
+| ------------------------- | --------: | --------- |
+| Trend                     |   Uptrend | 🟢        |
+| RSI                       |      64,7 | 🟢        |
+| MACD                      |   Bullish | 🟢        |
+| Support                   |       226 | 🟢        |
+| Resistance                |       256 | 🟡        |
+| Fundamental AI            |    40/100 | 🔴        |
+| PBV                       |     0,70x | 🟢        |
+| Sentimen                  | Tidak ada | 🟡        |
+| Technical Score           |    84/100 | 🟢        |
+| TP1                       |       256 | 🟡        |
+| TP2                       |       262 | 🟢        |
+| R:R berdasarkan entry 248 |     buruk | 🔴        |
+
+### 🚨 Masalah utamanya sama seperti ULTJ
+
+Entry zone:
+
+> **226–248**
+
+tetapi TP hanya:
+
+> **256–262**
+
+sementara SL:
+
+> **224**
+
+Artinya kualitas entry berubah drastis tergantung harga beli.
+
+---
+
+# 🧮 Hitung pada beberapa harga entry
+
+### Entry Rp248
+
+TP1:
+
+```text
+Risk   = 248 - 224 = 24
+Reward = 256 - 248 = 8
+
+R:R = 0,33
+```
+
+TP2:
+
+```text
+Reward = 262 - 248 = 14
+
+R:R = 0,58
+```
+
+❌ **Tidak boleh BUY secara konservatif.**
+
+---
+
+### Entry Rp240
+
+TP1:
+
+```text
+Risk   = 240 - 224 = 16
+Reward = 256 - 240 = 16
+
+R:R = 1.00
+```
+
+TP2:
+
+```text
+R:R = 22 / 16
+    = 1.38
+```
+
+❌ Masih **belum memenuhi R:R minimum 1.5**.
+
+---
+
+### Entry Rp235
+
+TP1:
+
+```text
+Risk   = 235 - 224 = 11
+Reward = 256 - 235 = 21
+
+R:R = 1.91
+```
+
+TP2:
+
+```text
+R:R = 27 / 11
+    = 2.45
+```
+
+🟢 **Mulai menarik.**
+
+---
+
+### Entry Rp230
+
+TP1:
+
+```text
+Risk   = 230 - 224 = 6
+Reward = 256 - 230 = 26
+
+R:R = 4.33
+```
+
+TP2:
+
+```text
+R:R = 32 / 6
+    = 5.33
+```
+
+🟢 **Sangat menarik secara R:R**, tetapi perlu diperhatikan apakah Rp230 benar-benar mendapatkan support/konfirmasi reversal.
+
+---
+
+# 🎯 Jadi saya akan mengubah Entry Zone SNLK
+
+Bukan:
+
+> ❌ **BUY 226–248**
+
+tetapi:
+
+### 🟢 Conservative Entry
+
+**Rp228–235**
+
+dengan syarat:
+
+```text
+RSI 50–68
+Harga dekat support
+Volume selling mengecil
+Ada bullish reversal
+Support 226 bertahan
+R:R >= 1.5
+```
+
+### 🟡 Aggressive Entry
+
+**Rp236–240**
+
+hanya jika ada konfirmasi kuat.
+
+### 🔴 Avoid
+
+**Rp241–248**
+
+karena semakin dekat resistance, upside semakin kecil.
+
+---
+
+# 🚦 Bagaimana CES akan membaca SNLK?
+
+Berdasarkan data yang Anda berikan, saya akan memberikan **dua output**, karena CES harus dihitung berdasarkan harga entry aktual.
+
+### Jika Entry = Rp248
+
+```text
+SNLK
+
+Technical       🟢
+RSI             🟢
+MACD            🟢
+Fundamental     🔴
+Resistance      🔴
+R:R             🔴
+Phase           🟡
+
+Conservative Entry:
+🔴 NO TRADE
+```
+
+**Alasan utama:**
+
+> R:R TP1 hanya **0,33** dan TP2 hanya **0,58**.
+
+---
+
+### Jika Entry = Rp235
+
+```text
+SNLK
+
+Technical       🟢
+RSI             🟢
+MACD            🟢
+Support         🟢
+Resistance      🟢
+R:R             🟢
+Fundamental     🔴
+Sentiment       🟡
+
+Conservative Entry:
+🟡/🟢 BUY
+```
+
+Tergantung volume dan phase.
+
+---
+
+# 🔥 Ada satu perubahan penting untuk sistem EzySaham
+
+Saya sarankan **Entry Zone jangan lagi menjadi satu angka/range statis**.
+
+Buat sistem menghasilkan:
+
+```text
+ENTRY ZONE
+     ↓
+┌────────────────────────────┐
+│ Conservative Entry         │
+│ Rp228–235                  │
+├────────────────────────────┤
+│ Aggressive Entry           │
+│ Rp236–240                  │
+├────────────────────────────┤
+│ Avoid                       │
+│ Rp241–248                  │
+└────────────────────────────┘
+```
+
+Kemudian hitung **CES pada setiap candidate entry price**.
+
+Misalnya:
+
+```text
+Entry 226 → CES 91
+Entry 230 → CES 89
+Entry 235 → CES 82
+Entry 240 → CES 68
+Entry 245 → CES 51
+Entry 248 → NO TRADE
+```
+
+Ini jauh lebih powerful daripada:
+
+> `Entry Zone = 226–248`
+
+karena **Rp226 dan Rp248 bukan trade yang sama**.
+
+---
+
+## ⭐ Rule yang saya rekomendasikan
+
+Untuk EzySaham:
+
+```text
+                 R:R
+                  │
+         ┌────────┴────────┐
+         │                 │
+       <1.5               >=1.5
+         │                 │
+    NO TRADE           lanjut scoring
+                           │
+                    ┌──────┴──────┐
+                    │             │
+                 RSI >75       RSI <=75
+                    │             │
+                  WAIT       lanjut scoring
+                                  │
+                         ┌────────┴────────┐
+                         │                 │
+                     Resistance        Support
+                      dekat              dekat
+                         │                 │
+                       WAIT              BUY
+```
+
+Dan satu prinsip yang sangat penting:
+
+> **AI Score menentukan kualitas saham. Conservative Entry Score menentukan apakah HARGANYA layak dibeli.**
+
+SNLK adalah contoh sempurna:
+
+**AI Score 61 ≠ otomatis NO TRADE.**
+Technical Score 84 ≠ otomatis BUY.
+
+Yang harus ditanyakan sistem adalah:
+
+> **"Dengan harga entry X, apakah reward yang tersedia cukup besar dibanding risiko?"**
+
+Kalau jawabannya tidak → **NO TRADE**, walaupun teknikalnya bullish.
