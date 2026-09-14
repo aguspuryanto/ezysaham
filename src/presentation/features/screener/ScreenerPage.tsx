@@ -22,6 +22,7 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStockFundamentals, getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
+import { computeMarketPhase, MarketPhaseResult } from '@/domain/analysis/marketPhase';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { NewJournalEntryInput } from '@/domain/models/JournalEntry';
 import { StockSummary } from '@/domain/models/Stock';
@@ -35,6 +36,7 @@ import { FilterChipItem, PresetTabs } from './components/PresetTabs';
 import { ResultsTable, ResultsView, ScreenerResult } from './components/ResultsTable';
 import { FilterInfoCard, SectorListCard, WatchlistCard } from './components/ScreenerSidebar';
 import { TickerTape } from './components/TickerTape';
+import { TopGainerCard } from './components/TopGainerCard';
 import { useWatchlist } from './hooks/useWatchlist';
 import { PhilosophyBanner } from './components/PhilosophyBanner';
 import { IhsgChart } from './components/IhsgChart';
@@ -92,6 +94,8 @@ export function ScreenerPage() {
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [creatingJurnal, setCreatingJurnal] = useState(false);
   const [jurnalMessage, setJurnalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [phaseByTicker, setPhaseByTicker] = useState<Record<string, MarketPhaseResult | null>>({});
+  const phaseAttemptedRef = useRef<Set<string>>(new Set());
   const watchlist = useWatchlist();
   const journal = useJournal();
 
@@ -223,6 +227,33 @@ export function ScreenerPage() {
   const visibleResults = useMemo(() => displayedResults.slice(0, visibleCount), [displayedResults, visibleCount]);
   const hasMoreResults = displayedResults.length > visibleResults.length;
 
+  // Lazily classifies each visible row into a Market Phase (BULLISH_AWAL / BREAKOUT /
+  // EXTENDED / DISTRIBUTION / PULLBACK / BEARISH) for the "Skor" column — only for
+  // rows actually on screen, since it needs a per-ticker history fetch.
+  useEffect(() => {
+    const pending = visibleResults.filter((r) => !phaseAttemptedRef.current.has(r.summary.ticker));
+    if (pending.length === 0) return;
+    pending.forEach((r) => phaseAttemptedRef.current.add(r.summary.ticker));
+
+    let cancelled = false;
+    (async () => {
+      const entries = await mapWithConcurrency(pending, HISTORY_CONCURRENCY, async ({ summary }) => {
+        const bars = await getStockHistory(summary.ticker);
+        return [summary.ticker, computeMarketPhase(summary, bars)] as const;
+      });
+      if (cancelled) return;
+      setPhaseByTicker((prev) => {
+        const next = { ...prev };
+        for (const [ticker, phase] of entries) next[ticker] = phase;
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleResults]);
+
   const topMovers = useMemo(() => {
     if (!summaries) return [];
     return [...summaries].sort((a, b) => b.percentChange1D - a.percentChange1D).slice(0, 12);
@@ -347,9 +378,9 @@ export function ScreenerPage() {
         <main className="flex min-w-0 flex-1 flex-col gap-1">
           <IhsgChart />
 
-          {/* ── UI — disclaimer banner (hide on mobile) ────────────────────── */}
-          <div className="hidden lg:mt-4 lg:block">
-            <PhilosophyBanner />
+          {/* ── UI — top gainer highlight ───────────────────────────────────── */}
+          <div className="mb-4">
+            <TopGainerCard summaries={summaries ?? []} />
           </div>
 
           <div className="hidden lg:flex lg:items-center lg:gap-2">
@@ -511,6 +542,7 @@ export function ScreenerPage() {
             onToggleWatchlist={watchlist.toggle}
             isCompareSelected={isCompareSelected}
             onToggleCompare={toggleCompare}
+            phaseByTicker={phaseByTicker}
           />
 
           {hasMoreResults && (

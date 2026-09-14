@@ -1,4 +1,4 @@
-import { Building2, Eye, GitCompare, ShieldCheck, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Building2, Eye, GitCompare, Loader2, ShieldCheck, Star, Target, TrendingDown, TrendingUp, SearchX, ChevronRight, Rocket, Zap, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -6,6 +6,7 @@ import { StockSummary } from '@/domain/models/Stock';
 import { AraProbabilityScore, BreakoutScores, CorePortofolioScore, FundamentalScore, HighGrowthScore, PresetEvaluation, TradingPlanScore } from '@/domain/screener/presets';
 import { BandarScoreResult } from '@/domain/analysis/bandarScore';
 import { DataFreshness } from '@/domain/analysis/dataFreshness';
+import { MarketPhase, MarketPhaseResult } from '@/domain/analysis/marketPhase';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 
 export interface ScreenerResult {
@@ -26,6 +27,9 @@ interface ResultsTableProps {
   onToggleWatchlist: (ticker: string) => void;
   isCompareSelected: (ticker: string) => boolean;
   onToggleCompare: (ticker: string) => void;
+  /** Market Phase per ticker (undefined = still loading, null = not enough history) —
+   *  shown in the "Skor" column for presets without a composite score (e.g. "Semua"). */
+  phaseByTicker?: Record<string, MarketPhaseResult | null>;
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
@@ -769,16 +773,51 @@ function compositeScoreInfo(evaluation: PresetEvaluation): { label: string; comp
   return null;
 }
 
-function ScoreBadge({ info }: { info: { label: string; composite: number; className: string } | null }) {
-  if (!info) return <span className="text-zinc-300 dark:text-zinc-700">—</span>;
+// ── Market Phase badge (fallback for presets without a composite score) ────────
+const PHASE_STYLES: Record<MarketPhase, string> = {
+  BEARISH: 'bg-rose-500 text-white dark:bg-rose-600',
+  PULLBACK: 'bg-amber-400 text-white dark:bg-amber-500',
+  EXTENDED: 'bg-orange-500 text-white dark:bg-orange-600',
+  DISTRIBUTION: 'bg-orange-400 text-white dark:bg-orange-500',
+  BREAKOUT: 'bg-blue-500 text-white dark:bg-blue-600',
+  BULLISH_AWAL: 'bg-emerald-500 text-white dark:bg-emerald-600',
+  NEUTRAL: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
+};
+
+function PhaseBadge({ phase }: { phase: MarketPhaseResult }) {
   return (
-    <div className="flex flex-col items-start gap-1">
-      <span className={cn('inline-flex items-center border border-(--neo-line) px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', info.className)}>
-        {info.label}
-      </span>
-      <span className="font-mono text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{info.composite}/100</span>
-    </div>
+    <span className={cn('inline-flex items-center gap-1 border border-(--neo-line) px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', PHASE_STYLES[phase.phase])}>
+      <span>{phase.emoji}</span>
+      {phase.label}
+    </span>
   );
+}
+
+function ScoreBadge({
+  info,
+  phase,
+}: {
+  info: { label: string; composite: number; className: string } | null;
+  /** undefined = phase not fetched/computed yet, null = insufficient history */
+  phase?: MarketPhaseResult | null;
+}) {
+  if (info) {
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <span className={cn('inline-flex items-center border border-(--neo-line) px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', info.className)}>
+          {info.label}
+        </span>
+        <span className="font-mono text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{info.composite}/100</span>
+      </div>
+    );
+  }
+  if (phase === undefined) {
+    return <Loader2 className="size-3.5 animate-spin text-zinc-300 dark:text-zinc-700" strokeWidth={2.5} />;
+  }
+  if (phase === null) {
+    return <span className="text-zinc-300 dark:text-zinc-700">—</span>;
+  }
+  return <PhaseBadge phase={phase} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -790,12 +829,14 @@ function StockTableRow({
   onToggleWatchlist,
   isCompareSelected,
   onToggleCompare,
+  phase,
 }: {
   result: ScreenerResult;
   isWatchlisted: boolean;
   onToggleWatchlist: () => void;
   isCompareSelected: boolean;
   onToggleCompare: () => void;
+  phase?: MarketPhaseResult | null;
 }) {
   const { summary, evaluation } = result;
   const rvol = evaluation.relativeVolume;
@@ -837,9 +878,9 @@ function StockTableRow({
         </Link>
       </td>
 
-      {/* Skor (Breakout / Trading Plan / ARA Hunter / Fundamental — kosong untuk preset tanpa skor komposit) */}
+      {/* Skor (Breakout / Trading Plan / ARA Hunter / Fundamental), atau Market Phase untuk preset tanpa skor komposit */}
       <td className="px-4 py-3">
-        <ScoreBadge info={scoreInfo} />
+        <ScoreBadge info={scoreInfo} phase={phase} />
       </td>
 
       {/* Perubahan % */}
@@ -961,7 +1002,7 @@ function SortableHeader({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────────────────────────────────────────
-export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist, isCompareSelected, onToggleCompare }: ResultsTableProps) {
+export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist, isCompareSelected, onToggleCompare, phaseByTicker }: ResultsTableProps) {
   const [columnSort, setColumnSort] = useState<ColumnSort | null>(null);
 
   const handleSort = (key: ColumnSortKey) => {
@@ -1060,6 +1101,7 @@ export function ResultsTable({ results, view, isWatchlisted, onToggleWatchlist, 
                 onToggleWatchlist={() => onToggleWatchlist(result.summary.ticker)}
                 isCompareSelected={isCompareSelected(result.summary.ticker)}
                 onToggleCompare={() => onToggleCompare(result.summary.ticker)}
+                phase={phaseByTicker?.[result.summary.ticker]}
               />
             ))}
           </tbody>
