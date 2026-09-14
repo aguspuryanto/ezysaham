@@ -3282,7 +3282,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             <AiStockAdvisorSidebar advisor={advisor} />
             <TradingPlanSidebarCard plan={tradingPlan} />
             {/* <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} /> */}
-            <BandarDetectorCard summary={summary} bars={bars} brokerActivity={brokerActivity} brokerActivityLoading={brokerActivityLoading} />
+            {/* <BandarDetectorCard summary={summary} bars={bars} brokerActivity={brokerActivity} brokerActivityLoading={brokerActivityLoading} /> */}
           </div>
 
           {/* ── Quick Stat Cards ─────────────────────────────────────────── */}
@@ -3527,7 +3527,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
         <aside className="hidden lg:block space-y-5 lg:sticky lg:top-20">
           <AiStockAdvisorSidebar advisor={advisor} />
           {/* <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} /> */}
-          <BandarDetectorCard summary={summary} bars={bars} brokerActivity={brokerActivity} brokerActivityLoading={brokerActivityLoading} />
+          {/* <BandarDetectorCard summary={summary} bars={bars} brokerActivity={brokerActivity} brokerActivityLoading={brokerActivityLoading} /> */}
           <TradingPlanSidebarCard plan={tradingPlan} />
           <SimilarStocksSidebarCard current={summary} stocks={similarStocks} />
         </aside>
