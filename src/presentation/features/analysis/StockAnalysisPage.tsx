@@ -43,7 +43,7 @@ import {
   Zap,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LINKS } from '@/lib/site';
 import { StockSummary } from '@/domain/models/Stock';
 import { OHLCVBar } from '@/domain/models/History';
@@ -58,6 +58,9 @@ import {
 } from '@/domain/models/StockAnalysis';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
+import { IntradayResponse } from '@/domain/models/Intraday';
+import { getStockIntraday } from '@/data/repositories/StockRepository';
+import { vwap } from '@/domain/indicators/vwap';
 import { BrokerActivityDetail, BrokerSummaryRow } from '@/domain/models/BrokerSummary';
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
@@ -69,7 +72,7 @@ import { BreakoutScores } from '@/domain/screener/presets';
 import { DataFreshness } from '@/domain/analysis/dataFreshness';
 import { rsi } from '@/domain/indicators/rsi';
 import { macd } from '@/domain/indicators/macd';
-import { closes as barCloses, ema } from '@/domain/indicators/movingAverages';
+import { closes as barCloses, ema, lastValid } from '@/domain/indicators/movingAverages';
 import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
@@ -2335,6 +2338,7 @@ function EquityResearchReportCard2({
   fundamentalsLoading,
   newsItems,
   tradingPlan,
+  volume,
 }: {
   summary: StockSummary;
   bars: OHLCVBar[];
@@ -2347,11 +2351,38 @@ function EquityResearchReportCard2({
   fundamentalsLoading: boolean;
   newsItems: StockNewsItem[];
   tradingPlan: TradingPlanAnalysis;
+  volume: VolumeAnalysis;
 }) {
   const bandarScore = useMemo(() => computeBandarScore(summary, bars ?? []), [summary, bars]);
   const entryTiming = useMemo(() => computeEntryTiming(bandarScore, indicators), [bandarScore, indicators]);
   const marketCyclePhase = useMemo(() => getMarketCyclePhase(bandarScore, indicators), [bandarScore, indicators]);
   type Tone = 'green' | 'red' | 'amber' | 'blue' | 'zinc';
+
+  // Session VWAP from live 1-minute bars (Yahoo, delayed quote) — fetched separately from the
+  // rest of this card since it's the only piece backed by real intraday data; everything else
+  // here comes from the already-loaded daily analysis. Same source IntradayChart.tsx uses.
+  const [intraday, setIntraday] = useState<IntradayResponse | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setIntraday(null);
+    getStockIntraday(summary.ticker).then((result) => {
+      if (!cancelled) setIntraday(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [summary.ticker]);
+  const sessionVwap = intraday?.ok ? vwap(intraday.bars) : null;
+  const vwapTone: Tone =
+    sessionVwap == null ? 'zinc' : summary.lastClose >= sessionVwap * 1.002 ? 'green' : summary.lastClose <= sessionVwap * 0.998 ? 'red' : 'amber';
+
+  // Intraday EMA9/EMA21 from the same 1-minute feed — needs at least 21 minutes into the
+  // session before EMA21 has enough bars to seed; ema() returns NaN until then.
+  const intradayPrices = intraday?.ok ? intraday.bars.map((b) => b.price) : [];
+  const intradayEma9 = lastValid(ema(intradayPrices, 9));
+  const intradayEma21 = lastValid(ema(intradayPrices, 21));
+  const hasIntradayEma = !Number.isNaN(intradayEma9) && !Number.isNaN(intradayEma21);
+  const emaTone: Tone = !hasIntradayEma ? 'zinc' : intradayEma9 > intradayEma21 ? 'green' : intradayEma9 < intradayEma21 ? 'red' : 'amber';
 
   const statusUtama: { label: string; tone: Tone } =
     advisor.verdictTone === 'green' ? { label: 'BULLISH', tone: 'green' } :
@@ -2390,6 +2421,58 @@ function EquityResearchReportCard2({
 
   const topBullishNews = newsItems.find((n) => n.sentiment === 'bullish');
   const topBearishNews = newsItems.find((n) => n.sentiment === 'bearish');
+
+  // Checklist Swing vs Intraday — separates "this looks bullish" (swing, built from EOD data
+  // this app already has) from "this is a confirmed intraday entry" (needs VWAP/EMA9-21/real-time
+  // RVOL, which EzySaham does not compute — no intraday/minute data source). Surfacing that gap
+  // explicitly stops a high swing score from being misread as a scalping green light.
+  type ChecklistItem = { label: string; value: string; tone: Tone };
+  const sentimentChecklist: { value: string; tone: Tone } = topBullishNews
+    ? { value: 'Ada sentimen positif', tone: 'green' }
+    : topBearishNews
+      ? { value: 'Ada sentimen negatif', tone: 'red' }
+      : { value: 'Belum signifikan', tone: 'amber' };
+  const technicalScoreTone: Tone = advisor.technicalScore >= 70 ? 'green' : advisor.technicalScore >= 50 ? 'amber' : 'red';
+  const breakoutScoreTone: Tone = advisor.breakoutScore >= 70 ? 'green' : advisor.breakoutScore >= 50 ? 'amber' : 'zinc';
+  const rvolTone: Tone = volume.isHighVolume ? 'green' : volume.relativeVolume >= 1 ? 'amber' : 'red';
+  const volumeTrendLabel = volume.volumeTrend === 'increasing' ? 'Meningkat' : volume.volumeTrend === 'decreasing' ? 'Menurun' : 'Normal';
+  const volumeTrendTone: Tone = volume.volumeTrend === 'increasing' ? 'green' : volume.volumeTrend === 'decreasing' ? 'red' : 'zinc';
+  const structureTone: Tone = trendEma.higherLows ? "green" : "amber";
+
+  const swingChecklist: ChecklistItem[] = [
+    { label: 'Trend', value: trenLabel, tone: trenTone },
+    { label: 'RSI', value: `${fmtN(indicators.rsi14, 1)} (${rsiStatus.label})`, tone: rsiStatus.tone },
+    { label: 'MACD', value: macdStatus.label, tone: macdStatus.tone },
+    { label: 'Support', value: nearestSupport ? fmtRp(nearestSupport.price) : '–', tone: nearestSupport ? 'green' : 'zinc' },
+    { label: 'Resistance', value: nearestResistance ? fmtRp(nearestResistance.price) : '–', tone: nearestResistance ? 'green' : 'zinc' },
+    { label: 'Fundamental', value: `${valuation.label} (PER ${summary.per > 0 ? `${summary.per.toFixed(1)}×` : '–'})`, tone: valuation.tone },
+    { label: 'Sentimen', value: sentimentChecklist.value, tone: sentimentChecklist.tone },
+    { label: 'Technical Score', value: `${advisor.technicalScore}/100`, tone: technicalScoreTone },
+  ];
+
+  const vwapLabel =
+    intraday === null
+      ? 'Memuat data intraday…'
+      : sessionVwap == null
+        ? 'Data intraday tidak tersedia (sesi tertutup / tidak ada data)'
+        : `${fmtRp(sessionVwap)} (harga ${summary.lastClose >= sessionVwap ? 'di atas' : 'di bawah'} VWAP)`;
+
+  const emaLabel =
+    intraday === null
+      ? 'Memuat data intraday…'
+      : !hasIntradayEma
+        ? 'Data belum cukup (menunggu ≥21 menit sesi berjalan)'
+        : `${fmtRp(intradayEma9)} / ${fmtRp(intradayEma21)} (${intradayEma9 > intradayEma21 ? 'EMA9 > EMA21' : intradayEma9 < intradayEma21 ? 'EMA9 < EMA21' : 'EMA9 = EMA21'})`;
+
+  const intradayChecklist: ChecklistItem[] = [
+    { label: 'VWAP', value: vwapLabel, tone: vwapTone },
+    { label: 'EMA9 / EMA21', value: emaLabel, tone: emaTone },
+    { label: 'RVOL', value: `${fmtN(volume.relativeVolume, 2)}×`, tone: rvolTone },
+    { label: 'Volume', value: volumeTrendLabel, tone: volumeTrendTone },
+    { label: 'RSI', value: `${fmtN(indicators.rsi14, 1)} (${rsiStatus.label})`, tone: rsiStatus.tone },
+    { label: 'Struktur Harga', value: trendEma.higherLows ? 'Higher-low (harian)' : 'Belum ada pola higher-low', tone: structureTone },
+    { label: 'Breakout Hunter', value: `${advisor.breakoutScore}/100`, tone: breakoutScoreTone },
+  ];
 
   const bias = tradingPlan.recommendedBias === 'bearish' ? 'bearish' : 'bullish';
   const scenario = tradingPlan[bias];
@@ -2685,6 +2768,50 @@ function EquityResearchReportCard2({
               Gain/RRR dihitung dari batas atas Entry Zone (skenario entry paling konservatif) dan sudah memperhitungkan estimasi fee round-trip ~{fmtN(ROUND_TRIP_FEE_PCT, 2)}% pada kolom &quot;net&quot;. Stop Loss dibulatkan ke fraksi harga (tick) IDX yang valid.
             </li>
           </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 7. Checklist Swing vs Intraday */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+            ✅ 7. Checklist Swing vs Intraday
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <span className="text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400">Swing</span>
+              <ul className="space-y-1.5 text-sm mt-1.5">
+                {swingChecklist.map((item) => (
+                  <li key={item.label} className="flex flex-wrap items-center gap-2">
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-28">{item.label}:</span>
+                    {item.tone === 'zinc' ? (
+                      <span className="text-xs text-zinc-400">{item.value}</span>
+                    ) : (
+                      <Pill tone={item.tone}>{item.value}</Pill>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <span className="text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400">Intraday</span>
+              <ul className="space-y-1.5 text-sm mt-1.5">
+                {intradayChecklist.map((item) => (
+                  <li key={item.label} className="flex flex-wrap items-center gap-2">
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-28">{item.label}:</span>
+                    {item.tone === 'zinc' && item.value.startsWith('Data intraday') ? (
+                      <span className="text-xs text-zinc-400">{item.value}</span>
+                    ) : (
+                      <Pill tone={item.tone}>{item.value}</Pill>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="text-xs text-zinc-400 leading-relaxed pt-2">
+            Checklist Swing dihitung penuh dari data harian (EOD) yang tersedia. VWAP dan EMA9/EMA21 dihitung dari data intraday 1 menit (Yahoo Finance, kuotasi tertunda) sejak awal sesi berjalan/terakhir — bukan real-time, dan EMA9/EMA21 baru muncul setelah ±21 menit sesi berjalan. RVOL, tren volume, RSI, dan struktur harga pada kolom Intraday adalah proxy dari data harian, bukan pengganti konfirmasi intraday real-time. Skor Swing yang tinggi tidak otomatis berarti setup ini layak untuk entry scalping/intraday — konfirmasi manual di chart intraday (retest breakout, RVOL live) sebelum entry presisi.
+          </p>
         </div>
       </div>
     </SectionCard>
@@ -3407,6 +3534,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   fundamentalsLoading={fundamentalsLoading}
                   newsItems={newsItems}
                   tradingPlan={tradingPlan}
+                  volume={volume}
                 />
 
                 <div className={cn(
