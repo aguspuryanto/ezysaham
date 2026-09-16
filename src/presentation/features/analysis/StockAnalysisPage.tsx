@@ -61,7 +61,7 @@ import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { BrokerActivityDetail, BrokerSummaryRow } from '@/domain/models/BrokerSummary';
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
-import { computeBandarScore } from '@/domain/analysis/bandarScore';
+import { computeBandarScore, getMarketCyclePhase } from '@/domain/analysis/bandarScore';
 import { computeEntryTiming } from '@/domain/analysis/entryTiming';
 import { roundToTick } from '@/domain/analysis/idxTick';
 import { computeObjectiveConclusion, ConclusionTone, ObjectiveConclusionResult } from '@/domain/analysis/objectiveConclusion';
@@ -2350,6 +2350,7 @@ function EquityResearchReportCard2({
 }) {
   const bandarScore = useMemo(() => computeBandarScore(summary, bars ?? []), [summary, bars]);
   const entryTiming = useMemo(() => computeEntryTiming(bandarScore, indicators), [bandarScore, indicators]);
+  const marketCyclePhase = useMemo(() => getMarketCyclePhase(bandarScore, indicators), [bandarScore, indicators]);
   type Tone = 'green' | 'red' | 'amber' | 'blue' | 'zinc';
 
   const statusUtama: { label: string; tone: Tone } =
@@ -2583,6 +2584,12 @@ function EquityResearchReportCard2({
                 {bandarScore.classification.label}
               </Pill>
               <span className="text-xs text-zinc-400">{bandarScore.phaseLabel}</span>
+            </li>
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Fase Siklus Pasar:</span>
+              <Pill tone={marketCyclePhase.tone === 'red' ? 'red' : marketCyclePhase.tone === 'orange' ? 'amber' : marketCyclePhase.tone === 'green' ? 'green' : marketCyclePhase.tone === 'blue' ? 'blue' : 'amber'}>
+                {marketCyclePhase.number != null ? `Fase ${marketCyclePhase.number} — ${marketCyclePhase.label}` : marketCyclePhase.label}
+              </Pill>
             </li>
             <li className="flex flex-wrap items-center gap-2">
               <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Entry Timing:</span>

@@ -14,6 +14,7 @@
 
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
+import { IndicatorAnalysis } from '@/domain/models/StockAnalysis';
 import { sma } from '@/domain/indicators/movingAverages';
 import { obv } from '@/domain/indicators/obv';
 
@@ -371,4 +372,42 @@ export function computeBandarScore(summary: StockSummary, bars: OHLCVBar[]): Ban
     hiddenDistributionWarning: obvDivergence.hiddenDistributionWarning,
     dataNotes,
   };
+}
+
+// ── Market Cycle Phase (1–5) ────────────────────────────────────────────────
+// Maps the 4 Wyckoff phases from computeBandarScore() onto the 5-stage market
+// cycle used in the report UI. 'markup' is split into MARKUP (fresh breakout)
+// vs MOMENTUM (breakout confirmed by trend indicators, RSI running hot) using
+// the same RSI/MACD read already computed by stockAnalysisEngine.ts — no new
+// indicators, just a finer read of an existing phase.
+export interface MarketCyclePhaseResult {
+  number: 1 | 2 | 3 | 4 | 5 | null;
+  label: string;
+  tone: BandarScoreTone | 'blue';
+}
+
+export function getMarketCyclePhase(
+  bandar: Pick<BandarScoreResult, 'phase'>,
+  indicators: IndicatorAnalysis
+): MarketCyclePhaseResult {
+  const isMomentumConfirmed =
+    indicators.macdSignalType === 'bullish_crossover' ||
+    indicators.macdSignalType === 'bullish' ||
+    indicators.rsiZone === 'overbought' ||
+    indicators.rsiZone === 'overbought_risk';
+
+  switch (bandar.phase) {
+    case 'accumulation':
+      return { number: 1, label: 'ACCUMULATION', tone: 'green' };
+    case 'markup':
+      return isMomentumConfirmed
+        ? { number: 3, label: 'MOMENTUM', tone: 'blue' }
+        : { number: 2, label: 'MARKUP', tone: 'green' };
+    case 'distribution':
+      return { number: 4, label: 'DISTRIBUTION', tone: 'orange' };
+    case 'markdown':
+      return { number: 5, label: 'MARKDOWN', tone: 'red' };
+    default:
+      return { number: null, label: 'BELUM JELAS', tone: 'amber' };
+  }
 }
