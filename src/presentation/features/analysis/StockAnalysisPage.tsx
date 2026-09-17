@@ -2518,6 +2518,8 @@ function EquityResearchReportCard2({
 
   const buildShareText = () => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
+    const faseBandarLabel = `${bandarScore.classification.label} (${bandarScore.phaseLabel})`;
+    const faseSiklusLabel = marketCyclePhase.number != null ? `Fase ${marketCyclePhase.number} — ${marketCyclePhase.label}` : marketCyclePhase.label;
     return [
       `🚨 [EQUITY RESEARCH REPORT] - $${summary.ticker} (Status: ${statusUtama.label})`,
       '',
@@ -2530,12 +2532,15 @@ function EquityResearchReportCard2({
       '',
       '📊 Analisis Alignment:',
       `1. Technical    : Tren ${trenLabel}, RSI ${fmtN(indicators.rsi14, 1)} (${rsiStatus.label}), MACD ${macdStatus.label}. Area kunci: Support ${nearestSupport ? fmtRp(nearestSupport.price) : '–'} | Resistance ${nearestResistance ? fmtRp(nearestResistance.price) : '–'}.`,
-      `2. Fundamental  : Valuasi ${valuation.label} (PER ${summary.per > 0 ? `${summary.per.toFixed(1)}x` : '–'} · PBV ${summary.pbv > 0 ? `${summary.pbv.toFixed(2)}x` : '–'}) · Skor Fundamental AI ${fundamentalScreening.score}/100${solvencyLabel ? `, ${solvencyLabel} (DER ${der != null ? `${der.toFixed(1)}%` : '–'})` : ''}.`,
-      `3. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title}` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title}` : ''}`,
+      `2. Fundamental  : Valuasi ${valuation.label} (PER ${summary.per > 0 ? `${summary.per.toFixed(1)}x` : '–'} · PBV ${summary.pbv > 0 ? `${summary.pbv.toFixed(2)}x` : '–'}) · Skor Fundamental AI ${fundamentalScreening.score}/100${solvencyLabel ? `, ${solvencyLabel} (DER ${der != null ? `${der.toFixed(1)}%` : '–'} · ROE ${summary.roe !== 0 ? `${summary.roe.toFixed(1)}%` : '–'})` : ''}.`,
+      `3. Bandar & Entry Timing: Fase Bandar ${faseBandarLabel} · Fase Siklus Pasar ${faseSiklusLabel} · Entry Timing ${entryTiming.label} — ${entryTiming.headline}${bandarScore.hiddenDistributionWarning ? ' ⚠️ Waspada hidden distribution (harga naik, OBV melemah).' : ''}`,
+      `4. Checklist Intraday: VWAP ${vwapLabel} · EMA9/EMA21 ${emaLabel} · RVOL ${fmtN(volume.relativeVolume, 2)}× (Volume ${volumeTrendLabel})`,
+      `5. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title}` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title}` : ''}`,
       '',
       '⚠️ Catatan Manajemen Risiko:',
       `- Skor AI: ${advisor.compositeScore}/100 — ${advisor.executiveSummary}`,
       '- Sesuaikan alokasi modal dengan profil risiko & disiplin cut loss di level Stop Loss.',
+      '- Checklist Swing dihitung dari data EOD; VWAP/EMA9-21 intraday adalah kuotasi tertunda (bukan real-time) — konfirmasi manual di chart sebelum entry presisi.',
       '',
       '⚠️ Disclaimer:',
       'Analisis ini bertujuan untuk memberikan gambaran teknikal dan fundamental dasar. Keputusan investasi dan manajemen risiko sepenuhnya menjadi tanggung jawab masing-masing investor.',
