@@ -2591,6 +2591,29 @@ function EquityResearchReportCard2({
   const entryPrice = roundToTick(scenario.entry);
   const entryZoneLow = isLong && nearestSupport ? roundToTick(nearestSupport.price) : entryPrice;
   const entryZoneHigh = entryPrice;
+
+  // Single source of truth for the "why" behind Trade Status — shown in the section 6 banner AND
+  // reused verbatim in buildShareText, so the copied report can never drift from what's on screen
+  // (it did, once, after setupInvalidated/chasingRisk were added only to the on-screen banner).
+  const statusNote = hasSetupErrors
+    ? 'Data Entry/SL/TP tidak konsisten — tidak dipublikasikan.'
+    : setupInvalidated
+      ? (isLong
+          ? 'Harga sudah menembus Stop Loss — setup ini sudah tidak valid.'
+          : 'Harga sudah menembus level invalidasi SHORT — setup ini sudah tidak valid.')
+      : tradeStatus === 'NO_TRADE'
+        ? isLong
+          ? 'BUY diblokir oleh Risk Gate — lihat alasan di Ringkasan Instan.'
+          : 'Risiko ekstrem terdeteksi (lihat alasan di Ringkasan Instan) — hindari transaksi apa pun untuk saat ini, termasuk short, sampai ada konfirmasi reversal.'
+        : tradeStatus === 'WAIT'
+          ? isLong
+            ? chasingRisk
+              ? `Harga (${fmtRp(price)}) sudah jauh di atas entry zone dan RSI ${fmtN(indicators.rsi14, 1)} overbought — risiko mengejar (chasing) tinggi, tunggu pullback ke ${fmtRp(entryPrice)} atau di bawahnya.`
+              : `Harga (${fmtRp(price)}) masih di atas entry zone (≤ ${fmtRp(entryPrice)}) — tunggu pullback.`
+            : `Bearish setup sedang dipantau, bukan menunggu BUY — harga (${fmtRp(price)}) belum rebound ke rejection trigger ${fmtRp(entryPrice)}.`
+          : isLong
+            ? 'Setup memenuhi syarat minimum Risk Gate untuk BUY.'
+            : 'Setup SHORT aktif — tetap tunggu konfirmasi rejection sebelum eksekusi.';
   const slPrice = roundToTick(scenario.sl);
   const tp1Price = roundToTick(scenario.tp1);
   const tp2Price = roundToTick(scenario.tp2);
@@ -2615,30 +2638,43 @@ function EquityResearchReportCard2({
     const faseBandarLabel = `${bandarScore.classification.label} (${bandarScore.phaseLabel})`;
     const faseSiklusLabel = marketCyclePhase.number != null ? `Fase ${marketCyclePhase.number} — ${marketCyclePhase.label}` : marketCyclePhase.label;
 
-    const entryLines = hasSetupErrors
-      ? [
-          '🔴 SETUP TIDAK VALID — data Entry/SL/TP tidak konsisten dengan direction, angka tidak ditampilkan.',
-          `Kode: ${scenario.validationErrors.join(', ')}`,
-        ]
-      : isLong
-        ? [
-            `🔹 Entry Zone    : ${fmtRp(entryZoneLow)} - ${fmtRp(entryZoneHigh)}`,
-            `🔹 Target Price 1: ${fmtRp(tp1Price)} (${rewardLabel}: +${fmtN(rewardPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp1Price), 1)}%)`,
-            `🔹 Target Price 2: ${fmtRp(tp2Price)} (${rewardLabel}: +${fmtN(rewardPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp2Price), 1)}%)`,
-            `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> ${scenario.invalidationRule}`,
-          ]
-        : [
-            `🔹 Rejection Zone (bukan entry sekarang): ${fmtRp(entryPrice)}`,
-            `🔹 Entry Trigger : Short HANYA jika harga rebound/retest ke ${fmtRp(entryPrice)} dan gagal breakout (bearish rejection terkonfirmasi).`,
-            `🔹 Target Price 1: ${fmtRp(tp1Price)} (${rewardLabel}: +${fmtN(rewardPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp1Price), 1)}%)`,
-            `🔹 Target Price 2: ${fmtRp(tp2Price)} (${rewardLabel}: +${fmtN(rewardPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp2Price), 1)}%)`,
-            `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> ${scenario.invalidationRule}`,
-          ];
-    if (!hasSetupErrors && scenario.extremeDistanceWarning) {
-      entryLines.push(`⚠️ Entry berjarak ${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini — bukan entry segera, tunggu retest/rebound.`);
-    }
-    if (!hasSetupErrors && scenario.extremeRRWarning) {
-      entryLines.push(`⚠️ R:R ekstrem (1:${fmtN(scenario.riskRewardRatio, 2)}) — kemungkinan tidak actionable secara praktis, jangan anggap otomatis sebagai setup bagus.`);
+    const entryLines: string[] = [];
+    if (hasSetupErrors) {
+      entryLines.push(
+        '🔴 SETUP TIDAK VALID — data Entry/SL/TP tidak konsisten dengan direction, angka tidak ditampilkan.',
+        `Kode: ${scenario.validationErrors.map((code) => VALIDATION_ERROR_LABEL[code] ?? code).join('; ')}`
+      );
+    } else {
+      if (setupInvalidated) {
+        entryLines.push(`🔴 ${statusNote}`);
+      }
+      if (isLong) {
+        entryLines.push(
+          `🔹 Entry Zone    : ${fmtRp(entryZoneLow)} - ${fmtRp(entryZoneHigh)}`,
+          `🔹 Target Price 1: ${fmtRp(tp1Price)} (${rewardLabel}: +${fmtN(rewardPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp1Price), 1)}%)`,
+          `🔹 Target Price 2: ${fmtRp(tp2Price)} (${rewardLabel}: +${fmtN(rewardPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp2Price), 1)}%)`,
+          `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> ${scenario.invalidationRule}`
+        );
+      } else {
+        entryLines.push(
+          `🔹 Rejection Zone (bukan entry sekarang): ${fmtRp(entryPrice)}`,
+          `🔹 Entry Trigger : Short HANYA jika harga rebound/retest ke ${fmtRp(entryPrice)} dan gagal breakout (bearish rejection terkonfirmasi).`,
+          `🔹 Target Price 1: ${fmtRp(tp1Price)} (${rewardLabel}: +${fmtN(rewardPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp1Price), 1)}%)`,
+          `🔹 Target Price 2: ${fmtRp(tp2Price)} (${rewardLabel}: +${fmtN(rewardPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp2Price), 1)}%)`,
+          `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> ${scenario.invalidationRule}`
+        );
+      }
+      if (!setupInvalidated && tradeStatus === 'NO_TRADE') {
+        entryLines.push(`🔴 ${statusNote}`);
+      } else if (tradeStatus === 'WAIT') {
+        entryLines.push(`⏳ ${statusNote}`);
+      }
+      if (scenario.extremeDistanceWarning) {
+        entryLines.push(`⚠️ Entry berjarak ${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini — bukan entry segera, tunggu retest/rebound.`);
+      }
+      if (scenario.extremeRRWarning) {
+        entryLines.push(`⚠️ R:R ekstrem (1:${fmtN(scenario.riskRewardRatio, 2)}) — kemungkinan tidak actionable secara praktis, jangan anggap otomatis sebagai setup bagus.`);
+      }
     }
 
     return [
@@ -2894,27 +2930,7 @@ function EquityResearchReportCard2({
                   'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5'
           )}>
             <Pill tone={tradeStatusStyle.tone}>{tradeStatusLabel}</Pill>
-            <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
-              {hasSetupErrors
-                ? 'Data Entry/SL/TP tidak konsisten — tidak dipublikasikan.'
-                : setupInvalidated
-                  ? (isLong
-                      ? 'Harga sudah menembus Stop Loss — setup ini sudah tidak valid.'
-                      : 'Harga sudah menembus level invalidasi SHORT — setup ini sudah tidak valid.')
-                  : tradeStatus === 'NO_TRADE'
-                    ? isLong
-                      ? 'BUY diblokir oleh Risk Gate — lihat alasan di Ringkasan Instan.'
-                      : 'Risiko ekstrem terdeteksi (lihat alasan di Ringkasan Instan) — hindari transaksi apa pun untuk saat ini, termasuk short, sampai ada konfirmasi reversal.'
-                    : tradeStatus === 'WAIT'
-                      ? isLong
-                        ? chasingRisk
-                          ? `Harga (${fmtRp(price)}) sudah jauh di atas entry zone dan RSI ${fmtN(indicators.rsi14, 1)} overbought — risiko mengejar (chasing) tinggi, tunggu pullback ke ${fmtRp(entryPrice)} atau di bawahnya.`
-                          : `Harga (${fmtRp(price)}) masih di atas entry zone (≤ ${fmtRp(entryPrice)}) — tunggu pullback.`
-                        : `Bearish setup sedang dipantau, bukan menunggu BUY — harga (${fmtRp(price)}) belum rebound ke rejection trigger ${fmtRp(entryPrice)}.`
-                      : isLong
-                        ? 'Setup memenuhi syarat minimum Risk Gate untuk BUY.'
-                        : 'Setup SHORT aktif — tetap tunggu konfirmasi rejection sebelum eksekusi.'}
-            </span>
+            <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">{statusNote}</span>
           </div>
           {hasSetupErrors ? (
             <ul className="space-y-1">
