@@ -91,3 +91,28 @@ export function invalidationRuleText(direction: Direction, sl: number): string {
     ? `Cut loss jika Close < Rp${sl.toLocaleString('id-ID')}`
     : `Exit/Cut loss jika Close > Rp${sl.toLocaleString('id-ID')}`;
 }
+
+/**
+ * Whether the current price is actually on the actionable side of this scenario's entry trigger —
+ * not just "close enough" by percentage. A LONG buy-on-support/pullback plan is only actionable
+ * once price has come down to (or below) the entry level; a SHORT rejection plan is only watched
+ * once price has rebounded up to the trigger level.
+ *
+ * This replaces gating on `entryDistancePct > threshold` alone (features_riskgate.md's MMLP/AYLS
+ * cases): AYLS sat ~9% above its 178–180 entry zone and MMLP ~1% above its 302–318 zone — both
+ * under a 15% "extreme distance" threshold, so both were being labeled BUY even though price
+ * hadn't pulled back into the zone yet. A small percentage gap on the wrong side of the trigger is
+ * still "not there yet," not "close enough."
+ */
+export function isPriceAtEntryTrigger(direction: Direction, currentPrice: number, entry: number): boolean {
+  return direction === 'LONG' ? currentPrice <= entry : currentPrice >= entry;
+}
+
+/**
+ * Whether price has already crossed this scenario's own invalidation line (the same condition
+ * `invalidationRuleText` describes) — i.e. the setup is broken, not merely "not triggered yet."
+ * This must never be presented as BUY/SHORT_SETUP *or* as a plain WAIT — it's NO_TRADE.
+ */
+export function isSetupInvalidated(direction: Direction, currentPrice: number, sl: number): boolean {
+  return direction === 'LONG' ? currentPrice < sl : currentPrice > sl;
+}

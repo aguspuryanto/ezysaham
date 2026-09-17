@@ -9,8 +9,9 @@
  *   2. Block BUY outright when several bearish confirmations stack up
  *      (bearish trend + very weak fundamentals + strong distribution +
  *      deep oversold + price under EMA50/EMA200).
- *   3. Never present an entry that's far from the current price as an
- *      immediately-actionable BUY/SHORT — force WAIT instead.
+ *   3. Never present a scenario as an immediately-actionable BUY/SHORT_SETUP unless price is
+ *      actually on the correct side of its entry trigger — force WAIT instead. A setup that has
+ *      already crossed its own invalidation line is NO_TRADE, not WAIT.
  *
  * It does not compute Entry/SL/TP itself (that stays deterministic in
  * stockAnalysisEngine.ts / tradeValidation.ts) and it does not replace the
@@ -18,7 +19,7 @@
  */
 
 import { Trend } from '@/domain/models/StockAnalysis';
-import { Direction, ENTRY_DISTANCE_WARNING_PCT } from '@/domain/analysis/tradeValidation';
+import { Direction } from '@/domain/analysis/tradeValidation';
 
 export type TradeStatus = 'BUY' | 'SHORT_SETUP' | 'WAIT' | 'NO_TRADE';
 
@@ -30,7 +31,10 @@ export interface RiskGateInput {
   isStrongDistribution: boolean;
   priceBelowEma50: boolean;
   priceBelowEma200: boolean;
-  entryDistancePct: number;
+  /** From tradeValidation.isPriceAtEntryTrigger — price is on the actionable side of the trigger. */
+  priceAtEntryTrigger: boolean;
+  /** From tradeValidation.isSetupInvalidated — price already crossed the scenario's own SL/invalidation line. */
+  setupInvalidated: boolean;
 }
 
 export interface RiskGateResult {
@@ -60,16 +64,40 @@ export function evaluateRiskGate(input: RiskGateInput): RiskGateResult {
   // the rest of the report, since the blockers are properties of the market, not of the scenario
   // being rendered.
   const buyBlocked = reasons.length >= BUY_BLOCK_THRESHOLD;
-  const mustWaitForEntry = input.entryDistancePct > ENTRY_DISTANCE_WARNING_PCT;
 
+  if (input.setupInvalidated) {
+    reasons.push(
+      input.direction === 'LONG'
+        ? 'Harga sudah menembus Stop Loss — setup ini sudah tidak valid.'
+        : 'Harga sudah menembus level invalidasi SHORT — setup ini sudah tidak valid.'
+    );
+  }
+
+  // Being a small % away from the trigger while still on the wrong side of it is still "not
+  // there yet" — Setup/Signal (entryType) and Permission (buyAllowed) can both be favorable while
+  // Action still has to be WAIT, because Entry Condition (price actually at the trigger) hasn't
+  // fired. Mixing that into a single percentage threshold is what let AYLS/MMLP show "BUY" while
+  // price was still sitting above their pullback zones (features_riskgate.md).
+  const mustWaitForEntry = !input.priceAtEntryTrigger;
+
+  // Once hard blockers stack up (bearish trend + falling-knife RSI + fundamental distress +
+  // strong distribution), the headline Action must read NO_TRADE regardless of direction — not
+  // just "BUY blocked." Those conditions describe a genuinely unpredictable/capitulation-risk
+  // stock (a falling knife can snap back violently), which argues against taking ANY new position,
+  // not only against buying it. features_riskgate.md's own target list makes this explicit: UDNG
+  // (bearish + blockers stacked) is headlined NO TRADE, not "SHORT SETUP WATCH" — the SHORT
+  // rejection level is still worth watching (see `notes`/`invalidationRule` on the scenario), but
+  // it is not this gate's headline verdict while the stock is this dangerous.
   let tradeStatus: TradeStatus;
-  if (input.direction === 'LONG') {
-    tradeStatus = buyBlocked ? 'NO_TRADE' : mustWaitForEntry ? 'WAIT' : 'BUY';
+  if (input.setupInvalidated || buyBlocked) {
+    tradeStatus = 'NO_TRADE';
+  } else if (input.direction === 'LONG') {
+    tradeStatus = mustWaitForEntry ? 'WAIT' : 'BUY';
   } else {
     tradeStatus = mustWaitForEntry ? 'WAIT' : 'SHORT_SETUP';
   }
 
-  return { buyAllowed: !buyBlocked, tradeStatus, reasons };
+  return { buyAllowed: !buyBlocked && !input.setupInvalidated, tradeStatus, reasons };
 }
 
 // ─── Oversold ≠ BUY classification (section 7) ──────────────────────────────

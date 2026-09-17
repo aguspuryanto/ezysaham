@@ -58,6 +58,7 @@ import {
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
 import { classifyOversoldRisk, evaluateRiskGate, TradeStatus } from '@/domain/analysis/riskGate';
+import { isPriceAtEntryTrigger, isSetupInvalidated } from '@/domain/analysis/tradeValidation';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { IntradayResponse } from '@/domain/models/Intraday';
@@ -2525,8 +2526,16 @@ function EquityResearchReportCard2({
   // features_inkonsistensi.md. It never recomputes Entry/SL/TP (that stays deterministic above);
   // it only decides whether the resulting scenario may be presented as BUY/SHORT_SETUP right now,
   // or must be downgraded to WAIT/NO_TRADE (bearish trend + weak fundamentals + strong distribution
-  // + deep oversold + price under EMA50/200 stacking up, or entry sitting far from current price).
+  // + deep oversold + price under EMA50/200 stacking up, or price not actually at the entry trigger
+  // yet — see priceAtEntryTrigger below).
   const isStrongDistribution = bandarScore.classification.label === 'Strong Distribution';
+  // Entry Condition: is `price` actually on the actionable side of this scenario's trigger, and has
+  // it not already blown through the invalidation line? A small % gap on the wrong side of the
+  // trigger (AYLS ~9% above its buy-on-support zone, MMLP ~1% above its pullback zone) is still
+  // "not there yet" — gating on raw distance-% alone let both show BUY before price actually pulled
+  // back (features_riskgate.md).
+  const priceAtEntryTrigger = isPriceAtEntryTrigger(scenario.direction, price, scenario.entry);
+  const setupInvalidated = isSetupInvalidated(scenario.direction, price, scenario.sl);
   const riskGate = evaluateRiskGate({
     direction: scenario.direction,
     trend: trendEma.trend,
@@ -2535,7 +2544,8 @@ function EquityResearchReportCard2({
     isStrongDistribution,
     priceBelowEma50: !aboveMa50,
     priceBelowEma200: !aboveMa200,
-    entryDistancePct: scenario.entryDistancePct,
+    priceAtEntryTrigger,
+    setupInvalidated,
   });
   // "NO VALIDATION = NO SIGNAL": if the engine's own math validation failed (SL/TP ordering vs
   // direction), this must never be presented as an actionable BUY/SHORT regardless of what the
@@ -2547,10 +2557,15 @@ function EquityResearchReportCard2({
   // "WAIT tidak berarti BUY diizinkan") — WAIT on a SHORT scenario means a bearish setup is being
   // watched, not that a BUY is pending approval.
   const buyAllowed = !hasSetupErrors && riskGate.buyAllowed;
-  // A SHORT scenario sitting in WAIT is watching a bearish setup, not waiting on a BUY — spell that
-  // out so it can't be misread as "waiting to buy" (features_riskgate.md §3).
+  // "Chasing Risk" (features_riskgate.md's AYLS case): price already extended past the entry zone
+  // while RSI is overbought — the setup is technically bullish but entering here means paying up
+  // for an already-extended move, not the pullback the strategy is named for.
+  const chasingRisk = isLong && !priceAtEntryTrigger && indicators.rsi14 >= 70;
+  // A WAIT scenario is watching a setup, not waiting on a BUY — spell out which one so it can't be
+  // misread as "waiting to buy" (features_riskgate.md §3, §AYLS/§MMLP).
   const tradeStatusLabel =
-    tradeStatus === 'WAIT' && !isLong ? 'WAIT — SHORT SETUP WATCH' : tradeStatusStyle.label;
+    tradeStatus !== 'WAIT' ? tradeStatusStyle.label :
+      isLong ? `WAIT — ${chasingRisk ? 'CHASING RISK, TUNGGU PULLBACK' : 'TUNGGU PULLBACK'}` : 'WAIT — SHORT SETUP WATCH';
 
   // "Oversold ≠ BUY" (features_inkonsistensi.md §7): RSI < 30 is a condition, never an automatic
   // reversal signal on its own. breakoutConfirmedWithVolume proxies "breakout + volume" off the
@@ -2882,15 +2897,23 @@ function EquityResearchReportCard2({
             <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
               {hasSetupErrors
                 ? 'Data Entry/SL/TP tidak konsisten — tidak dipublikasikan.'
-                : tradeStatus === 'NO_TRADE'
-                  ? 'BUY diblokir oleh Risk Gate — lihat alasan di Ringkasan Instan.'
-                  : tradeStatus === 'WAIT'
+                : setupInvalidated
+                  ? (isLong
+                      ? 'Harga sudah menembus Stop Loss — setup ini sudah tidak valid.'
+                      : 'Harga sudah menembus level invalidasi SHORT — setup ini sudah tidak valid.')
+                  : tradeStatus === 'NO_TRADE'
                     ? isLong
-                      ? `Entry belum aktif (${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini) — tunggu retest/rebound.`
-                      : `Bearish setup sedang dipantau, bukan menunggu BUY — entry short belum aktif (${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini).`
-                    : isLong
-                      ? 'Setup memenuhi syarat minimum Risk Gate untuk BUY.'
-                      : 'Setup SHORT aktif — tetap tunggu konfirmasi rejection sebelum eksekusi.'}
+                      ? 'BUY diblokir oleh Risk Gate — lihat alasan di Ringkasan Instan.'
+                      : 'Risiko ekstrem terdeteksi (lihat alasan di Ringkasan Instan) — hindari transaksi apa pun untuk saat ini, termasuk short, sampai ada konfirmasi reversal.'
+                    : tradeStatus === 'WAIT'
+                      ? isLong
+                        ? chasingRisk
+                          ? `Harga (${fmtRp(price)}) sudah jauh di atas entry zone dan RSI ${fmtN(indicators.rsi14, 1)} overbought — risiko mengejar (chasing) tinggi, tunggu pullback ke ${fmtRp(entryPrice)} atau di bawahnya.`
+                          : `Harga (${fmtRp(price)}) masih di atas entry zone (≤ ${fmtRp(entryPrice)}) — tunggu pullback.`
+                        : `Bearish setup sedang dipantau, bukan menunggu BUY — harga (${fmtRp(price)}) belum rebound ke rejection trigger ${fmtRp(entryPrice)}.`
+                      : isLong
+                        ? 'Setup memenuhi syarat minimum Risk Gate untuk BUY.'
+                        : 'Setup SHORT aktif — tetap tunggu konfirmasi rejection sebelum eksekusi.'}
             </span>
           </div>
           {hasSetupErrors ? (
