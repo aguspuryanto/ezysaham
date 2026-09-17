@@ -52,7 +52,14 @@ export function evaluateRiskGate(input: RiskGateInput): RiskGateResult {
   if (input.priceBelowEma50) reasons.push('Harga di bawah EMA50');
   if (input.priceBelowEma200) reasons.push('Harga di bawah EMA200');
 
-  const buyBlocked = input.direction === 'LONG' && reasons.length >= BUY_BLOCK_THRESHOLD;
+  // `buyAllowed` answers "would BUY be permitted right now given market conditions" — a
+  // market-level judgment that must hold regardless of which scenario direction happens to be
+  // displayed. The previous `input.direction === 'LONG' &&` guard made this trivially TRUE
+  // whenever a SHORT scenario was shown, so a BEARISH + Falling-Knife + Strong-Distribution report
+  // could still read "Risk Gate: BUY DIIZINKAN" (features_riskgate.md) — a direct contradiction of
+  // the rest of the report, since the blockers are properties of the market, not of the scenario
+  // being rendered.
+  const buyBlocked = reasons.length >= BUY_BLOCK_THRESHOLD;
   const mustWaitForEntry = input.entryDistancePct > ENTRY_DISTANCE_WARNING_PCT;
 
   let tradeStatus: TradeStatus;

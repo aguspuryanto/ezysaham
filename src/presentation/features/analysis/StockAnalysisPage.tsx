@@ -2543,6 +2543,14 @@ function EquityResearchReportCard2({
   const hasSetupErrors = scenario.validationErrors.length > 0;
   const tradeStatus: TradeStatus = hasSetupErrors ? 'NO_TRADE' : riskGate.tradeStatus;
   const tradeStatusStyle = TRADE_STATUS_STYLE[tradeStatus];
+  // Buy Allowed is shown as its own field, separate from Trade Status (features_riskgate.md §2:
+  // "WAIT tidak berarti BUY diizinkan") — WAIT on a SHORT scenario means a bearish setup is being
+  // watched, not that a BUY is pending approval.
+  const buyAllowed = !hasSetupErrors && riskGate.buyAllowed;
+  // A SHORT scenario sitting in WAIT is watching a bearish setup, not waiting on a BUY — spell that
+  // out so it can't be misread as "waiting to buy" (features_riskgate.md §3).
+  const tradeStatusLabel =
+    tradeStatus === 'WAIT' && !isLong ? 'WAIT — SHORT SETUP WATCH' : tradeStatusStyle.label;
 
   // "Oversold ≠ BUY" (features_inkonsistensi.md §7): RSI < 30 is a condition, never an automatic
   // reversal signal on its own. breakoutConfirmedWithVolume proxies "breakout + volume" off the
@@ -2620,7 +2628,7 @@ function EquityResearchReportCard2({
 
     return [
       `🚨 [EQUITY RESEARCH REPORT] - $${summary.ticker}`,
-      `Market Status: ${marketStatus.label} | Trade Status: ${tradeStatusStyle.label}`,
+      `Market Status: ${marketStatus.label} | Trade Status: ${tradeStatusLabel} | Buy Allowed: ${buyAllowed ? 'TRUE' : 'FALSE'}`,
       '',
       `📌 Strategi: ${strategiLabel} (Gaya: ${gayaLabel})`,
       '--------------------------------------------------',
@@ -2633,7 +2641,7 @@ function EquityResearchReportCard2({
       `4. Checklist Intraday: VWAP ${vwapLabel} · EMA9/EMA21 ${emaLabel} · RVOL ${fmtN(volume.relativeVolume, 2)}× (Volume ${volumeTrendLabel})`,
       `5. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title}` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title}` : ''}`,
       '',
-      `🚦 Risk Gate: BUY ${riskGate.buyAllowed ? 'DIIZINKAN' : 'DIBLOKIR'}${riskGate.reasons.length > 0 ? ` — ${riskGate.reasons.join('; ')}.` : '.'}`,
+      `🚦 Risk Gate: BUY ${buyAllowed ? 'DIIZINKAN' : 'DIBLOKIR'}${riskGate.reasons.length > 0 ? ` — ${riskGate.reasons.join('; ')}.` : '.'}`,
       '',
       '⚠️ Catatan Manajemen Risiko:',
       `- Skor AI: ${advisor.compositeScore}/100 — ${advisor.executiveSummary}`,
@@ -2668,9 +2676,18 @@ function EquityResearchReportCard2({
             </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Transaksi:</span>
-              <Pill tone={tradeStatusStyle.tone}>{tradeStatusStyle.label}</Pill>
+              <Pill tone={tradeStatusStyle.tone}>{tradeStatusLabel}</Pill>
               {hasSetupErrors && (
                 <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">Setup tidak konsisten — angka Entry/SL/TP tidak ditampilkan.</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Buy Allowed:</span>
+              <Pill tone={buyAllowed ? 'green' : 'red'}>{buyAllowed ? 'TRUE' : 'FALSE'}</Pill>
+              {!buyAllowed && (
+                <span className="text-xs text-zinc-400">
+                  {isLong ? 'BUY diblokir oleh Risk Gate.' : 'BUY diblokir — laporan ini adalah setup SHORT, bukan ajakan beli.'}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-2 text-sm">
@@ -2861,14 +2878,16 @@ function EquityResearchReportCard2({
                 tradeStatusStyle.tone === 'blue' ? 'border-blue-200 bg-blue-50 dark:border-blue-400/20 dark:bg-blue-400/5' :
                   'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5'
           )}>
-            <Pill tone={tradeStatusStyle.tone}>{tradeStatusStyle.label}</Pill>
+            <Pill tone={tradeStatusStyle.tone}>{tradeStatusLabel}</Pill>
             <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
               {hasSetupErrors
                 ? 'Data Entry/SL/TP tidak konsisten — tidak dipublikasikan.'
                 : tradeStatus === 'NO_TRADE'
                   ? 'BUY diblokir oleh Risk Gate — lihat alasan di Ringkasan Instan.'
                   : tradeStatus === 'WAIT'
-                    ? `Entry belum aktif (${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini) — tunggu retest/rebound.`
+                    ? isLong
+                      ? `Entry belum aktif (${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini) — tunggu retest/rebound.`
+                      : `Bearish setup sedang dipantau, bukan menunggu BUY — entry short belum aktif (${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini).`
                     : isLong
                       ? 'Setup memenuhi syarat minimum Risk Gate untuk BUY.'
                       : 'Setup SHORT aktif — tetap tunggu konfirmasi rejection sebelum eksekusi.'}
