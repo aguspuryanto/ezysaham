@@ -15,6 +15,7 @@
 
 import { TradingPlanAnalysis, TradeScenario } from '@/domain/models/StockAnalysis';
 import { TradingStylePrefs } from '@/presentation/features/analysis/useTradingStyle';
+import { computeRiskReward, invalidationRuleText, validateTradeScenario } from '@/domain/analysis/tradeValidation';
 
 export interface AdjustedTradeScenario extends TradeScenario {
   slAdjusted: boolean;   // true jika SL di-override karena melebihi batas CL
@@ -102,25 +103,25 @@ function adjustScenario(
     }
   }
 
-  // Hitung ulang Risk/Reward
-  let riskRewardRatio: number;
-  if (isBullish) {
-    const risk = Math.max(entry - newSl, 1);
-    const reward = newTp1 - entry;
-    riskRewardRatio = Math.round((reward / risk) * 10) / 10;
-  } else {
-    const risk = Math.max(newSl - entry, 1);
-    const reward = entry - newTp1;
-    riskRewardRatio = Math.round((reward / risk) * 10) / 10;
-  }
+  // Hitung ulang Risk/Reward — entry tidak berubah, jadi entryDistancePct ikut scenario asli.
+  const risk = computeRiskReward(scenario.direction, entry, newSl, newTp1);
 
   return {
+    direction: scenario.direction,
+    entryType: scenario.entryType,
     entry,
     avgDown,
     tp1: newTp1,
     tp2: newTp2,
     sl: newSl,
-    riskRewardRatio,
+    riskRewardRatio: risk.riskRewardRatio,
+    riskPct: risk.riskPct,
+    rewardPct: risk.rewardPct,
+    entryDistancePct: scenario.entryDistancePct,
+    extremeDistanceWarning: scenario.extremeDistanceWarning,
+    extremeRRWarning: risk.extremeRRWarning,
+    invalidationRule: invalidationRuleText(scenario.direction, newSl),
+    validationErrors: validateTradeScenario(scenario.direction, entry, newSl, newTp1, newTp2),
     notes,
     slAdjusted,
     tp1Adjusted,

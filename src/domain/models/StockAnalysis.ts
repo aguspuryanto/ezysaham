@@ -82,14 +82,40 @@ export interface IndicatorAnalysis {
 }
 
 // ── 6. Rencana Trading ────────────────────────────────────────────────────────
+/** LONG = buy setup, SHORT = sell/short-on-rejection setup. Explicit so downstream code never has to guess direction from which scenario key it read. */
+export type TradeDirection = 'LONG' | 'SHORT';
+
+export type EntryType =
+  | 'BUY_ON_SUPPORT'
+  | 'BUY_ON_PULLBACK'
+  | 'BUY_ON_BREAKOUT'
+  | 'SHORT_ON_REJECTION'
+  | 'SHORT_ON_BREAKDOWN'
+  | 'WAIT_CONFIRMATION'
+  | 'NO_TRADE';
+
 export interface TradeScenario {
+  direction: TradeDirection;
+  entryType: EntryType;
   entry: number;
-  /** Area harga untuk menambah posisi (average down) jika entry awal belum konfirmasi — hanya diisi untuk skenario bullish. */
+  /** Area harga untuk menambah posisi (average down) jika entry awal belum konfirmasi — hanya diisi untuk skenario LONG. */
   avgDown?: number;
   tp1: number;
   tp2: number;
   sl: number;
   riskRewardRatio: number;
+  /** % of entry risked to Stop Loss. */
+  riskPct: number;
+  /** % gained at TP1 — "Gain" for LONG, "Potential Short Profit" for SHORT; never label a SHORT reward as "Gain". */
+  rewardPct: number;
+  /** How far this entry sits from the current price — large values mean it isn't an immediate/actionable entry. */
+  entryDistancePct: number;
+  extremeDistanceWarning: boolean;
+  extremeRRWarning: boolean;
+  /** e.g. "Cut loss jika Close < RpX" (LONG) / "Exit/Cut loss jika Close > RpX" (SHORT) — direction-correct, never inverted. */
+  invalidationRule: string;
+  /** Hard math validation (SL/TP ordering vs direction). Non-empty means this scenario must not be published as-is. */
+  validationErrors: string[];
   notes: string;
 }
 

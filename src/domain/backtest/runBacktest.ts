@@ -82,12 +82,18 @@ function backtestTicker(
     const entry = scenario.entry;
     const tp1 = scenario.tp1;
     const sl = scenario.sl;
+    // LONG: TP hit when price rises to tp1, SL hit when price falls to sl.
+    // SHORT: mirrored — TP hit when price falls to tp1, SL hit when price rises to sl.
+    const isLong = scenario.direction === 'LONG';
+    const gainLossPct = (exitPrice: number) => ((isLong ? exitPrice - entry : entry - exitPrice) / entry) * 100;
 
     let resolved: BacktestSignal | null = null;
     const horizonEnd = Math.min(i + holdingDays, bars.length - 1);
     for (let j = i + 1; j <= horizonEnd; j++) {
       const close = bars[j].close;
-      if (close >= tp1) {
+      const tpHit = isLong ? close >= tp1 : close <= tp1;
+      const slHit = isLong ? close <= sl : close >= sl;
+      if (tpHit) {
         resolved = {
           ticker,
           presetId,
@@ -101,12 +107,12 @@ function backtestTicker(
           status: 'tp_hit',
           resolvedDate: bars[j].date,
           exitPrice: tp1,
-          gainLossPct: ((tp1 - entry) / entry) * 100,
+          gainLossPct: gainLossPct(tp1),
           daysHeld: j - i,
         };
         break;
       }
-      if (close <= sl) {
+      if (slHit) {
         resolved = {
           ticker,
           presetId,
@@ -120,7 +126,7 @@ function backtestTicker(
           status: 'sl_hit',
           resolvedDate: bars[j].date,
           exitPrice: sl,
-          gainLossPct: ((sl - entry) / entry) * 100,
+          gainLossPct: gainLossPct(sl),
           daysHeld: j - i,
         };
         break;
@@ -142,7 +148,7 @@ function backtestTicker(
         status: 'timeout',
         resolvedDate: lastBar.date,
         exitPrice: lastBar.close,
-        gainLossPct: ((lastBar.close - entry) / entry) * 100,
+        gainLossPct: gainLossPct(lastBar.close),
         daysHeld: horizonEnd - i,
       };
     }

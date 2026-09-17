@@ -27,6 +27,7 @@ import { ema, lastValid, sma } from '@/domain/indicators/movingAverages';
 import { macd } from '@/domain/indicators/macd';
 import { rsi } from '@/domain/indicators/rsi';
 import { formatCompact } from '@/lib/format';
+import { computeEntryDistancePct, computeRiskReward, ENTRY_DISTANCE_WARNING_PCT, invalidationRuleText, validateTradeScenario } from '@/domain/analysis/tradeValidation';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function closes(bars: OHLCVBar[]): number[] {
@@ -403,28 +404,51 @@ function buildTradingPlan(
   // the position if price dips before invalidating the setup, tightening cost basis.
   const bullAvgDown = round2((bullEntry + bullSl) / 2);
 
-  // Bearish scenario
+  // Bearish scenario — this is a SHORT/rejection setup, never a BUY entry. The
+  // nearest resistance (r1) is used as the trigger level, not as a price to buy at.
   const bearEntry = round2(r1 * 1.001);
   const bearSl = round2(r1 * 1.015);
   const bearTp1 = round2(price * 0.99);
   const bearTp2 = s1;
-  const bearRR = round2((bearEntry - bearTp1) / Math.max(bearSl - bearEntry, 1));
+
+  const bullRisk = computeRiskReward('LONG', bullEntry, bullSl, bullTp1);
+  const bearRisk = computeRiskReward('SHORT', bearEntry, bearSl, bearTp1);
+  const bullEntryDistancePct = computeEntryDistancePct(bullEntry, price);
+  const bearEntryDistancePct = computeEntryDistancePct(bearEntry, price);
 
   const recommendedBias: 'bullish' | 'bearish' | 'neutral' =
     trend === 'bullish' ? 'bullish' : trend === 'bearish' ? 'bearish' : 'neutral';
 
   return {
     bullish: {
+      direction: 'LONG',
+      entryType: needsPullback ? 'BUY_ON_SUPPORT' : 'BUY_ON_PULLBACK',
       entry: bullEntry, avgDown: bullAvgDown, tp1: bullTp1, tp2: bullTp2, sl: bullSl,
-      riskRewardRatio: bullRR,
+      riskRewardRatio: bullRisk.riskRewardRatio,
+      riskPct: bullRisk.riskPct,
+      rewardPct: bullRisk.rewardPct,
+      entryDistancePct: bullEntryDistancePct,
+      extremeDistanceWarning: bullEntryDistancePct > ENTRY_DISTANCE_WARNING_PCT,
+      extremeRRWarning: bullRisk.extremeRRWarning,
+      invalidationRule: invalidationRuleText('LONG', bullSl),
+      validationErrors: validateTradeScenario('LONG', bullEntry, bullSl, bullTp1, bullTp2),
       notes: needsPullback
         ? `Jangan mengejar harga sekarang — entry di harga saat ini memberi risk/reward buruk (≈1:${chaseRR.toFixed(2)})${indicators.rsi14 >= 75 ? ` dan RSI ${indicators.rsi14.toFixed(1)} sudah overbought` : ''}. Tunggu pullback sehat ke area Rp${bullEntry.toLocaleString('id-ID')} (dekat support) dengan konfirmasi RSI turun & volume jual mengecil sebelum entry.`
         : `Entry buy saat pullback ke area ${bullEntry.toLocaleString('id-ID')} – ${round2(price * 1.002).toLocaleString('id-ID')}. Konfirmasi: volume > MA20.`,
     },
     bearish: {
+      direction: 'SHORT',
+      entryType: 'SHORT_ON_REJECTION',
       entry: bearEntry, tp1: bearTp1, tp2: bearTp2, sl: bearSl,
-      riskRewardRatio: bearRR,
-      notes: `Jika gagal break resistance ${r1.toLocaleString('id-ID')}, entry sell/short di ${bearEntry.toLocaleString('id-ID')}.`,
+      riskRewardRatio: bearRisk.riskRewardRatio,
+      riskPct: bearRisk.riskPct,
+      rewardPct: bearRisk.rewardPct,
+      entryDistancePct: bearEntryDistancePct,
+      extremeDistanceWarning: bearEntryDistancePct > ENTRY_DISTANCE_WARNING_PCT,
+      extremeRRWarning: bearRisk.extremeRRWarning,
+      invalidationRule: invalidationRuleText('SHORT', bearSl),
+      validationErrors: validateTradeScenario('SHORT', bearEntry, bearSl, bearTp1, bearTp2),
+      notes: `Bukan entry sekarang. Entry short hanya aktif JIKA harga rebound/retest ke ${r1.toLocaleString('id-ID')} dan gagal break (bearish rejection) — entry sell/short di ${bearEntry.toLocaleString('id-ID')}.`,
     },
     recommendedBias,
   };
@@ -521,9 +545,16 @@ export function computeStockAnalysis(
       macdValue: NaN, macdSignal: NaN, macdHistogram: NaN, macdSignalType: 'neutral', macdNote: '–',
       stochK: NaN, stochD: NaN, stochZone: 'neutral', stochNote: '–',
     };
+    const emptyScenario = {
+      entry: 0, tp1: 0, tp2: 0, sl: 0, riskRewardRatio: 0,
+      riskPct: 0, rewardPct: 0, entryDistancePct: 0,
+      extremeDistanceWarning: false, extremeRRWarning: false,
+      invalidationRule: '–', validationErrors: ['ERROR_INVALID_PRICE'] as const,
+      notes: '–',
+    };
     const noTrade: TradingPlanAnalysis = {
-      bullish: { entry: 0, tp1: 0, tp2: 0, sl: 0, riskRewardRatio: 0, notes: '–' },
-      bearish: { entry: 0, tp1: 0, tp2: 0, sl: 0, riskRewardRatio: 0, notes: '–' },
+      bullish: { ...emptyScenario, direction: 'LONG', entryType: 'NO_TRADE', validationErrors: [...emptyScenario.validationErrors] },
+      bearish: { ...emptyScenario, direction: 'SHORT', entryType: 'NO_TRADE', validationErrors: [...emptyScenario.validationErrors] },
       recommendedBias: 'neutral',
     };
     const noConc: ConclusionAnalysis = {

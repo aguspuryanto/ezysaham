@@ -49,6 +49,7 @@ import { StockSummary } from '@/domain/models/Stock';
 import { OHLCVBar } from '@/domain/models/History';
 import {
   CandlePattern,
+  EntryType,
   IndicatorAnalysis,
   PriceActionAnalysis,
   SupportResistanceAnalysis,
@@ -56,6 +57,7 @@ import {
   TrendEmaAnalysis,
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
+import { classifyOversoldRisk, evaluateRiskGate, TradeStatus } from '@/domain/analysis/riskGate';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { IntradayResponse } from '@/domain/models/Intraday';
@@ -2319,6 +2321,33 @@ function EquityResearchReportCard({
 // ─── strategy-consistent scoring — see features_bandarmology.md evaluation notes) ────────
 const ROUND_TRIP_FEE_PCT = 0.35; // approx. combined buy+sell broker fee, IDX retail avg
 
+// entryType is the deterministic source of truth for "Strategi" — it comes straight from
+// direction-aware scenario math in stockAnalysisEngine.ts, so strategy can never contradict
+// direction (features_inkonsistensi.md §15/§16: strategy and direction must not conflict).
+const ENTRY_TYPE_LABEL: Record<EntryType, string> = {
+  BUY_ON_SUPPORT: 'Buy on Support',
+  BUY_ON_PULLBACK: 'Buy on Pullback',
+  BUY_ON_BREAKOUT: 'Buy on Breakout',
+  SHORT_ON_REJECTION: 'Short on Rejection',
+  SHORT_ON_BREAKDOWN: 'Short on Breakdown',
+  WAIT_CONFIRMATION: 'Wait for Confirmation',
+  NO_TRADE: 'No Trade / Avoid',
+};
+
+const TRADE_STATUS_STYLE: Record<TradeStatus, { label: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc' }> = {
+  BUY: { label: 'BUY', tone: 'green' },
+  SHORT_SETUP: { label: 'SHORT SETUP', tone: 'blue' },
+  WAIT: { label: 'WAIT', tone: 'amber' },
+  NO_TRADE: { label: 'NO TRADE', tone: 'red' },
+};
+
+const VALIDATION_ERROR_LABEL: Record<string, string> = {
+  ERROR_INVALID_PRICE: 'Data harga tidak valid (Entry/SL/TP kosong atau ≤ 0).',
+  ERROR_INVALID_LONG_SL: 'Stop Loss tidak valid untuk LONG — SL harus di bawah Entry.',
+  ERROR_INVALID_SHORT_SL: 'Stop Loss tidak valid untuk SHORT — SL harus di atas Entry.',
+  ERROR_INVALID_TP_STRUCTURE: 'Struktur Target Profit tidak valid untuk arah posisi ini.',
+};
+
 function valuationFromPer(per: number): { label: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc' } {
   if (!(per > 0)) return { label: 'Data Tidak Tersedia', tone: 'zinc' };
   if (per <= 12) return { label: 'Murah (Undervalued)', tone: 'green' };
@@ -2385,9 +2414,14 @@ function EquityResearchReportCard2({
   const hasIntradayEma = !Number.isNaN(intradayEma9) && !Number.isNaN(intradayEma21);
   const emaTone: Tone = !hasIntradayEma ? 'zinc' : intradayEma9 > intradayEma21 ? 'green' : intradayEma9 < intradayEma21 ? 'red' : 'amber';
 
-  const statusUtama: { label: string; tone: Tone } =
-    advisor.verdictTone === 'green' ? { label: 'BULLISH', tone: 'green' } :
-      advisor.verdictTone === 'red' ? { label: 'BEARISH', tone: 'red' } : { label: 'NEUTRAL', tone: 'amber' };
+  // Market Status must reflect the technical trend, not the AI's composite buy/avoid verdict.
+  // Conflating the two (the old `advisor.verdictTone`-based label) is exactly how a BEARISH/oversold
+  // stock could show a "BULLISH"-toned status while the trading plan below was a SHORT setup — see
+  // the UDNG case in features_inkonsistensi.md. Trade Status (below, from the Risk Gate) is the
+  // field that actually says whether to act.
+  const marketStatus: { label: string; tone: Tone } =
+    trendEma.trend === 'bullish' ? { label: 'BULLISH', tone: 'green' } :
+      trendEma.trend === 'bearish' ? { label: 'BEARISH', tone: 'red' } : { label: 'SIDEWAYS', tone: 'amber' };
 
   const trenLabel = trendEma.trend === 'bullish' ? 'Uptrend' : trendEma.trend === 'bearish' ? 'Downtrend' : 'Sideways';
   const trenTone: Tone = trendEma.trend === 'bullish' ? 'green' : trendEma.trend === 'bearish' ? 'red' : 'amber';
@@ -2477,63 +2511,129 @@ function EquityResearchReportCard2({
 
   const bias = tradingPlan.recommendedBias === 'bearish' ? 'bearish' : 'bullish';
   const scenario = tradingPlan[bias];
-  const strategiLabel =
-    advisor.verdict === 'SANGAT_BELI' ? 'Buy on Weakness' :
-      advisor.verdict === 'BELI' ? 'Accumulate Bertahap' :
-        advisor.verdict === 'TAHAN' ? 'Wait and See' : 'Hindari / Take Profit';
-  // Fix 2B: "Gaya" must describe how the scenario's entry price is actually constructed, not the
-  // AI's buy/hold/avoid verdict — the bullish scenario is always a pullback-to-support entry
-  // (see stockAnalysisEngine's "Entry buy saat pullback" note), so labeling it "Momentum / Breakout"
-  // whenever the verdict happened to be TAHAN/HINDARI (as before) contradicted the entry zone itself,
-  // which always sits at/near support regardless of verdict. Base it on `bias`, not on `verdict`.
-  const gayaLabel = bias === 'bullish' ? 'Mean Reversion / Buy on Support' : 'Breakdown / Short on Rejection';
+  const isLong = scenario.direction === 'LONG';
 
-  // Fix 1A: every actionable order price shown here — Entry Zone bounds, both targets, and the
-  // Stop Loss — must snap to a valid IDX tick before display. JATS rejects raw fractions like
-  // Rp 31.840 or Rp 31.343 for a stock trading above Rp 5.000 (valid tick there is Rp 25); rounding
-  // only the Stop Loss and leaving the Entry Zone raw (as an earlier version did) still leaves an
-  // unorderable Entry Zone and throws off the risk-range math in Fix 1C below.
-  const entryZoneLowRaw = nearestSupport ? nearestSupport.price : scenario.entry;
-  const entryZoneHighRaw = scenario.entry;
-  const entryZoneLow = roundToTick(entryZoneLowRaw);
-  const entryZoneHigh = roundToTick(entryZoneHighRaw);
+  // strategiLabel now comes straight from entryType — a value stockAnalysisEngine.ts derives
+  // together with direction/entry/SL/TP — instead of the AI composite verdict. The old
+  // verdict-based mapping could show "Buy on Weakness" next to a SHORT scenario whenever the
+  // composite score happened to read BELI/SANGAT_BELI, contradicting the plan below it
+  // (features_inkonsistensi.md §15/§16: strategy must not conflict with direction).
+  const strategiLabel = ENTRY_TYPE_LABEL[scenario.entryType];
+  const gayaLabel = isLong ? 'Mean Reversion / Buy on Support' : 'Breakdown / Short on Rejection';
+
+  // Risk Gate + Oversold classification (riskGate.ts) — the "Consistency & Risk Gate" layer from
+  // features_inkonsistensi.md. It never recomputes Entry/SL/TP (that stays deterministic above);
+  // it only decides whether the resulting scenario may be presented as BUY/SHORT_SETUP right now,
+  // or must be downgraded to WAIT/NO_TRADE (bearish trend + weak fundamentals + strong distribution
+  // + deep oversold + price under EMA50/200 stacking up, or entry sitting far from current price).
+  const isStrongDistribution = bandarScore.classification.label === 'Strong Distribution';
+  const riskGate = evaluateRiskGate({
+    direction: scenario.direction,
+    trend: trendEma.trend,
+    rsi14: indicators.rsi14,
+    fundamentalScore: fundamentalScreening.score,
+    isStrongDistribution,
+    priceBelowEma50: !aboveMa50,
+    priceBelowEma200: !aboveMa200,
+    entryDistancePct: scenario.entryDistancePct,
+  });
+  // "NO VALIDATION = NO SIGNAL": if the engine's own math validation failed (SL/TP ordering vs
+  // direction), this must never be presented as an actionable BUY/SHORT regardless of what the
+  // Risk Gate says.
+  const hasSetupErrors = scenario.validationErrors.length > 0;
+  const tradeStatus: TradeStatus = hasSetupErrors ? 'NO_TRADE' : riskGate.tradeStatus;
+  const tradeStatusStyle = TRADE_STATUS_STYLE[tradeStatus];
+
+  // "Oversold ≠ BUY" (features_inkonsistensi.md §7): RSI < 30 is a condition, never an automatic
+  // reversal signal on its own. breakoutConfirmedWithVolume proxies "breakout + volume" off the
+  // existing Wyckoff phase read (markup/momentum) rather than adding a new indicator.
+  const breakoutConfirmedWithVolume =
+    (marketCyclePhase.number === 2 || marketCyclePhase.number === 3) && volume.isHighVolume;
+  const oversoldRisk = classifyOversoldRisk({
+    rsi14: indicators.rsi14,
+    trend: trendEma.trend,
+    higherLows: trendEma.higherLows,
+    macdBullish: indicators.macdSignalType === 'bullish' || indicators.macdSignalType === 'bullish_crossover',
+    breakoutConfirmedWithVolume,
+  });
+
+  // Fix 1A: every actionable order price shown here — Entry, both targets, and the Stop Loss —
+  // must snap to a valid IDX tick before display. JATS rejects raw fractions like Rp 31.840 or
+  // Rp 31.343 for a stock trading above Rp 5.000 (valid tick there is Rp 25).
+  //
+  // The Entry Zone's lower bound may only ever come from "support" for a LONG buy-on-support plan.
+  // A SHORT scenario has no such zone — its entry is a single rejection-trigger price at
+  // resistance; pairing it with a support price (the old, direction-blind behaviour) produced a
+  // nonsensical "zone" that mixed a bullish level into a bearish setup — the UDNG bug.
+  const entryPrice = roundToTick(scenario.entry);
+  const entryZoneLow = isLong && nearestSupport ? roundToTick(nearestSupport.price) : entryPrice;
+  const entryZoneHigh = entryPrice;
   const slPrice = roundToTick(scenario.sl);
   const tp1Price = roundToTick(scenario.tp1);
   const tp2Price = roundToTick(scenario.tp2);
 
-  const gainPct = (target: number) => Math.abs(((target - entryZoneHigh) / entryZoneHigh) * 100);
-  const netGainPct = (target: number) => Math.max(0, gainPct(target) - ROUND_TRIP_FEE_PCT);
-  // Fix 1C: risk range is computed from the same tick-rounded Entry Zone / Stop Loss shown to the
-  // user, not the raw pre-rounding prices — otherwise the displayed percentages don't match the
-  // displayed price levels. Buying near the bottom of the zone carries meaningfully less risk than
-  // buying near the top, so both ends are shown.
-  const riskPctFromLow = Math.abs(((slPrice - entryZoneLow) / entryZoneLow) * 100);
-  const riskPctFromHigh = Math.abs(((slPrice - entryZoneHigh) / entryZoneHigh) * 100);
+  // Reward must flip sign with direction: LONG profits when price rises above entry, SHORT profits
+  // when price falls below entry. Using a LONG-only formula for both (the old bug) is exactly how
+  // a SHORT's target ended up labeled "Gain" instead of "Potential Short Profit".
+  const rewardLabel = isLong ? 'Gain' : 'Potential Short Profit';
+  const rewardPct = (target: number) =>
+    Math.max(0, isLong ? ((target - entryPrice) / entryPrice) * 100 : ((entryPrice - target) / entryPrice) * 100);
+  const netRewardPct = (target: number) => Math.max(0, rewardPct(target) - ROUND_TRIP_FEE_PCT);
+  // Risk is always a positive distance from Entry to SL regardless of direction.
+  const riskPctFromEntry = Math.abs(((slPrice - entryPrice) / entryPrice) * 100);
+  const riskPctFromLow = isLong ? Math.abs(((slPrice - entryZoneLow) / entryZoneLow) * 100) : riskPctFromEntry;
   const riskRangeLabel =
-    Math.abs(riskPctFromLow - riskPctFromHigh) < 0.05
-      ? `-${fmtN(riskPctFromHigh, 1)}%`
-      : `-${fmtN(riskPctFromLow, 1)}% s.d. -${fmtN(riskPctFromHigh, 1)}%`;
+    isLong && Math.abs(riskPctFromLow - riskPctFromEntry) >= 0.05
+      ? `-${fmtN(riskPctFromLow, 1)}% s.d. -${fmtN(riskPctFromEntry, 1)}%`
+      : `-${fmtN(riskPctFromEntry, 1)}%`;
 
   const buildShareText = () => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const faseBandarLabel = `${bandarScore.classification.label} (${bandarScore.phaseLabel})`;
     const faseSiklusLabel = marketCyclePhase.number != null ? `Fase ${marketCyclePhase.number} — ${marketCyclePhase.label}` : marketCyclePhase.label;
+
+    const entryLines = hasSetupErrors
+      ? [
+          '🔴 SETUP TIDAK VALID — data Entry/SL/TP tidak konsisten dengan direction, angka tidak ditampilkan.',
+          `Kode: ${scenario.validationErrors.join(', ')}`,
+        ]
+      : isLong
+        ? [
+            `🔹 Entry Zone    : ${fmtRp(entryZoneLow)} - ${fmtRp(entryZoneHigh)}`,
+            `🔹 Target Price 1: ${fmtRp(tp1Price)} (${rewardLabel}: +${fmtN(rewardPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp1Price), 1)}%)`,
+            `🔹 Target Price 2: ${fmtRp(tp2Price)} (${rewardLabel}: +${fmtN(rewardPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp2Price), 1)}%)`,
+            `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> ${scenario.invalidationRule}`,
+          ]
+        : [
+            `🔹 Rejection Zone (bukan entry sekarang): ${fmtRp(entryPrice)}`,
+            `🔹 Entry Trigger : Short HANYA jika harga rebound/retest ke ${fmtRp(entryPrice)} dan gagal breakout (bearish rejection terkonfirmasi).`,
+            `🔹 Target Price 1: ${fmtRp(tp1Price)} (${rewardLabel}: +${fmtN(rewardPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp1Price), 1)}%)`,
+            `🔹 Target Price 2: ${fmtRp(tp2Price)} (${rewardLabel}: +${fmtN(rewardPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netRewardPct(tp2Price), 1)}%)`,
+            `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> ${scenario.invalidationRule}`,
+          ];
+    if (!hasSetupErrors && scenario.extremeDistanceWarning) {
+      entryLines.push(`⚠️ Entry berjarak ${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini — bukan entry segera, tunggu retest/rebound.`);
+    }
+    if (!hasSetupErrors && scenario.extremeRRWarning) {
+      entryLines.push(`⚠️ R:R ekstrem (1:${fmtN(scenario.riskRewardRatio, 2)}) — kemungkinan tidak actionable secara praktis, jangan anggap otomatis sebagai setup bagus.`);
+    }
+
     return [
-      `🚨 [EQUITY RESEARCH REPORT] - $${summary.ticker} (Status: ${statusUtama.label})`,
+      `🚨 [EQUITY RESEARCH REPORT] - $${summary.ticker}`,
+      `Market Status: ${marketStatus.label} | Trade Status: ${tradeStatusStyle.label}`,
       '',
       `📌 Strategi: ${strategiLabel} (Gaya: ${gayaLabel})`,
       '--------------------------------------------------',
-      `🔹 Entry Zone    : ${fmtRp(entryZoneLow)} - ${fmtRp(entryZoneHigh)}`,
-      `🔹 Target Price 1: ${fmtRp(tp1Price)} (Gain: +${fmtN(gainPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netGainPct(tp1Price), 1)}%)`,
-      `🔹 Target Price 2: ${fmtRp(tp2Price)} (Gain: +${fmtN(gainPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netGainPct(tp2Price), 1)}%)`,
-      `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> Cut loss jika Close < ${fmtRp(slPrice)}`,
+      ...entryLines,
       '',
       '📊 Analisis Alignment:',
-      `1. Technical    : Tren ${trenLabel}, RSI ${fmtN(indicators.rsi14, 1)} (${rsiStatus.label}), MACD ${macdStatus.label}. Area kunci: Support ${nearestSupport ? fmtRp(nearestSupport.price) : '–'} | Resistance ${nearestResistance ? fmtRp(nearestResistance.price) : '–'}.`,
+      `1. Technical    : Tren ${trenLabel}, RSI ${fmtN(indicators.rsi14, 1)} (${rsiStatus.label})${oversoldRisk.status !== 'NONE' ? ` — ${oversoldRisk.label}` : ''}, MACD ${macdStatus.label}. Area kunci: Support ${nearestSupport ? fmtRp(nearestSupport.price) : '–'} | Resistance ${nearestResistance ? fmtRp(nearestResistance.price) : '–'}.`,
       `2. Fundamental  : Valuasi ${valuation.label} (PER ${summary.per > 0 ? `${summary.per.toFixed(1)}x` : '–'} · PBV ${summary.pbv > 0 ? `${summary.pbv.toFixed(2)}x` : '–'}) · Skor Fundamental AI ${fundamentalScreening.score}/100${solvencyLabel ? `, ${solvencyLabel} (DER ${der != null ? `${der.toFixed(1)}%` : '–'} · ROE ${summary.roe !== 0 ? `${summary.roe.toFixed(1)}%` : '–'})` : ''}.`,
       `3. Bandar & Entry Timing: Fase Bandar ${faseBandarLabel} · Fase Siklus Pasar ${faseSiklusLabel} · Entry Timing ${entryTiming.label} — ${entryTiming.headline}${bandarScore.hiddenDistributionWarning ? ' ⚠️ Waspada hidden distribution (harga naik, OBV melemah).' : ''}`,
       `4. Checklist Intraday: VWAP ${vwapLabel} · EMA9/EMA21 ${emaLabel} · RVOL ${fmtN(volume.relativeVolume, 2)}× (Volume ${volumeTrendLabel})`,
       `5. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title}` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title}` : ''}`,
+      '',
+      `🚦 Risk Gate: BUY ${riskGate.buyAllowed ? 'DIIZINKAN' : 'DIBLOKIR'}${riskGate.reasons.length > 0 ? ` — ${riskGate.reasons.join('; ')}.` : '.'}`,
       '',
       '⚠️ Catatan Manajemen Risiko:',
       `- Skor AI: ${advisor.compositeScore}/100 — ${advisor.executiveSummary}`,
@@ -2563,8 +2663,15 @@ function EquityResearchReportCard2({
           </h3>
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Utama:</span>
-              <Pill tone={statusUtama.tone}>{statusUtama.label}</Pill>
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Utama (Market):</span>
+              <Pill tone={marketStatus.tone}>{marketStatus.label}</Pill>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Transaksi:</span>
+              <Pill tone={tradeStatusStyle.tone}>{tradeStatusStyle.label}</Pill>
+              {hasSetupErrors && (
+                <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">Setup tidak konsisten — angka Entry/SL/TP tidak ditampilkan.</span>
+              )}
             </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Skor AI:</span>
@@ -2577,6 +2684,23 @@ function EquityResearchReportCard2({
             <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
               <strong>Highlight:</strong> {advisor.executiveSummary}
             </p>
+            {(oversoldRisk.status !== 'NONE' || riskGate.reasons.length > 0) && (
+              <div className="mt-1.5 space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-400/20 dark:bg-amber-400/5">
+                {oversoldRisk.status !== 'NONE' && (
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">⚠️ {oversoldRisk.label}</p>
+                )}
+                {riskGate.reasons.length > 0 && (
+                  <ul className="space-y-0.5">
+                    {riskGate.reasons.map((r) => (
+                      <li key={r} className="flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                        <span className="mt-1 size-1 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -2730,41 +2854,95 @@ function EquityResearchReportCard2({
           <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
             🎯 6. Rencana Aksi (Actionable Takeaways)
           </h3>
-          <ul className="space-y-1.5 text-sm">
-            <li className="flex items-center gap-2">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Strategi:</span>
-              <span className="font-bold text-zinc-900 dark:text-zinc-100">{strategiLabel}</span>
-              <span className="text-xs text-zinc-400">({gayaLabel})</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Area Entry Ideal:</span>
-              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                {fmtRp(entryZoneLow)} – {fmtRp(entryZoneHigh)}
-              </span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Stop Loss (Risk Limit):</span>
-              <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{fmtRp(slPrice)}</span>
-              <span className="text-xs text-zinc-400">(Risk: {riskRangeLabel})</span>
-            </li>
-            <li className="flex flex-wrap items-center gap-3">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Target:</span>
-              <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">
-                TP1 {fmtRp(tp1Price)} <span className="text-emerald-600 dark:text-emerald-400">+{fmtN(gainPct(tp1Price), 1)}%</span>
-                <span className="text-zinc-400"> (net +{fmtN(netGainPct(tp1Price), 1)}%)</span>
-              </span>
-            </li>
-            <li className="flex flex-wrap items-center gap-3">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0 opacity-0 select-none">Target:</span>
-              <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">
-                TP2 {fmtRp(tp2Price)} <span className="text-emerald-600 dark:text-emerald-400">+{fmtN(gainPct(tp2Price), 1)}%</span>
-                <span className="text-zinc-400"> (net +{fmtN(netGainPct(tp2Price), 1)}%)</span>
-              </span>
-            </li>
-            <li className="text-xs text-zinc-400 leading-relaxed pt-0.5">
-              Gain dihitung dari batas atas Entry Zone (skenario entry paling konservatif) dan sudah memperhitungkan estimasi fee round-trip ~{fmtN(ROUND_TRIP_FEE_PCT, 2)}% pada kolom &quot;net&quot;. Stop Loss dibulatkan ke fraksi harga (tick) IDX yang valid.
-            </li>
-          </ul>
+          <div className={cn(
+            'mb-3 flex items-center gap-2 rounded-lg border px-3 py-2',
+            tradeStatusStyle.tone === 'green' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-400/5' :
+              tradeStatusStyle.tone === 'red' ? 'border-rose-200 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-400/5' :
+                tradeStatusStyle.tone === 'blue' ? 'border-blue-200 bg-blue-50 dark:border-blue-400/20 dark:bg-blue-400/5' :
+                  'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5'
+          )}>
+            <Pill tone={tradeStatusStyle.tone}>{tradeStatusStyle.label}</Pill>
+            <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+              {hasSetupErrors
+                ? 'Data Entry/SL/TP tidak konsisten — tidak dipublikasikan.'
+                : tradeStatus === 'NO_TRADE'
+                  ? 'BUY diblokir oleh Risk Gate — lihat alasan di Ringkasan Instan.'
+                  : tradeStatus === 'WAIT'
+                    ? `Entry belum aktif (${fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini) — tunggu retest/rebound.`
+                    : isLong
+                      ? 'Setup memenuhi syarat minimum Risk Gate untuk BUY.'
+                      : 'Setup SHORT aktif — tetap tunggu konfirmasi rejection sebelum eksekusi.'}
+            </span>
+          </div>
+          {hasSetupErrors ? (
+            <ul className="space-y-1">
+              {scenario.validationErrors.map((code) => (
+                <li key={code} className="flex items-start gap-1.5 text-sm text-rose-600 dark:text-rose-400">
+                  <span className="mt-1 size-1 shrink-0 rounded-full bg-rose-500" />
+                  {VALIDATION_ERROR_LABEL[code] ?? code}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="space-y-1.5 text-sm">
+              <li className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Strategi:</span>
+                <span className="font-bold text-zinc-900 dark:text-zinc-100">{strategiLabel}</span>
+                <span className="text-xs text-zinc-400">({gayaLabel})</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">{isLong ? 'Area Entry Ideal:' : 'Rejection Zone (Trigger):'}</span>
+                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                  {isLong ? `${fmtRp(entryZoneLow)} – ${fmtRp(entryZoneHigh)}` : fmtRp(entryPrice)}
+                </span>
+              </li>
+              {!isLong && (
+                <li className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Bukan entry sekarang. Short hanya aktif JIKA harga rebound/retest ke level ini dan gagal breakout (bearish rejection terkonfirmasi).
+                </li>
+              )}
+              {scenario.extremeDistanceWarning && (
+                <li className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                  <TriangleAlert className="size-3.5 mt-0.5 shrink-0" strokeWidth={2.5} />
+                  Entry berjarak {fmtN(scenario.entryDistancePct, 1)}% dari harga saat ini — bukan entry segera.
+                </li>
+              )}
+              <li className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Stop Loss (Risk Limit):</span>
+                <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{fmtRp(slPrice)}</span>
+                <span className="text-xs text-zinc-400">(Risk: {riskRangeLabel})</span>
+              </li>
+              <li className="text-xs text-zinc-500 dark:text-zinc-400">
+                {scenario.invalidationRule}
+              </li>
+              <li className="flex flex-wrap items-center gap-3">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Target:</span>
+                <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">
+                  TP1 {fmtRp(tp1Price)} <span className="text-emerald-600 dark:text-emerald-400">+{fmtN(rewardPct(tp1Price), 1)}%</span>
+                  <span className="text-zinc-400"> (net +{fmtN(netRewardPct(tp1Price), 1)}%)</span>
+                </span>
+              </li>
+              <li className="flex flex-wrap items-center gap-3">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0 opacity-0 select-none">Target:</span>
+                <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">
+                  TP2 {fmtRp(tp2Price)} <span className="text-emerald-600 dark:text-emerald-400">+{fmtN(rewardPct(tp2Price), 1)}%</span>
+                  <span className="text-zinc-400"> (net +{fmtN(netRewardPct(tp2Price), 1)}%)</span>
+                </span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Risk : Reward:</span>
+                <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">1 : {fmtN(scenario.riskRewardRatio, 2)}</span>
+                {scenario.extremeRRWarning && (
+                  <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                    R:R ekstrem — kemungkinan tidak actionable secara praktis, jangan anggap otomatis sebagai setup bagus.
+                  </span>
+                )}
+              </li>
+              <li className="text-xs text-zinc-400 leading-relaxed pt-0.5">
+                {rewardLabel} dihitung dari {isLong ? 'batas atas Entry Zone (skenario entry paling konservatif)' : 'harga Entry/Rejection Trigger'} dan sudah memperhitungkan estimasi fee round-trip ~{fmtN(ROUND_TRIP_FEE_PCT, 2)}% pada kolom &quot;net&quot;. Stop Loss dibulatkan ke fraksi harga (tick) IDX yang valid.
+              </li>
+            </ul>
+          )}
         </div>
 
         <div className="h-[2px] bg-(--neo-line)" />
