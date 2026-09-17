@@ -68,6 +68,7 @@ import { computeBandarScore, getMarketCyclePhase } from '@/domain/analysis/banda
 import { computeEntryTiming } from '@/domain/analysis/entryTiming';
 import { roundToTick } from '@/domain/analysis/idxTick';
 import { computeObjectiveConclusion, ConclusionTone, ObjectiveConclusionResult } from '@/domain/analysis/objectiveConclusion';
+import { computeQuickDecisionSnapshot, QuickDecisionFactor, QuickDecisionSnapshotResult, QuickVerdict } from '@/domain/analysis/quickDecisionSnapshot';
 import { BreakoutScores } from '@/domain/screener/presets';
 import { DataFreshness } from '@/domain/analysis/dataFreshness';
 import { rsi } from '@/domain/indicators/rsi';
@@ -2513,9 +2514,6 @@ function EquityResearchReportCard2({
       ? `-${fmtN(riskPctFromHigh, 1)}%`
       : `-${fmtN(riskPctFromLow, 1)}% s.d. -${fmtN(riskPctFromHigh, 1)}%`;
 
-  // Fix 1B: RRR computed against the worst-case (top-of-zone) entry, so it stays conservative.
-  const rrr = (target: number) => (riskPctFromHigh > 0 ? gainPct(target) / riskPctFromHigh : 0);
-
   const buildShareText = () => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const faseBandarLabel = `${bandarScore.classification.label} (${bandarScore.phaseLabel})`;
@@ -2526,8 +2524,8 @@ function EquityResearchReportCard2({
       `📌 Strategi: ${strategiLabel} (Gaya: ${gayaLabel})`,
       '--------------------------------------------------',
       `🔹 Entry Zone    : ${fmtRp(entryZoneLow)} - ${fmtRp(entryZoneHigh)}`,
-      `🔹 Target Price 1: ${fmtRp(tp1Price)} (Gain: +${fmtN(gainPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netGainPct(tp1Price), 1)}% · RRR 1:${fmtN(rrr(tp1Price), 2)})`,
-      `🔹 Target Price 2: ${fmtRp(tp2Price)} (Gain: +${fmtN(gainPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netGainPct(tp2Price), 1)}% · RRR 1:${fmtN(rrr(tp2Price), 2)})`,
+      `🔹 Target Price 1: ${fmtRp(tp1Price)} (Gain: +${fmtN(gainPct(tp1Price), 1)}% · Net setelah fee: +${fmtN(netGainPct(tp1Price), 1)}%)`,
+      `🔹 Target Price 2: ${fmtRp(tp2Price)} (Gain: +${fmtN(gainPct(tp2Price), 1)}% · Net setelah fee: +${fmtN(netGainPct(tp2Price), 1)}%)`,
       `🔹 Stop Loss     : ${fmtRp(slPrice)} (Risk: ${riskRangeLabel}) -> Cut loss jika Close < ${fmtRp(slPrice)}`,
       '',
       '📊 Analisis Alignment:',
@@ -2750,27 +2748,21 @@ function EquityResearchReportCard2({
               <span className="text-xs text-zinc-400">(Risk: {riskRangeLabel})</span>
             </li>
             <li className="flex flex-wrap items-center gap-3">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Target &amp; RRR:</span>
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Target:</span>
               <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">
                 TP1 {fmtRp(tp1Price)} <span className="text-emerald-600 dark:text-emerald-400">+{fmtN(gainPct(tp1Price), 1)}%</span>
                 <span className="text-zinc-400"> (net +{fmtN(netGainPct(tp1Price), 1)}%)</span>
-                <span className={cn('ml-1.5 font-bold', rrr(tp1Price) >= 2 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
-                  RRR 1:{fmtN(rrr(tp1Price), 2)}
-                </span>
               </span>
             </li>
             <li className="flex flex-wrap items-center gap-3">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0 opacity-0 select-none">Target &amp; RRR:</span>
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0 opacity-0 select-none">Target:</span>
               <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">
                 TP2 {fmtRp(tp2Price)} <span className="text-emerald-600 dark:text-emerald-400">+{fmtN(gainPct(tp2Price), 1)}%</span>
                 <span className="text-zinc-400"> (net +{fmtN(netGainPct(tp2Price), 1)}%)</span>
-                <span className={cn('ml-1.5 font-bold', rrr(tp2Price) >= 2 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
-                  RRR 1:{fmtN(rrr(tp2Price), 2)}
-                </span>
               </span>
             </li>
             <li className="text-xs text-zinc-400 leading-relaxed pt-0.5">
-              Gain/RRR dihitung dari batas atas Entry Zone (skenario entry paling konservatif) dan sudah memperhitungkan estimasi fee round-trip ~{fmtN(ROUND_TRIP_FEE_PCT, 2)}% pada kolom &quot;net&quot;. Stop Loss dibulatkan ke fraksi harga (tick) IDX yang valid.
+              Gain dihitung dari batas atas Entry Zone (skenario entry paling konservatif) dan sudah memperhitungkan estimasi fee round-trip ~{fmtN(ROUND_TRIP_FEE_PCT, 2)}% pada kolom &quot;net&quot;. Stop Loss dibulatkan ke fraksi harga (tick) IDX yang valid.
             </li>
           </ul>
         </div>
@@ -2824,7 +2816,59 @@ function EquityResearchReportCard2({
 }
 
 // ─── Kesimpulan Objektif (cross-check: price move + divergence + Bandar + regulator) ──
-function ObjectiveConclusionCard({ conclusion }: { conclusion: ObjectiveConclusionResult }) {
+const QUICK_VERDICT_STYLES: Record<QuickVerdict, { emoji: string; label: string; border: string; bg: string; text: string }> = {
+  TRADE: { emoji: '🟢', label: 'TRADE', border: 'border-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-400/10', text: 'text-emerald-700 dark:text-emerald-400' },
+  WAIT: { emoji: '🟡', label: 'WAIT', border: 'border-amber-400', bg: 'bg-amber-50 dark:bg-amber-400/10', text: 'text-amber-700 dark:text-amber-400' },
+  NO_TRADE: { emoji: '🔴', label: 'NO TRADE', border: 'border-rose-400', bg: 'bg-rose-50 dark:bg-rose-400/10', text: 'text-rose-700 dark:text-rose-400' },
+};
+
+function QuickDecisionFactorRow({ factor }: { factor: QuickDecisionFactor }) {
+  return (
+    <li className="flex flex-wrap items-center gap-2">
+      <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-28">{factor.label}:</span>
+      <Pill tone={factor.tone}>{factor.value}</Pill>
+    </li>
+  );
+}
+
+function QuickDecisionSnapshotSection({ snapshot }: { snapshot: QuickDecisionSnapshotResult }) {
+  const v = QUICK_VERDICT_STYLES[snapshot.verdict];
+  return (
+    <div className="mt-4 border-t-2 border-(--neo-line) pt-4">
+      <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">
+        🧭 Ringkasan Faktor Keputusan
+      </h3>
+      <ul className="space-y-1.5 text-sm">
+        <QuickDecisionFactorRow factor={snapshot.market} />
+        <QuickDecisionFactorRow factor={snapshot.trend} />
+        {snapshot.momentum.map((f) => (
+          <QuickDecisionFactorRow key={f.label} factor={f} />
+        ))}
+        <QuickDecisionFactorRow factor={snapshot.volume} />
+        <QuickDecisionFactorRow factor={snapshot.bandar} />
+        <QuickDecisionFactorRow factor={snapshot.location} />
+        <QuickDecisionFactorRow factor={snapshot.trigger} />
+      </ul>
+
+      <div className={cn('neo-border mt-4 px-4 py-3', v.bg, v.border)}>
+        <p className={cn('font-bold text-sm mb-2', v.text)}>{v.emoji} FINAL DECISION — {v.label}</p>
+        <ul className="space-y-1">
+          {snapshot.reasons.map((r) => (
+            <li key={r} className="flex items-start gap-1.5 text-sm text-zinc-600 dark:text-zinc-400">
+              <span className="mt-1 size-1 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+              {r}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="text-xs text-zinc-400 leading-relaxed pt-2">
+        Ringkasan ini adalah snapshot berbasis aturan sementara (belum termasuk Market Regime IHSG, Risk/SL, dan validasi statistik historis) — bukan pengganti Decision Engine penuh EzySaham 2.0.
+      </p>
+    </div>
+  );
+}
+
+function ObjectiveConclusionCard({ conclusion, snapshot }: { conclusion: ObjectiveConclusionResult; snapshot: QuickDecisionSnapshotResult }) {
   const toneStyles: Record<ConclusionTone, { border: string; bg: string; badge: string; text: string; bullet: string }> = {
     caution: {
       border: 'border-rose-400',
@@ -2884,6 +2928,8 @@ function ObjectiveConclusionCard({ conclusion }: { conclusion: ObjectiveConclusi
           ))}
         </div>
       )}
+
+      <QuickDecisionSnapshotSection snapshot={snapshot} />
 
       {/* <div className="neo-border mt-4 px-4 py-3 bg-amber-50 dark:bg-amber-400/10 border-amber-400">
         <p className="font-bold text-sm mb-1 text-amber-700 dark:text-amber-400">⚠️ Disclaimer</p>
@@ -3156,6 +3202,23 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     return computeObjectiveConclusion({ summary, bars, fundamentalScreening, technicalScreening, bandarScore, newsItems });
   }, [summary, bars, fundamentalScreening, technicalScreening, newsItems]);
 
+  const quickDecisionSnapshot = useMemo(() => {
+    if (!summary || !analysis) return null;
+    const bandarScore = computeBandarScore(summary, bars);
+    const marketCyclePhase = getMarketCyclePhase(bandarScore, analysis.indicators);
+    const entryTiming = computeEntryTiming(bandarScore, analysis.indicators);
+    return computeQuickDecisionSnapshot({
+      bars,
+      trendEma: analysis.trendEma,
+      indicators: analysis.indicators,
+      volume: analysis.volume,
+      supportResistance: analysis.supportResistance,
+      bandarScore,
+      marketCyclePhase,
+      entryTiming,
+    });
+  }, [summary, bars, analysis]);
+
   if (status === 'loading') {
     return <StockAnalysisSkeleton ticker={ticker} />;
   }
@@ -3395,7 +3458,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
           {/* ── Kesimpulan Objektif ──────────────────────────────────────── */}
           <div className="px-0 sm:px-0">
-            {objectiveConclusion && <ObjectiveConclusionCard conclusion={objectiveConclusion} />}
+            {objectiveConclusion && quickDecisionSnapshot && (
+              <ObjectiveConclusionCard conclusion={objectiveConclusion} snapshot={quickDecisionSnapshot} />
+            )}
           </div>
 
           {/* ── AI Analyst Engine (kecocokan profil Investor/Swing/Chasing) ── */}

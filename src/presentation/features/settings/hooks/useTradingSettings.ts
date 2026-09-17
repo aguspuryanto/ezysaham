@@ -23,7 +23,6 @@ function sanitize(partial: Partial<TradingConfig>, base: TradingConfig): Trading
     capital: clamp(partial.capital ?? base.capital, 1_000_000, 100_000_000_000),
     riskPerTradePct: clamp(partial.riskPerTradePct ?? base.riskPerTradePct, 0.1, 5),
     maxRiskPerTradePct: clamp(partial.maxRiskPerTradePct ?? base.maxRiskPerTradePct, 0.1, 10),
-    minRiskRewardRatio: clamp(partial.minRiskRewardRatio ?? base.minRiskRewardRatio, 1, 10),
     maxTradesPerDay: clamp(partial.maxTradesPerDay ?? base.maxTradesPerDay, 1, 20),
     fomoMoveThresholdPct: clamp(partial.fomoMoveThresholdPct ?? base.fomoMoveThresholdPct, 1, 50),
     fomoExtremeMoveThresholdPct: clamp(partial.fomoExtremeMoveThresholdPct ?? base.fomoExtremeMoveThresholdPct, 1, 100),
