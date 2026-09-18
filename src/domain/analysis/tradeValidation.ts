@@ -92,6 +92,22 @@ export function invalidationRuleText(direction: Direction, sl: number): string {
     : `Exit/Cut loss jika Close > Rp${sl.toLocaleString('id-ID')}`;
 }
 
+export type ZoneStatus = 'ABOVE_ZONE' | 'IN_ZONE' | 'BELOW_ZONE';
+
+/**
+ * Where price sits relative to the entry zone, as its own explicit field — not implied by a
+ * distance percentage or folded into "BUY". A LONG buy-on-support zone at Rp52–53 with price at
+ * Rp67 is unambiguously ABOVE_ZONE (67 > 53), not "close enough" or "still bullish"
+ * (features_kontradiktif.md's TRUE case). This is direction-agnostic: it only compares price
+ * against the zone bounds the caller already computed for display, so it can never disagree with
+ * the Entry Zone shown on screen.
+ */
+export function classifyZoneStatus(currentPrice: number, zoneLow: number, zoneHigh: number): ZoneStatus {
+  if (currentPrice > zoneHigh) return 'ABOVE_ZONE';
+  if (currentPrice < zoneLow) return 'BELOW_ZONE';
+  return 'IN_ZONE';
+}
+
 /**
  * Whether the current price is actually on the actionable side of this scenario's entry trigger —
  * not just "close enough" by percentage. A LONG buy-on-support/pullback plan is only actionable

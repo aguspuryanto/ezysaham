@@ -205,17 +205,24 @@ export function evaluateTechnicalScreening(
     momDetail = 'Momentum teknikal masih cenderung lemah / bearish.';
   }
 
-  // 3. Volume & RVOL (20%)
+  // 3. Volume & RVOL (20%) — RVOL only says how much activity happened, not which direction; a
+  // high-RVOL red candle is distribution/panic-selling, not "smart money accumulating"
+  // (features_kontradiktif.md §7). Pair it with the last candle's color before scoring it green.
+  const isDownCandle = analysis.priceAction.lastCandleColor === 'red';
   let volTone: 'green' | 'amber' | 'red' = 'amber';
   let volDetail = '';
-  if (volume.isHighVolume && volume.relativeVolume >= 1.5) {
+  if (volume.isHighVolume && isDownCandle) {
+    scoreSum += 5;
+    volTone = 'red';
+    volDetail = `Volume tinggi (RVOL ${volume.relativeVolume.toFixed(2)}×) tetapi candle terakhir merah — indikasi distribusi/panic selling, bukan akumulasi.`;
+  } else if (volume.isHighVolume && volume.relativeVolume >= 1.5) {
     scoreSum += 20;
     volTone = 'green';
-    volDetail = `Volume transaksi sangat masif (RVOL ${volume.relativeVolume.toFixed(2)}×) — transaksi institusi/smart money aktif.`;
+    volDetail = `Volume transaksi sangat masif (RVOL ${volume.relativeVolume.toFixed(2)}×) diiringi candle naik — indikasi akumulasi aktif.`;
   } else if (volume.isHighVolume) {
     scoreSum += 15;
     volTone = 'green';
-    volDetail = `Volume transaksi di atas rata-rata (RVOL ${volume.relativeVolume.toFixed(2)}×).`;
+    volDetail = `Volume transaksi di atas rata-rata (RVOL ${volume.relativeVolume.toFixed(2)}×) diiringi candle naik.`;
   } else {
     scoreSum += 8;
     volTone = 'amber';
