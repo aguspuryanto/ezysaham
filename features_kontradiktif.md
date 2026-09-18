@@ -2052,3 +2052,200 @@ Next valid condition:
 ```
 
 **Kesimpulan audit:** untuk test case TRUE ini, `FINAL DECISION = WAIT` sudah benar. Yang masih perlu Anda benahi terutama adalah **BUY_ALLOWED/Risk Gate**, **RSI classification**, **Zone Status**, **R:R**, **RVOL**, dan **pemisahan Bandar vs Market Cycle**. Ini menunjukkan bug utama EzySaham memang berada di **decision engine**, bukan pada kemampuan report menghasilkan narasi.
+
+----
+Betul. Kalau **data utama EOD**, saya justru menyarankan EzySaham **fokus ke Swing 1–5 hari**, bukan mencoba menjadi screener intraday.
+
+Yang perlu diubah adalah: **EzySaham bukan memprediksi BUY**, tetapi menjawab:
+
+> **“Apakah saham ini layak dipertimbangkan untuk Swing 1–5 hari, dan kalau iya, bagaimana Trading Plan-nya?”**
+
+### Prompt singkat untuk EzySaham
+
+```text
+Ubah decision engine EzySaham menjadi Swing Trading 1–5 Hari berbasis EOD.
+
+TUJUAN:
+Untuk setiap saham, tentukan:
+1. Swing Suitability: apakah saham cocok untuk Swing 1–5 hari.
+2. Setup: Buy on Pullback / Buy on Support / Breakout / No Setup.
+3. Trading Plan: Entry Zone, Trigger, Stop Loss, TP1, TP2, R:R.
+4. Final Action: BUY NOW / WAIT / WAIT FOR PULLBACK / NO TRADE.
+
+Jangan gunakan data intraday sebagai dasar utama keputusan karena data EOD.
+VWAP/EMA intraday hanya informasi tambahan jika tersedia, bukan trigger utama.
+
+SWING SUITABILITY menggunakan:
+- Daily Trend: EMA20, EMA50, EMA200
+- Price Structure: Higher High / Higher Low / Lower High / Lower Low
+- Support & Resistance
+- RSI
+- MACD
+- Volume & Relative Volume
+- ATR / ATR%
+- Momentum
+- Fundamental Risk
+- Market Regime
+- Liquidity
+- Recent price performance
+
+KLASIFIKASI:
+>=75  = SWING CANDIDATE
+60–74 = WATCHLIST
+40–59 = LOW QUALITY SETUP
+<40   = NO TRADE
+
+PENTING:
+Swing Suitability bukan BUY signal.
+
+TRADING PLAN:
+
+1. BUY ON PULLBACK
+Jika trend bullish dan harga belum berada di entry zone:
+→ WAIT FOR PULLBACK.
+
+2. BUY ON SUPPORT
+Jika harga mendekati support:
+→ tunggu support hold + bullish reversal/confirmation.
+
+3. BREAKOUT
+Jika breakout resistance:
+→ jangan langsung BUY hanya karena breakout.
+→ tunggu breakout confirmation + volume confirmation atau retest.
+
+4. OVEREXTENDED
+Jika RSI >70 dan harga terlalu jauh dari support/entry:
+→ WAIT / WAIT FOR PULLBACK.
+Jangan chasing.
+
+ZONE STATUS:
+Price > EntryHigh → ABOVE_ZONE
+EntryLow <= Price <= EntryHigh → IN_ZONE
+Price < EntryLow → BELOW_ZONE
+
+ENTRY CONFIRMATION harus deterministic:
+- support/retest bertahan
+- tidak breakdown
+- candle reversal/bullish confirmation
+- volume mendukung
+- trend masih valid
+
+FINAL ACTION:
+Jika RiskGate=BLOCK → NO_TRADE
+Jika ABOVE_ZONE → WAIT_FOR_PULLBACK
+Jika IN_ZONE tetapi trigger belum confirmed → WAIT
+Jika IN_ZONE + trigger confirmed + RiskGate PASS → BUY_NOW
+Jika setup invalid → NO_TRADE
+
+TRADING PLAN WAJIB MENAMPILKAN:
+- Strategy
+- Current Price
+- Entry Zone
+- Entry Trigger
+- Stop Loss
+- Invalidation
+- TP1
+- TP2
+- Expected Holding: 1–5 Days
+- R:R
+- Position Risk
+- Main Risk
+- Exit Condition
+
+Jangan gunakan AI Score sebagai trigger BUY.
+AI hanya menjelaskan hasil deterministic engine dan tidak boleh override:
+RiskGate, SwingSuitability, ZoneStatus, EntryConfirmation, atau FinalAction.
+```
+
+### Format output yang saya sarankan
+
+Misalnya MMLP:
+
+```text
+🚨 SWING 1–5 DAY PLAN — MMLP
+
+Swing Suitability : 72/100
+Classification    : WATCHLIST
+
+Market Regime     : BULLISH
+Trend             : UPTREND
+Setup             : BUY ON PULLBACK
+
+Current Price     : Rp338
+Entry Zone        : Rp330–334
+Zone Status       : ABOVE_ZONE
+
+RSI               : 78 — OVERBOUGHT
+MACD              : BULLISH
+Volume            : RVOL 6.34x — HIGH
+Support           : Rp330
+Resistance        : Rp358
+
+Entry Trigger:
+✓ Pullback ke Rp330–334
+✓ Support bertahan
+✓ Muncul bullish reversal
+✓ Volume mendukung
+✓ Setup tidak breakdown
+
+Stop Loss         : Rp328
+Invalidation      : Close < Rp328.35
+TP1               : Rp346
+TP2               : Rp358
+
+R:R               : ~1:4–1:7
+Holding Period    : 1–5 hari
+
+FINAL ACTION:
+🟡 WAIT FOR PULLBACK
+
+Alasan:
+Harga Rp338 masih di atas entry zone.
+RSI 78 menunjukkan kondisi overbought.
+Trend bullish, tetapi entry belum terkonfirmasi.
+
+Jangan chasing di Rp338.
+```
+
+### Saya juga menyarankan mengganti konsep `Trade Status`
+
+Daripada:
+
+```text
+Trade Status: WAIT — CHASING RISK
+```
+
+buat lebih terstruktur:
+
+```text
+Swing Suitability : 72/100 — WATCHLIST
+Setup             : BUY ON PULLBACK
+Zone Status       : ABOVE_ZONE
+Entry Status      : NOT_CONFIRMED
+Risk Status       : MODERATE
+Final Action      : WAIT_FOR_PULLBACK
+```
+
+Ini akan membuat EzySaham jauh lebih mudah dikembangkan.
+
+**Intinya:**
+
+```text
+EOD DATA
+   ↓
+SWING SUITABILITY
+   ↓
+SETUP DETECTION
+   ↓
+TRADING PLAN
+   ↓
+RISK GATE
+   ↓
+ZONE STATUS
+   ↓
+ENTRY CONFIRMATION
+   ↓
+BUY / WAIT / NO TRADE
+```
+
+Dengan pendekatan ini, EzySaham tidak perlu berpura-pura menjadi sistem scalping real-time. Ia menjadi **EOD Swing Screener + Trading Plan 1–5 hari**, yang jauh lebih sesuai dengan data yang tersedia.

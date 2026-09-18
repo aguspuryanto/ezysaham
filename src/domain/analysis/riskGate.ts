@@ -56,6 +56,8 @@ export interface RiskGateInput {
   setupInvalidated: boolean;
   /** From TradeScenario.extremeDistanceWarning — price sits >15% from the entry trigger, i.e. not a realistic near-term setup (distinguishes NOT_READY from WATCH). */
   extremeDistanceWarning: boolean;
+  /** From tradeValidation.isEntryConfirmed — the full deterministic checklist (support/retest held, no breakdown, reversal candle, supportive volume, intact trend), not just price location. Required for entryStatus CONFIRMED. */
+  entryConfirmed: boolean;
   /** bandarScore's classification.label === 'Distribution Risk' — elevated but not yet Strong Distribution. Soft warning only, never a BLOCKED contributor on its own. */
   isDistributionRisk: boolean;
   /** Where price sits vs. the entry zone shown on screen (tradeValidation.classifyZoneStatus) — required for BUY_NOW, see tradeStatus derivation below. */
@@ -133,6 +135,12 @@ export function evaluateRiskGate(input: RiskGateInput): RiskGateResult {
   // threshold is what let AYLS/MMLP show "BUY" while price was still sitting above their pullback
   // zones, and what let TRUE (price 20.9% above its entry) read the same as a stock one tick away
   // (features_riskgate.md / features_kontradiktif.md).
+  //
+  // Reaching the entry trigger by price alone only ever earns WATCH — CONFIRMED requires the full
+  // deterministic checklist (entryConfirmed = isEntryConfirmed: retest held, no breakdown, reversal
+  // candle, supportive volume, intact trend). This is the fix for "In Entry Zone ≠ otomatis BUY"
+  // (MMLP: price sat right at the entry, RSI overbought, price < VWAP, EMA9 < EMA21 — priceAtEntryTrigger
+  // alone used to read CONFIRMED there).
   let entryStatus: EntryStatus;
   if (input.setupInvalidated) {
     entryStatus = 'INVALIDATED';
@@ -141,8 +149,10 @@ export function evaluateRiskGate(input: RiskGateInput): RiskGateResult {
         ? 'Harga sudah menembus Stop Loss — setup ini sudah tidak valid.'
         : 'Harga sudah menembus level invalidasi SHORT — setup ini sudah tidak valid.'
     );
-  } else if (input.priceAtEntryTrigger) {
+  } else if (input.entryConfirmed) {
     entryStatus = 'CONFIRMED';
+  } else if (input.priceAtEntryTrigger) {
+    entryStatus = 'WATCH';
   } else if (input.extremeDistanceWarning) {
     entryStatus = 'NOT_READY';
   } else {

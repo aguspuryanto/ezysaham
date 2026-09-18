@@ -132,3 +132,27 @@ export function isPriceAtEntryTrigger(direction: Direction, currentPrice: number
 export function isSetupInvalidated(direction: Direction, currentPrice: number, sl: number): boolean {
   return direction === 'LONG' ? currentPrice < sl : currentPrice > sl;
 }
+
+export interface EntryConfirmationInput {
+  /** Price has reached the actionable side of the entry trigger (tradeValidation.isPriceAtEntryTrigger) — support/retest reached. */
+  priceAtEntryTrigger: boolean;
+  /** Price already crossed the scenario's own SL/invalidation line — a broken setup can never confirm. */
+  setupInvalidated: boolean;
+  /** The broader trend has not flipped against this scenario's direction (e.g. still not bearish for a LONG). */
+  trendValid: boolean;
+  /** A reversal/continuation candle in this scenario's favor (bullish for LONG, bearish for SHORT) — plain price-in-zone is not itself a signal. */
+  reversalConfirmed: boolean;
+  /** Relative volume is at/above average, not weak or declining — a silent retest on dead volume does not confirm. */
+  volumeSupportive: boolean;
+}
+
+/**
+ * Deterministic Entry Confirmation checklist: reaching the entry trigger by price alone is not
+ * confirmation (features_kontradiktif.md's MMLP case — "In Entry Zone ≠ otomatis BUY"). All of
+ * support/retest reached, no breakdown, a reversal candle, supportive volume, and an intact trend
+ * must hold before an entry can read CONFIRMED — never AI Score, never price location by itself.
+ */
+export function isEntryConfirmed(input: EntryConfirmationInput): boolean {
+  if (input.setupInvalidated || !input.priceAtEntryTrigger || !input.trendValid) return false;
+  return input.reversalConfirmed && input.volumeSupportive;
+}

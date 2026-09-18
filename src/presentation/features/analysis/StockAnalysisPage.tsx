@@ -58,7 +58,11 @@ import {
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
 import { classifyOversoldRisk, classifyRsiOverbought, classifyFundamentalRisk, evaluateRiskGate, BuyPermission, EntryStatus, FundamentalRiskLevel, RiskGateStatus, TradeStatus } from '@/domain/analysis/riskGate';
-import { classifyZoneStatus, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
+import { classifyZoneStatus, isEntryConfirmed, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
+import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuitabilityResult } from '@/domain/analysis/swingSuitability';
+import { atr, atrPercent } from '@/domain/indicators/atr';
+import { MarketRegimeResult } from '@/domain/analysis/marketRegimeEngine';
+import { useMarketRegime } from './useMarketRegime';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { IntradayResponse } from '@/domain/models/Intraday';
@@ -2035,10 +2039,20 @@ const ENTRY_TYPE_LABEL: Record<EntryType, string> = {
 };
 
 const TRADE_STATUS_STYLE: Record<TradeStatus, { label: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc' }> = {
-  BUY: { label: 'BUY', tone: 'green' },
+  BUY: { label: 'BUY NOW', tone: 'green' },
   SHORT_SETUP: { label: 'SHORT SETUP', tone: 'blue' },
   WAIT: { label: 'WAIT', tone: 'amber' },
   WAIT_FOR_PULLBACK: { label: 'WAIT FOR PULLBACK', tone: 'amber' },
+  NO_TRADE: { label: 'NO TRADE', tone: 'red' },
+};
+
+// Swing Suitability is a composite condition score, never a BUY signal (features_kontradiktif.md's
+// Swing 1–5 Day prompt: "Swing Suitability bukan BUY signal") — a SWING_CANDIDATE stock can still
+// resolve to WAIT/WAIT_FOR_PULLBACK once Zone Status / Entry Confirmation / Risk Gate run.
+const SWING_SUITABILITY_STYLE: Record<SwingSuitabilityResult['classification'], { label: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc' }> = {
+  SWING_CANDIDATE: { label: 'SWING CANDIDATE', tone: 'green' },
+  WATCHLIST: { label: 'WATCHLIST', tone: 'blue' },
+  LOW_QUALITY_SETUP: { label: 'LOW QUALITY SETUP', tone: 'amber' },
   NO_TRADE: { label: 'NO TRADE', tone: 'red' },
 };
 
@@ -2112,6 +2126,7 @@ function EquityResearchReportCard2({
   volume,
   priceAction,
   snapshot,
+  marketRegime,
 }: {
   summary: StockSummary;
   bars: OHLCVBar[];
@@ -2130,6 +2145,9 @@ function EquityResearchReportCard2({
    * at the page level (see quickDecisionSnapshot useMemo) so "Ringkasan Faktor Keputusan" can never
    * disagree with the report above it for the same stock (features_kontradiktif.md). */
   snapshot: QuickDecisionSnapshotResult | null;
+  /** IHSG regime (useMarketRegime, fetched once at the page level) — one of Swing Suitability's
+   * factors. Data still loading reads null and is scored neutral, never penalized. */
+  marketRegime: MarketRegimeResult | null;
 }) {
   const bandarScore = useMemo(() => computeBandarScore(summary, bars ?? []), [summary, bars]);
   const entryTiming = useMemo(() => computeEntryTiming(bandarScore, indicators), [bandarScore, indicators]);
@@ -2315,6 +2333,28 @@ function EquityResearchReportCard2({
   // stop, regardless of how bullish MACD/VWAP/RVOL look).
   const zoneStatus: ZoneStatus = classifyZoneStatus(price, entryZoneLow, entryZoneHigh);
   const fundamentalRisk = classifyFundamentalRisk(fundamentalScreening.score, der, summary.roe);
+
+  // Entry Confirmation is a deterministic checklist, not price location alone (Swing 1–5 Day
+  // prompt): support/retest reached + not breaking down + a reversal candle in this scenario's
+  // favor + supportive volume + an intact trend. Reaching the entry trigger by price alone only
+  // ever earns WATCH inside riskGate.ts — this is what actually promotes it to CONFIRMED.
+  const lastBarForEntry = bars[bars.length - 1];
+  const isDownCandleForEntry = !!lastBarForEntry && lastBarForEntry.close < lastBarForEntry.open;
+  const bullishReversalCandle = priceAction.lastCandleColor === 'green' ||
+    priceAction.pattern === 'bullish_engulfing' || priceAction.pattern === 'hammer' || priceAction.pattern === 'marubozu_bullish';
+  const bearishReversalCandle = priceAction.lastCandleColor === 'red' ||
+    priceAction.pattern === 'bearish_engulfing' || priceAction.pattern === 'shooting_star' || priceAction.pattern === 'marubozu_bearish';
+  const reversalConfirmed = isLong ? bullishReversalCandle : bearishReversalCandle;
+  const volumeSupportive = volume.relativeVolume >= 1;
+  const trendValid = isLong ? trendEma.trend !== 'bearish' : trendEma.trend !== 'bullish';
+  const entryConfirmed = isEntryConfirmed({
+    priceAtEntryTrigger,
+    setupInvalidated,
+    trendValid,
+    reversalConfirmed,
+    volumeSupportive,
+  });
+
   const riskGate = evaluateRiskGate({
     direction: scenario.direction,
     trend: trendEma.trend,
@@ -2330,7 +2370,50 @@ function EquityResearchReportCard2({
     zoneStatus,
     der,
     roe: summary.roe,
+    entryConfirmed,
   });
+
+  // Swing Suitability (features_kontradiktif.md's EOD Swing 1–5 Day prompt) — a composite 0–100
+  // read on whether this stock's current condition is swing-worthy at all. It is NOT a BUY signal:
+  // a SWING_CANDIDATE can still resolve to WAIT/WAIT_FOR_PULLBACK below once Zone Status / Entry
+  // Confirmation / Risk Gate run — this score never feeds into or overrides tradeStatus.
+  const atr14 = lastValid(atr(bars, 14));
+  const atrPct = atrPercent(atr14, price);
+  const swingSuitability: SwingSuitabilityResult = computeSwingSuitability({
+    price,
+    trendEma,
+    indicators,
+    volume,
+    isDownCandle: isDownCandleForEntry,
+    nearestResistance,
+    atrPct,
+    fundamentalRisk,
+    marketRegime: marketRegime?.regime ?? null,
+    capitalization: summary.capitalization,
+    value: summary.value,
+    percentChange1M: summary.percentChange1M,
+  });
+  const swingSetup = detectSwingSetup({ direction: scenario.direction, entryType: scenario.entryType, canContinueUp: priceAction.canContinueUp });
+  // Unify "Strategi" with the new Setup concept for LONG (Buy on Pullback / Buy on Support /
+  // Breakout) instead of showing two labels that could read differently for the same scenario;
+  // SHORT scenarios keep the existing entryType-derived label since swingSetup only classifies LONG.
+  const strategiDisplay = isLong ? SWING_SETUP_LABEL[swingSetup] : strategiLabel;
+
+  // Main Risk — the single most material warning right now, prioritized so the report never buries
+  // a hard blocker under a list of minor notes. Falls back to the first Risk Gate reason, then a
+  // clean "no major risk" note.
+  const mainRisk =
+    fundamentalRisk === 'HIGH' ? `Fundamental Risk HIGH — leverage tinggi (DER ${der != null ? `${der.toFixed(0)}%` : '–'}) & profitabilitas negatif (ROE ${summary.roe.toFixed(1)}%)` :
+      rsiOverboughtInfo.chasingRisk === 'VERY_HIGH' ? `Chasing Risk VERY_HIGH — ${rsiOverboughtInfo.label}` :
+        isStrongDistribution ? 'Bandar terindikasi Strong Distribution' :
+          isDistributionRisk ? 'Bandar terindikasi Distribution Risk' :
+            riskGate.reasons[0] ?? 'Tidak ada risk mayor terdeteksi saat ini';
+
+  // Exit Condition — combines the invalidation rule with partial-profit-taking and a trend-flip
+  // exit, so "when do I get out" never has to be inferred from separate SL/TP lines.
+  const exitCondition = isLong
+    ? `${scenario.invalidationRule}; pertimbangkan take-profit sebagian di TP1 (${fmtRp(roundToTick(scenario.tp1))}), sisanya di TP2 (${fmtRp(roundToTick(scenario.tp2))}); keluar juga jika trend berbalik bearish sebelum SL/TP tersentuh.`
+    : `${scenario.invalidationRule}; keluar juga jika muncul reversal bullish kuat sebelum SL/TP tersentuh.`;
   // "NO VALIDATION = NO SIGNAL": if the engine's own math validation failed (SL/TP ordering vs
   // direction), this must never be presented as an actionable BUY/SHORT regardless of what the
   // Risk Gate says.
@@ -2459,9 +2542,12 @@ function EquityResearchReportCard2({
     return [
       `🚨 [EQUITY RESEARCH REPORT] - $${summary.ticker}`,
       `Market Status: ${marketStatus.label} | Trade Status: ${tradeStatusLabel}`,
+      `Swing Suitability: ${swingSuitability.score}/100 — ${SWING_SUITABILITY_STYLE[swingSuitability.classification].label} (bukan sinyal BUY)`,
       `Risk Gate: ${RISK_GATE_STATUS_STYLE[riskGateStatus].label} | Buy Permission: ${BUY_PERMISSION_STYLE[buyPermission].label} | Entry Status: ${ENTRY_STATUS_STYLE[entryStatus].label}${isLong ? ` | Zone Status: ${ZONE_STATUS_STYLE[zoneStatus].label}` : ''}`,
       '',
-      `📌 Strategi: ${strategiLabel} (Gaya: ${gayaLabel})`,
+      `📌 Strategi (Setup): ${strategiDisplay} (Gaya: ${gayaLabel})`,
+      `Expected Holding: 1–5 Hari (Swing) | Position Risk: ${riskRangeLabel} | Main Risk: ${mainRisk}`,
+      `Exit Condition: ${exitCondition}`,
       '--------------------------------------------------',
       ...entryLines,
       '',
@@ -2506,6 +2592,16 @@ function EquityResearchReportCard2({
             <div className="flex items-center gap-2 text-sm">
               <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Utama (Market):</span>
               <Pill tone={marketStatus.tone}>{marketStatus.label}</Pill>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Swing Suitability (1–5 Hari):</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{swingSuitability.score}/100</span>
+              <Pill tone={SWING_SUITABILITY_STYLE[swingSuitability.classification].tone}>{SWING_SUITABILITY_STYLE[swingSuitability.classification].label}</Pill>
+              <span className="text-[11px] text-zinc-400">bukan sinyal BUY</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Setup:</span>
+              <Pill tone={swingSetup === 'NO_SETUP' ? 'zinc' : swingSetup === 'BREAKOUT' ? 'blue' : 'amber'}>{SWING_SETUP_LABEL[swingSetup]}</Pill>
             </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Transaksi:</span>
@@ -2579,6 +2675,17 @@ function EquityResearchReportCard2({
                 )}
               </div>
             )}
+            <details className="mt-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-700 dark:bg-zinc-800/40">
+              <summary className="cursor-pointer font-semibold text-zinc-600 dark:text-zinc-300">Rincian Swing Suitability ({swingSuitability.score}/100)</summary>
+              <ul className="mt-1.5 space-y-1">
+                {swingSuitability.factors.map((f) => (
+                  <li key={f.key} className="flex items-center justify-between gap-2 text-zinc-500 dark:text-zinc-400">
+                    <span>{f.label} — {f.detail}</span>
+                    <span className="font-mono shrink-0">{f.score}/{f.max}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
           </div>
         </div>
 
@@ -2755,9 +2862,13 @@ function EquityResearchReportCard2({
           ) : (
             <ul className="space-y-1.5 text-sm">
               <li className="flex items-center gap-2">
-                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Strategi:</span>
-                <span className="font-bold text-zinc-900 dark:text-zinc-100">{strategiLabel}</span>
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Strategi (Setup):</span>
+                <span className="font-bold text-zinc-900 dark:text-zinc-100">{strategiDisplay}</span>
                 <span className="text-xs text-zinc-400">({gayaLabel})</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Current Price:</span>
+                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fmtRp(price)}</span>
               </li>
               <li className="flex items-center gap-2">
                 <span className="text-zinc-500 dark:text-zinc-400 shrink-0">{isLong ? 'Area Entry Ideal:' : 'Rejection Zone (Trigger):'}</span>
@@ -2771,6 +2882,18 @@ function EquityResearchReportCard2({
                   Distance to Entry: harga {fmtRp(price)} vs batas atas {fmtRp(entryZoneHigh)} ({price > entryZoneHigh ? '+' : ''}{fmtN(((price - entryZoneHigh) / entryZoneHigh) * 100, 1)}%) · vs batas bawah {fmtRp(entryZoneLow)} ({price > entryZoneLow ? '+' : ''}{fmtN(((price - entryZoneLow) / entryZoneLow) * 100, 1)}%)
                 </li>
               )}
+              <li className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                <span className="font-semibold text-zinc-600 dark:text-zinc-300">Entry Trigger — </span>
+                {entryConfirmed ? 'Terkonfirmasi: retest/support bertahan, reversal candle, volume mendukung, trend intact.' : 'Belum terkonfirmasi, tunggu: '}
+                {!entryConfirmed && (
+                  <>
+                    {priceAtEntryTrigger ? '✅' : '⬜'} harga di zona ·{' '}
+                    {reversalConfirmed ? '✅' : '⬜'} candle reversal ·{' '}
+                    {volumeSupportive ? '✅' : '⬜'} volume mendukung ·{' '}
+                    {trendValid ? '✅' : '⬜'} trend intact
+                  </>
+                )}
+              </li>
               {!isLong && (
                 <li className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
                   Bukan entry sekarang. Short hanya aktif JIKA harga rebound/retest ke level ini dan gagal breakout (bearish rejection terkonfirmasi).
@@ -2783,12 +2906,12 @@ function EquityResearchReportCard2({
                 </li>
               )}
               <li className="flex items-center gap-2">
-                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Stop Loss (Risk Limit):</span>
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Stop Loss:</span>
                 <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{fmtRp(slPrice)}</span>
                 <span className="text-xs text-zinc-400">(Risk: {riskRangeLabel})</span>
               </li>
               <li className="text-xs text-zinc-500 dark:text-zinc-400">
-                {scenario.invalidationRule}
+                <span className="font-semibold text-zinc-600 dark:text-zinc-300">Invalidation — </span>{scenario.invalidationRule}
               </li>
               <li className="flex flex-wrap items-center gap-3">
                 <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Target:</span>
@@ -2815,6 +2938,20 @@ function EquityResearchReportCard2({
               </li>
               <li className="text-xs text-zinc-400 leading-relaxed pt-0.5">
                 {rewardLabel} dihitung dari {isLong ? 'batas atas Entry Zone (skenario entry paling konservatif)' : 'harga Entry/Rejection Trigger'} dan sudah memperhitungkan estimasi fee round-trip ~{fmtN(ROUND_TRIP_FEE_PCT, 2)}% pada kolom &quot;net&quot;. Stop Loss dibulatkan ke fraksi harga (tick) IDX yang valid.
+              </li>
+              <li className="flex items-center gap-2 pt-1">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Expected Holding:</span>
+                <span className="font-semibold text-zinc-700 dark:text-zinc-300">1–5 Hari (Swing)</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Position Risk:</span>
+                <span className="font-semibold text-zinc-700 dark:text-zinc-300">{riskRangeLabel} dari modal pada trade ini</span>
+              </li>
+              <li className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                <span className="font-semibold text-zinc-600 dark:text-zinc-300">Main Risk — </span>{mainRisk}
+              </li>
+              <li className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                <span className="font-semibold text-zinc-600 dark:text-zinc-300">Exit Condition — </span>{exitCondition}
               </li>
             </ul>
           )}
@@ -3188,6 +3325,10 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   } = useStockAnalysis(ticker);
   const [justCopied, setJustCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<AnalysisTab>('teknikal');
+  // IHSG regime — one of Swing Suitability's factors (features_kontradiktif.md's Swing 1–5 Day
+  // prompt). Fetched once here rather than inside EquityResearchReportCard2 so re-renders of that
+  // card don't refetch it.
+  const { regime: marketRegime } = useMarketRegime();
   const watchlist = useWatchlist();
   const journal = useJournal();
   const fairValue = useFairValueCalculator(summary, fundamentals);
@@ -3278,6 +3419,17 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     const entryZoneHigh = entryPrice;
     const zoneStatus: ZoneStatus = classifyZoneStatus(price, entryZoneLow, entryZoneHigh);
     const der = fundamentals?.debtToEquity ?? null;
+    const bullishReversalCandle = analysis.priceAction.lastCandleColor === 'green' ||
+      analysis.priceAction.pattern === 'bullish_engulfing' || analysis.priceAction.pattern === 'hammer' || analysis.priceAction.pattern === 'marubozu_bullish';
+    const bearishReversalCandle = analysis.priceAction.lastCandleColor === 'red' ||
+      analysis.priceAction.pattern === 'bearish_engulfing' || analysis.priceAction.pattern === 'shooting_star' || analysis.priceAction.pattern === 'marubozu_bearish';
+    const entryConfirmed = isEntryConfirmed({
+      priceAtEntryTrigger,
+      setupInvalidated,
+      trendValid: isLong ? analysis.trendEma.trend !== 'bearish' : analysis.trendEma.trend !== 'bullish',
+      reversalConfirmed: isLong ? bullishReversalCandle : bearishReversalCandle,
+      volumeSupportive: analysis.volume.relativeVolume >= 1,
+    });
     const riskGate = evaluateRiskGate({
       direction: scenario.direction,
       trend: analysis.trendEma.trend,
@@ -3288,6 +3440,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       priceBelowEma200: price <= analysis.trendEma.ema200,
       priceAtEntryTrigger,
       setupInvalidated,
+      entryConfirmed,
       extremeDistanceWarning: scenario.extremeDistanceWarning,
       isDistributionRisk,
       zoneStatus,
@@ -3673,6 +3826,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   volume={volume}
                   priceAction={priceAction}
                   snapshot={quickDecisionSnapshot}
+                  marketRegime={marketRegime}
                 />
 
                 <div className={cn(
