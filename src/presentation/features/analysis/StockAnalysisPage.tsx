@@ -57,7 +57,7 @@ import {
   TrendEmaAnalysis,
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
-import { classifyOversoldRisk, classifyRsiOverbought, classifyFundamentalRisk, evaluateRiskGate, BuyPermission, EntryStatus, FundamentalRiskLevel, RiskGateStatus, TradeStatus } from '@/domain/analysis/riskGate';
+import { classifyOversoldRisk, classifyRsiOverbought, classifyRvol, classifyFundamentalRisk, evaluateRiskGate, BuyPermission, EntryStatus, FundamentalRiskLevel, RiskGateStatus, TradeStatus } from '@/domain/analysis/riskGate';
 import { classifyZoneStatus, isEntryConfirmed, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
 import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuitabilityResult } from '@/domain/analysis/swingSuitability';
 import { atr, atrPercent } from '@/domain/indicators/atr';
@@ -2103,12 +2103,16 @@ const VALIDATION_ERROR_LABEL: Record<string, string> = {
   ERROR_INVALID_TP_STRUCTURE: 'Struktur Target Profit tidak valid untuk arah posisi ini.',
 };
 
+// "Undervalued"/"Overvalued" implies a benchmark comparison (sector, historical) this function
+// doesn't actually make — it only reads a PER band in isolation. features_analisa.md rule 9: "Jangan
+// menyebut 'Undervalued' tanpa benchmark sektor/historis. Jika hanya berdasarkan PER/PBV → gunakan
+// 'Valuation Relatively Low/High'."
 function valuationFromPer(per: number): { label: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc' } {
   if (!(per > 0)) return { label: 'Data Tidak Tersedia', tone: 'zinc' };
-  if (per <= 12) return { label: 'Murah (Undervalued)', tone: 'green' };
+  if (per <= 12) return { label: 'Valuasi Relatif Rendah (PER)', tone: 'green' };
   if (per <= 20) return { label: 'Wajar (Fair Value)', tone: 'green' };
   if (per <= 35) return { label: 'Premium', tone: 'amber' };
-  return { label: 'Mahal (Overvalued)', tone: 'red' };
+  return { label: 'Valuasi Relatif Tinggi (PER)', tone: 'red' };
 }
 
 function EquityResearchReportCard2({
@@ -2246,9 +2250,15 @@ function EquityResearchReportCard2({
   // distribution/panic-selling, not a bullish signal. Pair it with the last candle's color instead
   // of treating "high volume" alone as green (features_kontradiktif.md §7: "Volume tinggi ≠
   // bullish"). A doji or missing high-volume read falls back to the old magnitude-only tone.
-  const rvolTone: Tone = !volume.isHighVolume
-    ? (volume.relativeVolume >= 1 ? 'amber' : 'red')
-    : priceAction.lastCandleColor === 'red' ? 'red' : priceAction.lastCandleColor === 'green' ? 'green' : 'amber';
+  // RVOL exactly 0/NaN usually means the volume feed hasn't populated, not "very low volume" — flag
+  // it NO_DATA (zinc) instead of red so it doesn't read as a bearish signal (features_analisa.md
+  // rule 4: "RVOL=0 → NO_DATA, bukan volume rendah").
+  const rvolClass = classifyRvol(volume.relativeVolume);
+  const rvolTone: Tone = rvolClass.tier === 'NO_DATA'
+    ? 'zinc'
+    : !volume.isHighVolume
+      ? (volume.relativeVolume >= 1 ? 'amber' : 'red')
+      : priceAction.lastCandleColor === 'red' ? 'red' : priceAction.lastCandleColor === 'green' ? 'green' : 'amber';
   const volumeTrendLabel = volume.volumeTrend === 'increasing' ? 'Meningkat' : volume.volumeTrend === 'decreasing' ? 'Menurun' : 'Normal';
   const volumeTrendTone: Tone = volume.volumeTrend === 'increasing' ? 'green' : volume.volumeTrend === 'decreasing' ? 'red' : 'zinc';
   const structureTone: Tone = trendEma.higherLows ? "green" : "amber";
@@ -2281,7 +2291,7 @@ function EquityResearchReportCard2({
   const intradayChecklist: ChecklistItem[] = [
     { label: 'VWAP', value: vwapLabel, tone: vwapTone },
     { label: 'EMA9 / EMA21', value: emaLabel, tone: emaTone },
-    { label: 'RVOL', value: `${fmtN(volume.relativeVolume, 2)}×`, tone: rvolTone },
+    { label: 'RVOL', value: `${fmtN(volume.relativeVolume, 2)}× (${rvolClass.label})`, tone: rvolTone },
     { label: 'Volume', value: volumeTrendLabel, tone: volumeTrendTone },
     { label: 'RSI', value: `${fmtN(indicators.rsi14, 1)} (${rsiStatus.label})`, tone: rsiStatus.tone },
     { label: 'Struktur Harga', value: trendEma.higherLows ? 'Higher-low (harian)' : 'Belum ada pola higher-low', tone: structureTone },
@@ -2298,7 +2308,6 @@ function EquityResearchReportCard2({
   // composite score happened to read BELI/SANGAT_BELI, contradicting the plan below it
   // (features_inkonsistensi.md §15/§16: strategy must not conflict with direction).
   const strategiLabel = ENTRY_TYPE_LABEL[scenario.entryType];
-  const gayaLabel = isLong ? 'Mean Reversion / Buy on Support' : 'Breakdown / Short on Rejection';
 
   // Risk Gate + Oversold classification (riskGate.ts) — the "Consistency & Risk Gate" layer from
   // features_inkonsistensi.md. It never recomputes Entry/SL/TP (that stays deterministic above);
@@ -2393,11 +2402,25 @@ function EquityResearchReportCard2({
     value: summary.value,
     percentChange1M: summary.percentChange1M,
   });
-  const swingSetup = detectSwingSetup({ direction: scenario.direction, entryType: scenario.entryType, canContinueUp: priceAction.canContinueUp });
+  const swingSetup = detectSwingSetup({
+    direction: scenario.direction,
+    entryType: scenario.entryType,
+    canContinueUp: priceAction.canContinueUp,
+    volumeConfirmed: volume.isHighVolume,
+  });
   // Unify "Strategi" with the new Setup concept for LONG (Buy on Pullback / Buy on Support /
   // Breakout) instead of showing two labels that could read differently for the same scenario;
   // SHORT scenarios keep the existing entryType-derived label since swingSetup only classifies LONG.
   const strategiDisplay = isLong ? SWING_SETUP_LABEL[swingSetup] : strategiLabel;
+  // Gaya Sinyal must never contradict the Setup pill right next to it (features_analisa.md rule 12:
+  // Setup/Strategi and its "style" description must stay consistent) — it used to be a bare
+  // isLong ternary unrelated to swingSetup, so a support-anchored entry could still show "Breakout"
+  // as Setup while Gaya Sinyal said "Mean Reversion / Buy on Support" (or vice versa).
+  const gayaLabel = !isLong
+    ? 'Breakdown / Short on Rejection'
+    : swingSetup === 'BREAKOUT'
+      ? 'Momentum / Breakout Continuation'
+      : 'Mean Reversion / Buy on Support';
 
   // Main Risk — the single most material warning right now, prioritized so the report never buries
   // a hard blocker under a list of minor notes. Falls back to the first Risk Gate reason, then a
@@ -2487,13 +2510,16 @@ function EquityResearchReportCard2({
   const rewardPct = (target: number) =>
     Math.max(0, isLong ? ((target - entryPrice) / entryPrice) * 100 : ((entryPrice - target) / entryPrice) * 100);
   const netRewardPct = (target: number) => Math.max(0, rewardPct(target) - ROUND_TRIP_FEE_PCT);
-  // Risk is always a positive distance from Entry to SL regardless of direction.
+  // Risk is always a positive distance from Entry to SL regardless of direction — displayed as a
+  // plain positive percentage, never with a leading "-" (features_analisa.md rule 5: "Risk % = ABS(entry
+  // - SL) / entry × 100. Jangan tampilkan -0.5% atau -1.5%." — a negative-looking risk number reads
+  // as a loss already realized rather than the magnitude being risked).
   const riskPctFromEntry = Math.abs(((slPrice - entryPrice) / entryPrice) * 100);
   const riskPctFromLow = isLong ? Math.abs(((slPrice - entryZoneLow) / entryZoneLow) * 100) : riskPctFromEntry;
   const riskRangeLabel =
     isLong && Math.abs(riskPctFromLow - riskPctFromEntry) >= 0.05
-      ? `-${fmtN(riskPctFromLow, 1)}% s.d. -${fmtN(riskPctFromEntry, 1)}%`
-      : `-${fmtN(riskPctFromEntry, 1)}%`;
+      ? `${fmtN(riskPctFromLow, 1)}% s.d. ${fmtN(riskPctFromEntry, 1)}%`
+      : `${fmtN(riskPctFromEntry, 1)}%`;
 
   const buildShareText = () => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
@@ -2509,6 +2535,9 @@ function EquityResearchReportCard2({
     } else {
       if (setupInvalidated) {
         entryLines.push(`🔴 ${statusNote}`);
+      }
+      if (isLong && scenario.tp1AlreadyReached) {
+        entryLines.push('⚠️ Target lama sudah terlampaui harga saat ini — TP1/TP2 di bawah sudah dihitung ulang ke resistance berikutnya (Target Validation Engine).');
       }
       if (isLong) {
         entryLines.push(
@@ -2555,7 +2584,7 @@ function EquityResearchReportCard2({
       `1. Technical    : Tren ${trenLabel}, RSI ${fmtN(indicators.rsi14, 1)} (${rsiStatus.label})${oversoldRisk.status !== 'NONE' ? ` — ${oversoldRisk.label}` : ''}, MACD ${macdStatus.label}. Area kunci: Support ${nearestSupport ? fmtRp(nearestSupport.price) : '–'} | Resistance ${nearestResistance ? fmtRp(nearestResistance.price) : '–'}.`,
       `2. Fundamental  : Valuasi ${valuation.label} (PER ${summary.per > 0 ? `${summary.per.toFixed(1)}x` : '–'} · PBV ${summary.pbv > 0 ? `${summary.pbv.toFixed(2)}x` : '–'}) · Skor Fundamental AI ${fundamentalScreening.score}/100${solvencyLabel ? `, ${solvencyLabel} (DER ${der != null ? `${der.toFixed(1)}%` : '–'} · ROE ${summary.roe !== 0 ? `${summary.roe.toFixed(1)}%` : '–'})` : ''} · Fundamental Risk ${FUNDAMENTAL_RISK_STYLE[fundamentalRisk].label}.`,
       `3. Bandar & Entry Timing: Fase Bandar ${faseBandarLabel} · Fase Siklus Pasar ${faseSiklusLabel} · Entry Timing ${entryTiming.label} — ${entryTiming.headline}${bandarScore.hiddenDistributionWarning ? ' ⚠️ Waspada hidden distribution (harga naik, OBV melemah).' : ''}`,
-      `4. Checklist Intraday: VWAP ${vwapLabel} · EMA9/EMA21 ${emaLabel} · RVOL ${fmtN(volume.relativeVolume, 2)}× (Volume ${volumeTrendLabel})`,
+      `4. Checklist Intraday: VWAP ${vwapLabel} · EMA9/EMA21 ${emaLabel} · RVOL ${fmtN(volume.relativeVolume, 2)}× (${rvolClass.label}, Volume ${volumeTrendLabel})`,
       `5. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title}` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title}` : ''}`,
       '',
       `🚦 Risk Gate: ${RISK_GATE_STATUS_STYLE[riskGateStatus].label} · Buy Permission: ${BUY_PERMISSION_STYLE[buyPermission].label} · Entry Status: ${ENTRY_STATUS_STYLE[entryStatus].label}${isLong ? ` · Zone Status: ${ZONE_STATUS_STYLE[zoneStatus].label}` : ''}${riskGate.reasons.length > 0 ? ` — ${riskGate.reasons.join('; ')}.` : '.'}`,
@@ -2913,6 +2942,12 @@ function EquityResearchReportCard2({
               <li className="text-xs text-zinc-500 dark:text-zinc-400">
                 <span className="font-semibold text-zinc-600 dark:text-zinc-300">Invalidation — </span>{scenario.invalidationRule}
               </li>
+              {isLong && scenario.tp1AlreadyReached && (
+                <li className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                  <TriangleAlert className="size-3.5 mt-0.5 shrink-0" strokeWidth={2.5} />
+                  Target lama sudah terlampaui harga saat ini — TP1/TP2 di bawah sudah dihitung ulang ke resistance berikutnya (Target Validation Engine).
+                </li>
+              )}
               <li className="flex flex-wrap items-center gap-3">
                 <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Target:</span>
                 <span className="font-mono text-sm text-zinc-700 dark:text-zinc-300">

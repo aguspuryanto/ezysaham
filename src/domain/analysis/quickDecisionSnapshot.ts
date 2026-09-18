@@ -35,7 +35,7 @@ import {
 } from '@/domain/models/StockAnalysis';
 import { BandarScoreResult, MarketCyclePhaseResult } from '@/domain/analysis/bandarScore';
 import { EntryTimingResult } from '@/domain/analysis/entryTiming';
-import { BuyPermission, TradeStatus } from '@/domain/analysis/riskGate';
+import { BuyPermission, TradeStatus, classifyRvol } from '@/domain/analysis/riskGate';
 
 export type QuickTone = 'green' | 'red' | 'amber' | 'blue' | 'zinc';
 export type QuickVerdict = 'TRADE' | 'WAIT' | 'NO_TRADE';
@@ -145,10 +145,15 @@ export function computeQuickDecisionSnapshot(params: {
   const isDownCandle = !!lastBar && lastBar.close < lastBar.open;
   const relativeVolume = volume.relativeVolume;
   const volumeWeak = relativeVolume < 1;
+  // RVOL 0/NaN usually means the feed hasn't populated, not "very low volume" — don't let it read
+  // as a red flag (features_analisa.md rule 4).
+  const rvolClass = classifyRvol(relativeVolume);
   const volumeFactor: QuickDecisionFactor = {
     label: 'Volume',
-    value: `RVOL ${relativeVolume.toFixed(2)}×`,
-    tone: volume.isHighVolume ? (isDownCandle ? 'red' : 'green') : relativeVolume < 0.5 ? 'red' : 'amber',
+    value: `RVOL ${relativeVolume.toFixed(2)}× (${rvolClass.label})`,
+    tone: rvolClass.tier === 'NO_DATA'
+      ? 'zinc'
+      : volume.isHighVolume ? (isDownCandle ? 'red' : 'green') : relativeVolume < 0.5 ? 'red' : 'amber',
   };
 
   const bandarDistribution =

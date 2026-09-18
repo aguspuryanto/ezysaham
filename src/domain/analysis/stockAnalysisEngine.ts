@@ -269,7 +269,13 @@ function analyzePriceAction(
   else
     notes.push('Harga di bawah EMA20, waspadai tekanan jual.');
 
-  const canContinueUp = lastCandleColor === 'green' && aboveEma20;
+  // "Can continue up" means price has genuinely broken out above its recent trading range — not
+  // merely "green candle above EMA20" (features_analisa.md rule 1: a BREAKOUT setup must mean price
+  // really cleared resistance + candle confirmation, never just a bullish-looking candle near EMA20).
+  // Compares today's close against the highest high of the preceding 20 bars (excluding today).
+  const priorRangeBars = bars.slice(0, -1).slice(-20);
+  const priorRangeHigh = priorRangeBars.length > 0 ? Math.max(...priorRangeBars.map((b) => b.high)) : NaN;
+  const canContinueUp = !Number.isNaN(priorRangeHigh) && lastBar.close > priorRangeHigh && lastCandleColor !== 'red';
   if (canContinueUp)
     notes.push('Ada potensi melanjutkan kenaikan jika volume mendukung.');
   else if (!canContinueUp && lastCandleColor === 'green')
@@ -397,8 +403,22 @@ function buildTradingPlan(
   // entry), TP2 is the resistance itself — mirrors the two-tier target used
   // for the healthy (chase) case, just anchored further out since entry sits
   // near support rather than near price.
-  const bullTp1 = needsPullback ? round2((bullEntry + r1) / 2) : r1;
-  const bullTp2 = needsPullback ? r1 : r2;
+  let bullTp1 = needsPullback ? round2((bullEntry + r1) / 2) : r1;
+  let bullTp2 = needsPullback ? r1 : r2;
+  // Target Validation Engine (features_analisa.md rule 7): a pullback plan's TP1 is anchored between
+  // the (support-based) entry and r1 at the moment the plan is built — if price has since rallied
+  // past that midpoint before pulling back, TP1 ends up behind the current price instead of ahead of
+  // it (the CAMP bug: Entry 196–198, TP1 202, Current ~205). Both resistances in `sr.resistances` are
+  // already guaranteed > price (see analyzeSupportResistance's `p > price*1.005` filter), so promote
+  // TP1/TP2 to the next real resistance level(s) above price instead of a stale synthetic midpoint.
+  const resistanceLevelsAbovePrice = sr.resistances.map((r) => r.price);
+  const tp1AlreadyReached = bullTp1 <= price;
+  if (tp1AlreadyReached) {
+    bullTp1 = resistanceLevelsAbovePrice.find((p) => p > price) ?? round2(price * 1.03);
+  }
+  if (bullTp2 <= bullTp1) {
+    bullTp2 = resistanceLevelsAbovePrice.find((p) => p > bullTp1) ?? round2(bullTp1 * 1.03);
+  }
   const bullRR = needsPullback ? round2((bullTp1 - bullEntry) / Math.max(bullEntry - bullSl, 1)) : chaseRR;
   // Average-down zone: halfway between entry and stop loss — a level to add to
   // the position if price dips before invalidating the setup, tightening cost basis.
@@ -424,6 +444,7 @@ function buildTradingPlan(
       direction: 'LONG',
       entryType: needsPullback ? 'BUY_ON_SUPPORT' : 'BUY_ON_PULLBACK',
       entry: bullEntry, avgDown: bullAvgDown, tp1: bullTp1, tp2: bullTp2, sl: bullSl,
+      tp1AlreadyReached,
       riskRewardRatio: bullRisk.riskRewardRatio,
       riskPct: bullRisk.riskPct,
       rewardPct: bullRisk.rewardPct,

@@ -98,7 +98,7 @@ export function evaluateRiskGate(input: RiskGateInput): RiskGateResult {
   // TRUE" — exactly the bare "Buy Allowed: TRUE" this module exists to replace.
   const softReasons: string[] = [];
   const rsiOverbought = classifyRsiOverbought(input.rsi14);
-  if (rsiOverbought.status === 'HIGH_OVERBOUGHT' || rsiOverbought.status === 'EXTREME_OVERBOUGHT') {
+  if (rsiOverbought.status === 'EXTREME_OVERBOUGHT') {
     softReasons.push(rsiOverbought.label);
   }
   // Fundamental score alone undersells TRUE's case (40/100 — not "sangat lemah") once DER 151% /
@@ -236,8 +236,8 @@ export function classifyOversoldRisk(input: OversoldRiskInput): OversoldRiskResu
   return { status: 'OVERSOLD', label: 'Oversold — kondisi, bukan sinyal beli otomatis.' };
 }
 
-// ─── RSI overbought tiers (features_kontradiktif.md §4) ─────────────────────
-export type RsiOverboughtStatus = 'NONE' | 'OVERBOUGHT' | 'HIGH_OVERBOUGHT' | 'EXTREME_OVERBOUGHT';
+// ─── RSI overbought tiers (features_kontradiktif.md §4, features_analisa.md rule 3) ─────────
+export type RsiOverboughtStatus = 'NONE' | 'OVERBOUGHT' | 'EXTREME_OVERBOUGHT';
 export type ChasingRisk = 'LOW' | 'MODERATE' | 'HIGH' | 'VERY_HIGH';
 
 export interface RsiOverboughtResult {
@@ -248,22 +248,17 @@ export interface RsiOverboughtResult {
 
 /**
  * A flat "Overbought" pill treats RSI 71 and RSI 96.6 the same — TRUE's report showed exactly that
- * before this classifier existed. Extreme overbought (>90) is a chasing-risk warning, never an
- * automatic SELL: a stock can keep grinding up while RSI stays pinned above 90.
+ * before this classifier existed. RSI >= 80 reads EXTREME_OVERBOUGHT (features_analisa.md rule 3
+ * merges the old 80–90/>90 split into one tier — CAMP's RSI 85 must read Extreme Overbought, not a
+ * softer "Overbought tinggi"). This is a chasing-risk warning, never an automatic SELL: a stock can
+ * keep grinding up while RSI stays pinned above 80.
  */
 export function classifyRsiOverbought(rsi14: number): RsiOverboughtResult {
-  if (rsi14 > 90) {
+  if (rsi14 >= 80) {
     return {
       status: 'EXTREME_OVERBOUGHT',
       chasingRisk: 'VERY_HIGH',
       label: `RSI ${rsi14.toFixed(1)} Extreme Overbought — chasing risk sangat tinggi, bukan sinyal jual otomatis`,
-    };
-  }
-  if (rsi14 > 80) {
-    return {
-      status: 'HIGH_OVERBOUGHT',
-      chasingRisk: 'HIGH',
-      label: `RSI ${rsi14.toFixed(1)} Overbought tinggi — risiko chasing tinggi`,
     };
   }
   if (rsi14 > 70) {
@@ -274,6 +269,31 @@ export function classifyRsiOverbought(rsi14: number): RsiOverboughtResult {
     };
   }
   return { status: 'NONE', chasingRisk: 'LOW', label: '' };
+}
+
+// ─── RVOL tiers (features_analisa.md rule 4) ─────────────────────────────────
+export type RvolTier = 'NO_DATA' | 'VERY_LOW' | 'LOW' | 'NORMAL' | 'ELEVATED' | 'HIGH' | 'VERY_HIGH';
+
+export interface RvolClassification {
+  tier: RvolTier;
+  label: string;
+}
+
+/**
+ * RVOL exactly 0 (or NaN) usually means the volume feed hasn't populated for this bar, not "zero
+ * trades" — flag it as NO_DATA rather than silently reading like a real, very-thin-liquidity stock
+ * (features_analisa.md rule 4: "RVOL=0 → NO_DATA, bukan volume rendah"). RVOL itself only answers
+ * "how much activity happened", never "which direction" — callers must still pair the tier with
+ * price/candle direction before calling it bullish or bearish.
+ */
+export function classifyRvol(relativeVolume: number): RvolClassification {
+  if (Number.isNaN(relativeVolume) || relativeVolume === 0) return { tier: 'NO_DATA', label: 'NO DATA' };
+  if (relativeVolume < 0.5) return { tier: 'VERY_LOW', label: 'VERY LOW' };
+  if (relativeVolume < 0.8) return { tier: 'LOW', label: 'LOW' };
+  if (relativeVolume < 1.2) return { tier: 'NORMAL', label: 'NORMAL' };
+  if (relativeVolume < 2) return { tier: 'ELEVATED', label: 'ELEVATED' };
+  if (relativeVolume <= 5) return { tier: 'HIGH', label: 'HIGH' };
+  return { tier: 'VERY_HIGH', label: 'VERY HIGH' };
 }
 
 // ─── Fundamental risk modifier (features_kontradiktif.md §6) ────────────────

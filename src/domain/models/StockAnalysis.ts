@@ -102,6 +102,11 @@ export interface TradeScenario {
   avgDown?: number;
   tp1: number;
   tp2: number;
+  /** True when the originally-planned TP1 had already fallen at/below the current price by the time
+   * this plan was computed (a stale pullback-plan target) and was promoted to the next real
+   * resistance level above price instead — see stockAnalysisEngine.ts's buildTradingPlan. Only ever
+   * meaningful for LONG/bullish scenarios. */
+  tp1AlreadyReached?: boolean;
   sl: number;
   riskRewardRatio: number;
   /** % of entry risked to Stop Loss. */

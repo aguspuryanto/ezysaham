@@ -160,13 +160,22 @@ export const SWING_SETUP_LABEL: Record<SwingSetup, string> = {
 /**
  * Setup answers "how would this stock be traded", never "trade it now" — that's Final Action's job
  * (features_kontradiktif.md §9: Strategy/Setup and Action must never be collapsed into one field).
- * Breakout is detected purely from price having cleared the nearest resistance zone
- * (priceAction.canContinueUp); whether that breakout is actually confirmed (volume, retest, no
- * failed-breakout reversal) is Entry Confirmation's job downstream, not Setup's.
+ *
+ * BREAKOUT is only ever labeled when price has genuinely cleared its recent trading range
+ * (priceAction.canContinueUp — close above the prior 20-bar high, not merely a green candle above
+ * EMA20) AND that move is volume-confirmed (features_analisa.md rule 1: "Jangan gunakan BREAKOUT
+ * kecuali harga benar-benar breakout resistance + confirmation + volume/retest" — the CAMP bug,
+ * where an entry anchored at support was labeled "Breakout" off a much looser green-candle check).
+ * Whether the breakout additionally survives a retest is still Entry Confirmation's job downstream.
  */
-export function detectSwingSetup(params: { direction: TradeDirection; entryType: EntryType; canContinueUp: boolean }): SwingSetup {
+export function detectSwingSetup(params: {
+  direction: TradeDirection;
+  entryType: EntryType;
+  canContinueUp: boolean;
+  volumeConfirmed: boolean;
+}): SwingSetup {
   if (params.direction !== 'LONG') return 'NO_SETUP';
-  if (params.canContinueUp) return 'BREAKOUT';
+  if (params.canContinueUp && params.volumeConfirmed) return 'BREAKOUT';
   if (params.entryType === 'BUY_ON_SUPPORT') return 'BUY_ON_SUPPORT';
   return 'BUY_ON_PULLBACK';
 }

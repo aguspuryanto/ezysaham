@@ -480,13 +480,17 @@ export function gateAdvisorVerdict(advisor: AiStockAdvisor, tradeStatus: TradeSt
   const isBuyVerdict = advisor.verdict === 'SANGAT_BELI' || advisor.verdict === 'BELI';
   if (!isBuyVerdict || tradeStatus === 'BUY') return advisor;
 
+  // Wording note (features_analisa.md rule 11): AI Score is a QUALITY/RANKING/CONFIDENCE read only —
+  // it must never be described as "mengarah ke BUY" ("pointing toward BUY"), since that phrasing
+  // implies the score itself is a directive the deterministic engine is merely delaying. The score
+  // is descriptive of setup quality; Risk Gate/Zone Status/Entry Confirmation alone decide the action.
   if (tradeStatus === 'NO_TRADE') {
     return {
       ...advisor,
       verdict: 'HINDARI',
       verdictLabel: 'HINDARI / BERISIKO (AVOID) — Risk Gate Memblokir BUY',
       verdictTone: 'red',
-      executiveSummary: `${advisor.executiveSummary} Catatan: skor komposit mengarah ke BUY, tetapi Risk Gate memblokir transaksi saat ini — rekomendasi ditahan ke HINDARI hingga blokir tersebut hilang.`,
+      executiveSummary: `${advisor.executiveSummary} Catatan: Skor komposit ${advisor.compositeScore}/100 menunjukkan kualitas setup yang menarik secara statistik, namun ini bukan sinyal BUY — Risk Gate saat ini memblokir transaksi, sehingga rekomendasi ditahan ke HINDARI hingga blokir tersebut hilang.`,
     };
   }
 
@@ -500,6 +504,6 @@ export function gateAdvisorVerdict(advisor: AiStockAdvisor, tradeStatus: TradeSt
     verdict: 'TAHAN',
     verdictLabel: 'TAHAN / WATCHLIST — Entry Belum Terkonfirmasi',
     verdictTone: 'amber',
-    executiveSummary: `${advisor.executiveSummary} Catatan: skor komposit mengarah ke BUY, tetapi ${reason} — rekomendasi ditahan hingga deterministic engine (Zone Status/Entry Confirmation/Risk Gate) mengonfirmasi.`,
+    executiveSummary: `${advisor.executiveSummary} Catatan: Skor komposit ${advisor.compositeScore}/100 menunjukkan kualitas setup yang menarik secara statistik, namun ini bukan sinyal BUY — ${reason}. Keputusan akhir tetap mengikuti Risk Gate, Zone Status, dan Entry Confirmation.`,
   };
 }

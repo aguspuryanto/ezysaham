@@ -12,16 +12,26 @@ export interface StockNewsItem {
   snippet: string;
   url: string;
   publisher: string;
+  /** Locale-formatted display string (id-ID) — not machine-parseable, see publishedAtMs. */
   publishedAt: string;
+  /** Epoch ms of publish time, when known — lets sentiment weighting discount stale news
+   * (features_analisa.md rule 10) without depending on parsing the locale-formatted `publishedAt`
+   * string. Absent when the source didn't provide a reliable timestamp. */
+  publishedAtMs?: number;
   sentiment: NewsSentiment;
   impactScore: number; // 1 to 5
 }
+
+/** features_analisa.md rule 10: berita lama tidak boleh diberi bobot seperti katalis terbaru. */
+export type NewsAgeBucket = 'CURRENT' | 'RECENT' | 'AGING' | 'HISTORICAL' | 'UNKNOWN';
 
 export interface NewsSentimentSummary {
   totalNews: number;
   bullishCount: number;
   bearishCount: number;
   neutralCount: number;
+  /** Age-weighted sentiment score, 0-100 — a bullish item from 6 months ago counts for much less
+   * than one from today (features_analisa.md rule 10). */
   netSentimentScore: number; // 0 to 100
   overallSentiment: NewsSentiment;
 }

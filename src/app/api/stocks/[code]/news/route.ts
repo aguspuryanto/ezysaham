@@ -57,8 +57,9 @@ function parseRssXml(xmlText: string, ticker: string): StockNewsItem[] {
       if (!title) return null;
 
       const { sentiment, impactScore } = analyzeSentiment(title);
+      const publishedAtMs = publishedDate.getTime();
       return {
-        publishedAtMs: publishedDate.getTime(),
+        publishedAtMs,
         item: {
           id: `${ticker}-news-${idx}`,
           title,
@@ -72,6 +73,9 @@ function parseRssXml(xmlText: string, ticker: string): StockNewsItem[] {
             hour: '2-digit',
             minute: '2-digit',
           }),
+          // NaN when pubDate failed to parse — omit rather than publish a bogus timestamp so
+          // processNewsSummary's age weighting falls back to "unknown age" instead of miscalculating.
+          publishedAtMs: Number.isNaN(publishedAtMs) ? undefined : publishedAtMs,
           sentiment,
           impactScore,
         } as StockNewsItem,
@@ -92,6 +96,8 @@ function generateFallbackNews(ticker: string): StockNewsItem[] {
     return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
+  const msAgo = (daysAgo: number) => now.getTime() - daysAgo * 24 * 60 * 60 * 1000;
+
   const withDaysAgo: { daysAgo: number; item: StockNewsItem }[] = [
     {
       daysAgo: 0,
@@ -102,6 +108,7 @@ function generateFallbackNews(ticker: string): StockNewsItem[] {
         url: `https://www.google.com/search?q=${ticker}+saham+idx`,
         publisher: 'Market Insight',
         publishedAt: dateStr(0),
+        publishedAtMs: msAgo(0),
         sentiment: 'bullish',
         impactScore: 4,
       },
@@ -115,6 +122,7 @@ function generateFallbackNews(ticker: string): StockNewsItem[] {
         url: `https://finance.yahoo.com/quote/${ticker}.JK`,
         publisher: 'Stock Pilot Desk',
         publishedAt: dateStr(1),
+        publishedAtMs: msAgo(1),
         sentiment: 'neutral',
         impactScore: 3,
       },
@@ -128,6 +136,7 @@ function generateFallbackNews(ticker: string): StockNewsItem[] {
         url: `https://www.idx.co.id/id/data-pasar/data-saham/daftar-saham/?kodeEmiten=${ticker}`,
         publisher: 'IDX Channel Mirror',
         publishedAt: dateStr(2),
+        publishedAtMs: msAgo(2),
         sentiment: 'bullish',
         impactScore: 3,
       },
