@@ -37,6 +37,7 @@ import { ResultsTable, ResultsView, ScreenerResult } from './components/ResultsT
 import { FilterInfoCard, SectorListCard, WatchlistCard } from './components/ScreenerSidebar';
 import { TickerTape } from './components/TickerTape';
 import { TopGainerCard } from './components/TopGainerCard';
+import { TopLoserCard } from './components/TopLoserCard';
 import { useWatchlist } from './hooks/useWatchlist';
 import { PhilosophyBanner } from './components/PhilosophyBanner';
 import { IhsgChart } from './components/IhsgChart';
@@ -378,9 +379,10 @@ export function ScreenerPage() {
         <main className="flex min-w-0 flex-1 flex-col gap-1">
           <IhsgChart />
 
-          {/* ── UI — top gainer highlight ───────────────────────────────────── */}
-          <div className="mb-4">
+          {/* ── UI — top gainer/loser highlight ───────────────────────────────── */}
+          <div className="mb-4 flex flex-col gap-4">
             <TopGainerCard summaries={summaries ?? []} />
+            <TopLoserCard summaries={summaries ?? []} />
           </div>
 
           <div className="hidden lg:flex lg:items-center lg:gap-2">

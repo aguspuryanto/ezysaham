@@ -15,6 +15,7 @@ import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { BreakoutScores } from '@/domain/screener/presets';
 import { DataFreshness } from '@/domain/analysis/dataFreshness';
+import { TradeStatus } from '@/domain/analysis/riskGate';
 import { formatCompact, formatRupiah } from '@/lib/format';
 
 export interface FundamentalScreeningResult {
@@ -463,4 +464,42 @@ export function computeAiStockAdvisor(
   };
 
   return { advisor, fundamentalScreening: fundScreening, technicalScreening: techScreening };
+}
+
+/**
+ * Caps the AI Advisor's headline verdict by the deterministic engine's Final Action
+ * (riskGate.ts's TradeStatus, the same value "Ringkasan Faktor Keputusan" / Equity Research
+ * Report's Status Transaksi already display) — the AI's composite score is a useful "how good does
+ * this stock look overall" read, but its BELI/SANGAT_BELI label must never sit next to a report
+ * that says WAIT / WAIT_FOR_PULLBACK / NO_TRADE for the same stock. This only ever downgrades the
+ * verdict shown, never upgrades it — a deterministic BUY does not force the AI to agree with BELI
+ * if its own score disagrees, and TAHAN/HINDARI verdicts never need capping since they already read
+ * at or below "don't buy yet".
+ */
+export function gateAdvisorVerdict(advisor: AiStockAdvisor, tradeStatus: TradeStatus): AiStockAdvisor {
+  const isBuyVerdict = advisor.verdict === 'SANGAT_BELI' || advisor.verdict === 'BELI';
+  if (!isBuyVerdict || tradeStatus === 'BUY') return advisor;
+
+  if (tradeStatus === 'NO_TRADE') {
+    return {
+      ...advisor,
+      verdict: 'HINDARI',
+      verdictLabel: 'HINDARI / BERISIKO (AVOID) — Risk Gate Memblokir BUY',
+      verdictTone: 'red',
+      executiveSummary: `${advisor.executiveSummary} Catatan: skor komposit mengarah ke BUY, tetapi Risk Gate memblokir transaksi saat ini — rekomendasi ditahan ke HINDARI hingga blokir tersebut hilang.`,
+    };
+  }
+
+  const reason =
+    tradeStatus === 'WAIT_FOR_PULLBACK' ? 'harga masih di atas entry zone (tunggu pullback)' :
+      tradeStatus === 'SHORT_SETUP' ? 'setup saat ini bearish (short), bukan buy' :
+        'entry belum terkonfirmasi (Zone Status / Entry Confirmation belum terpenuhi)';
+
+  return {
+    ...advisor,
+    verdict: 'TAHAN',
+    verdictLabel: 'TAHAN / WATCHLIST — Entry Belum Terkonfirmasi',
+    verdictTone: 'amber',
+    executiveSummary: `${advisor.executiveSummary} Catatan: skor komposit mengarah ke BUY, tetapi ${reason} — rekomendasi ditahan hingga deterministic engine (Zone Status/Entry Confirmation/Risk Gate) mengonfirmasi.`,
+  };
 }

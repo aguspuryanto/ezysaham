@@ -2439,3 +2439,443 @@ Untuk MMLP saya ingin EzySaham akhirnya menghasilkan sesuatu seperti:
 > Jangan mengejar harga Rp338. Setup baru aktif jika harga masuk area Rp330–334 dan muncul konfirmasi rebound.
 
 Dengan begitu, **EzySaham benar-benar menjadi EOD Swing Planner**, bukan sekadar menghasilkan laporan indikator yang kemudian membingungkan antara *setup*, *permission*, dan *action*.
+
+----
+Kalau dibandingkan **khusus untuk mesin EzySaham Swing 1–5 hari**, IDEA, KICI, dan MMLP menunjukkan tiga tipe setup yang berbeda. Saya akan pakai **data report yang sebelumnya kamu kirim**, bukan mencampur harga real-time sekarang, karena tujuan kita adalah mengaudit **logika report EzySaham**.
+
+### Perbandingan inti
+
+| Faktor            |           IDEA |           KICI |           MMLP |
+| ----------------- | -------------: | -------------: | -------------: |
+| Market            |    **BULLISH** |    **BULLISH** |    **BULLISH** |
+| Swing Suitability |             56 |             47 |         **57** |
+| Setup             | Buy on Support |    ❌ Breakout* |    ❌ Breakout* |
+| Entry             |             74 |        250–252 |        330–334 |
+| Harga report      |           ~127 |            352 |            338 |
+| Zone              | **ABOVE ZONE** | **ABOVE ZONE** | **ABOVE ZONE** |
+| RSI               |       **89.8** |         **82** |         **78** |
+| RSI Risk          |  🔴 Extreme OB |  🔴 Extreme OB |     🟠 High OB |
+| RVOL              |          2.04x |          1.79x |      **6.34x** |
+| Volume            |       Elevated |       Elevated |  **Very High** |
+| Fundamental       |          Mixed |       **Weak** |          Mixed |
+| PER               |            79x |              — |           ~21x |
+| ROE               |             3% |      **-586%** |           3.1% |
+| DER               |          17.4% |          28.9% |          32.7% |
+| Bandar            |   Accumulation |        Neutral |        Neutral |
+| Cycle             |       Momentum |       Momentum |       Momentum |
+| Risk              |  Moderate–High |       **High** |       Moderate |
+| Final Action      |       **WAIT** |       **WAIT** |       **WAIT** |
+
+* Untuk KICI dan MMLP, **label Breakout di report tidak konsisten dengan entry zone**. Keduanya lebih cocok diproses sebagai **BUY_ON_SUPPORT / BUY_ON_PULLBACK**.
+
+---
+
+# 1. IDEA
+
+### Karakter
+
+**Momentum kuat, tetapi sudah terlalu jauh dari entry.**
+
+Harga report sekitar **127**, sedangkan entry hanya **74**.
+
+Artinya:
+
+```text
+Entry       74
+       ↓
+Current    ~127
+```
+
+Saham sudah meninggalkan area entry.
+
+Ditambah:
+
+* RSI **89.8**
+* RVOL **2.04x**
+* EMA bullish
+* Bandar accumulation
+* Market bullish
+
+Jadi secara teknikal memang kuat, tetapi **bukan berarti entry sekarang menjadi lebih baik**.
+
+### Masalah terbesar IDEA
+
+**TP1 = 127**, sementara harga sekarang juga sekitar 127.
+
+Ini bug yang cukup penting:
+
+```text
+Current Price ≈ 127
+TP1 = 127
+```
+
+TP1 seharusnya merupakan **target setelah entry**, bukan harga yang sudah dicapai.
+
+Lebih tepat:
+
+```text
+Entry 74
+   ↓
+Resistance terdekat → TP1
+Resistance berikutnya → TP2
+```
+
+Jadi IDEA sangat bagus sebagai **test case Target Validation Engine**.
+
+---
+
+# 2. KICI
+
+KICI lebih ekstrem lagi dari sisi momentum.
+
+Report:
+
+```text
+Current     352
+Entry       250–252
+RSI         82
+RVOL        1.79x
+```
+
+Harga sudah sekitar:
+
+**+40% dari entry high 252.**
+
+Jadi:
+
+```text
+250–252  ← ENTRY ZONE
+   ↑
+   │
+   │ terlalu jauh
+   │
+352      ← CURRENT
+```
+
+### Yang paling penting
+
+Report mengatakan:
+
+> Strategy: Breakout
+
+Tetapi entry-nya:
+
+> 250–252
+
+dan support:
+
+> 250
+
+Sedangkan harga sudah 352.
+
+Ini **bukan setup breakout yang sedang terjadi**.
+
+Kalau strategi yang dimaksud adalah membeli ketika harga kembali ke support:
+
+```text
+Setup = BUY_ON_SUPPORT
+
+Entry = 250–252
+Current = 352
+
+ZoneStatus = ABOVE_ZONE
+
+FinalAction = WAIT_FOR_PULLBACK
+```
+
+Itu jauh lebih konsisten.
+
+KICI juga punya fundamental paling bermasalah dari ketiganya menurut angka report:
+
+```text
+ROE = -586.2%
+```
+
+Jadi EzySaham sebaiknya tidak hanya mengatakan:
+
+> Fundamental 40/100
+
+tetapi menjelaskan:
+
+```text
+Profitability Risk = HIGH
+ROE = -586.2%
+Leverage = relatif rendah
+Valuation = perlu benchmark
+Fundamental Risk = HIGH
+```
+
+**DER rendah ≠ fundamental sehat.**
+
+---
+
+# 3. MMLP
+
+MMLP berbeda.
+
+Harga:
+
+```text
+Current = 338
+Entry = 330–334
+```
+
+Jadi jaraknya hanya sekitar:
+
+```text
+338 - 334 = 4
+≈ 1.2% dari harga
+```
+
+Ini **jauh lebih dekat ke entry** dibanding IDEA dan KICI.
+
+RSI:
+
+```text
+78
+```
+
+masih tinggi, tetapi tidak seekstrem:
+
+```text
+IDEA 89.8
+KICI 82
+MMLP 78
+```
+
+Namun RVOL:
+
+```text
+6.34x
+```
+
+sangat tinggi.
+
+Artinya ada aktivitas volume yang sangat besar, tetapi:
+
+> **RVOL tinggi ≠ otomatis bullish.**
+
+Harus dilihat apakah volume tersebut menghasilkan:
+
+* breakout,
+* rejection,
+* distribution,
+* atau absorption.
+
+Secara fundamental MMLP juga mempunyai konteks yang berbeda. Data 2Q 2026 yang tersedia menunjukkan laba bersih 6M26 Rp76,4 miliar, naik 117% YoY, sementara DER sekitar 0,33x dan ROE masih rendah sekitar 1,57% pada laporan tersebut. ([IPOTNEWS][1])
+
+Jadi label fundamental yang terlalu sederhana seperti **"Valuasi Premium"** memang sebaiknya diperbaiki.
+
+---
+
+# Kalau ketiganya dimasukkan ke mesin EzySaham
+
+Saya justru akan membuat hasil seperti ini:
+
+| Engine           | IDEA              | KICI                | MMLP             |
+| ---------------- | ----------------- | ------------------- | ---------------- |
+| Market           | 🟢 Bullish        | 🟢 Bullish          | 🟢 Bullish       |
+| Trend            | Bullish           | Bullish             | Bullish          |
+| Setup            | Support           | Support             | Support/Pullback |
+| Entry Zone       | 74                | 250–252             | 330–334          |
+| Current vs Entry | **Sangat jauh**   | **Sangat jauh**     | **Dekat**        |
+| RSI Risk         | 🔴 Extreme        | 🔴 Extreme          | 🟠 High          |
+| Volume           | 🟢 Elevated       | 🟢 Elevated         | 🔴 Very High     |
+| Fundamental Risk | 🟠 Moderate       | 🔴 High             | 🟠 Moderate      |
+| Confirmation     | ❌                 | ❌                   | ❌                |
+| Zone             | ABOVE             | ABOVE               | ABOVE            |
+| Permission       | CONDITIONAL       | CONDITIONAL/BLOCKED | CONDITIONAL      |
+| Action           | **WAIT PULLBACK** | **WAIT PULLBACK**   | **WAIT / WATCH** |
+
+---
+
+# Yang menarik: MMLP sebenarnya paling berbeda
+
+Bukan berarti "paling bagus", tetapi **secara mekanis setup-nya paling dekat dengan entry zone**.
+
+Perhatikan:
+
+### IDEA
+
+```text
+Entry 74
+Current 127
+Distance sangat besar
+RSI 89.8
+```
+
+### KICI
+
+```text
+Entry 250–252
+Current 352
+Distance sangat besar
+RSI 82
+```
+
+### MMLP
+
+```text
+Entry 330–334
+Current 338
+Distance ±1.2%
+RSI 78
+```
+
+Jadi EzySaham **jangan menggunakan RSI saja untuk menentukan Chasing Risk**.
+
+Lebih bagus:
+
+```text
+Chasing Risk =
+    DistanceFromEntry
+  + RSI
+  + ExtensionFromEMA
+  + DistanceFromSupport
+```
+
+Misalnya:
+
+```text
+IDEA
+Distance      VERY_HIGH
+RSI           VERY_HIGH
+Extension     VERY_HIGH
+→ CHASING RISK = VERY_HIGH
+```
+
+```text
+KICI
+Distance      VERY_HIGH
+RSI           VERY_HIGH
+Extension     VERY_HIGH
+→ CHASING RISK = VERY_HIGH
+```
+
+```text
+MMLP
+Distance      LOW
+RSI           HIGH
+Extension     MODERATE
+→ CHASING RISK = MODERATE/HIGH
+```
+
+Ini jauh lebih informatif.
+
+---
+
+# Ranking untuk kebutuhan debugging engine
+
+Bukan ranking saham untuk dibeli, tetapi **prioritas kualitas test case EzySaham**:
+
+### 🥇 MMLP — test case "near entry"
+
+Bagus untuk menguji:
+
+```text
+Price hampir masuk entry
+↓
+RSI tinggi
+↓
+Volume sangat tinggi
+↓
+belum ada confirmation
+↓
+WAIT
+```
+
+### 🥈 KICI — test case "overextended"
+
+Bagus untuk menguji:
+
+```text
+Bullish
++
+RSI 82
++
+Current jauh di atas entry
++
+Fundamental lemah
+↓
+WAIT / HIGH RISK
+```
+
+### 🥉 IDEA — test case "target engine bug"
+
+Yang paling penting justru:
+
+```text
+Entry = 74
+Current = 127
+TP1 = 127   ← BUG
+```
+
+Ini menunjukkan EzySaham perlu **Target Validation Engine**.
+
+---
+
+# Saya akan ubah output EzySaham menjadi seperti ini
+
+```json
+{
+  "market": "BULLISH",
+
+  "setup": "BUY_ON_SUPPORT",
+
+  "currentPrice": 338,
+
+  "entryZone": {
+    "low": 330,
+    "high": 334
+  },
+
+  "zoneStatus": "ABOVE_ZONE",
+
+  "entryStatus": "NOT_READY",
+
+  "buyPermission": "CONDITIONAL",
+
+  "chasingRisk": "MODERATE_HIGH",
+
+  "rsi": {
+    "value": 78,
+    "status": "HIGH_OVERBOUGHT"
+  },
+
+  "volume": {
+    "rvol": 6.34,
+    "status": "VERY_HIGH",
+    "direction": "UNCONFIRMED"
+  },
+
+  "riskGate": "WARNING",
+
+  "finalAction": "WAIT_FOR_PULLBACK",
+
+  "holdingPeriod": "1-5 DAYS"
+}
+```
+
+Dan untuk **IDEA**, engine harus otomatis menolak TP1 yang sama dengan current price:
+
+```text
+TP1 = 127
+Current = 127
+
+→ TP1_STATUS = ALREADY_REACHED
+→ RECOMPUTE_TARGET = TRUE
+```
+
+Sedangkan untuk **KICI**:
+
+```text
+Current = 352
+Entry = 250–252
+
+→ ABOVE_ZONE
+→ WAIT_FOR_PULLBACK
+```
+
+Ini tiga saham yang bagus sekali untuk dijadikan **unit test EzySaham**, karena masing-masing mengetes bug yang berbeda: **IDEA = target**, **KICI = overextension/fundamental risk**, **MMLP = near-entry/high-volume confirmation**.
+
+[1]: https://www.ipotnews.com/ipotnews/newsDetail.php?group_news=RESEARCHNEWS&halaman=1&jdl=Financial_Statements_2Q_2026_of_MMLP&name=&news_id=492690&q=Financial+Statements&search=y_general&taging_subtype=MMLP&utm_source=chatgpt.com "Financial Statements 2Q 2026 of MMLP"

@@ -48,6 +48,10 @@ export interface QuickDecisionFactor {
 
 export interface QuickDecisionSnapshotResult {
   verdict: QuickVerdict;
+  /** Passthrough of riskGate.ts's TradeStatus — lets other cards on the same page (e.g. the AI
+   * Stock Advisor's headline verdict) gate themselves against the exact same Final Action instead
+   * of recomputing Risk Gate a third time and risking drift. */
+  tradeStatus: TradeStatus;
   market: QuickDecisionFactor;
   trend: QuickDecisionFactor;
   momentum: QuickDecisionFactor[];
@@ -197,5 +201,5 @@ export function computeQuickDecisionSnapshot(params: {
     reasons.push('Seluruh faktor Trend, Momentum, Volume, Bandar, dan Trigger saling mendukung.');
   }
 
-  return { verdict, market, trend, momentum, volume: volumeFactor, bandar, location, trigger, reasons };
+  return { verdict, tradeStatus, market, trend, momentum, volume: volumeFactor, bandar, location, trigger, reasons };
 }

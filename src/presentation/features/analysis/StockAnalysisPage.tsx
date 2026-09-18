@@ -69,7 +69,7 @@ import { IntradayResponse } from '@/domain/models/Intraday';
 import { getStockIntraday } from '@/data/repositories/StockRepository';
 import { vwap } from '@/domain/indicators/vwap';
 import { BrokerActivityDetail, BrokerSummaryRow } from '@/domain/models/BrokerSummary';
-import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
+import { FundamentalScreeningResult, gateAdvisorVerdict } from '@/domain/analysis/aiStockEngine';
 import { computeTechnicalScore } from '@/domain/analysis/technicalScore';
 import { computeBandarScore, getMarketCyclePhase } from '@/domain/analysis/bandarScore';
 import { computeEntryTiming } from '@/domain/analysis/entryTiming';
@@ -3466,6 +3466,18 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
     });
   }, [summary, bars, analysis, fundamentalScreening, fundamentals]);
 
+  // AI Stock Advisor vs "Ringkasan Faktor Keputusan" sync: the advisor's composite-score verdict
+  // is computed independently of Zone Status / Entry Confirmation / Risk Gate, so a bullish score
+  // could show "LAYAK BELI" right next to a report that says WAIT / WAIT_FOR_PULLBACK / NO_TRADE
+  // for the same stock. gateAdvisorVerdict caps (never upgrades) the displayed verdict by the exact
+  // TradeStatus quickDecisionSnapshot already uses, so every card that shows advisor.verdictLabel
+  // agrees with Status Transaksi / FINAL DECISION.
+  const gatedAdvisor: AiStockAdvisor | null = useMemo(() => {
+    if (!advisor) return null;
+    if (!quickDecisionSnapshot) return advisor;
+    return gateAdvisorVerdict(advisor, quickDecisionSnapshot.tradeStatus);
+  }, [advisor, quickDecisionSnapshot]);
+
   if (status === 'loading') {
     return <StockAnalysisSkeleton ticker={ticker} />;
   }
@@ -3487,6 +3499,9 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       </div>
     );
   }
+
+  // Non-null: `advisor` is guaranteed above, and gatedAdvisor only ever returns null when advisor is null.
+  const displayAdvisor = gatedAdvisor ?? advisor;
 
   const { trendEma, supportResistance, priceAction, volume, indicators, tradingPlan } = analysis;
   const isBullish = trendEma.trend === 'bullish';
@@ -3590,7 +3605,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
       {/* ── Health Score / Market Temperature Top Bar ───────────────────────── */}
       <div className="mx-auto max-w-6xl px-0 sm:px-4 lg:px-6 sm:pt-4">
         <HealthScoreBar
-          advisor={advisor}
+          advisor={displayAdvisor}
           fundamentalScreening={fundamentalScreening}
           trendEma={trendEma}
           indicators={indicators}
@@ -3718,7 +3733,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
               here (after chart, before tabs). On lg+ they move to the
               right sticky sidebar via CSS order. */}
           <div className="lg:hidden space-y-3 px-3 sm:px-0">
-            <AiStockAdvisorSidebar advisor={advisor} />
+            <AiStockAdvisorSidebar advisor={displayAdvisor} />
             <TradingPlanSidebarCard plan={tradingPlan} />
             {/* <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} /> */}
             {/* <BandarDetectorCard summary={summary} bars={bars} brokerActivity={brokerActivity} brokerActivityLoading={brokerActivityLoading} /> */}
@@ -3814,7 +3829,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 <EquityResearchReportCard2
                   summary={summary}
                   bars={bars}
-                  advisor={advisor}
+                  advisor={displayAdvisor}
                   trendEma={trendEma}
                   indicators={indicators}
                   supportResistance={supportResistance}
@@ -3952,7 +3967,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
 
         {/* ── RIGHT SIDEBAR (desktop only — lg+) ──────────────────────── */}
         <aside className="hidden lg:block space-y-5 lg:sticky lg:top-20">
-          <AiStockAdvisorSidebar advisor={advisor} />
+          <AiStockAdvisorSidebar advisor={displayAdvisor} />
           {/* <ScoringCard price={summary.lastClose} trendEma={trendEma} indicators={indicators} volume={volume} /> */}
           {/* <BandarDetectorCard summary={summary} bars={bars} brokerActivity={brokerActivity} brokerActivityLoading={brokerActivityLoading} /> */}
           <TradingPlanSidebarCard plan={tradingPlan} />
