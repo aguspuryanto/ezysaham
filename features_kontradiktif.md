@@ -2249,3 +2249,193 @@ BUY / WAIT / NO TRADE
 ```
 
 Dengan pendekatan ini, EzySaham tidak perlu berpura-pura menjadi sistem scalping real-time. Ia menjadi **EOD Swing Screener + Trading Plan 1–5 hari**, yang jauh lebih sesuai dengan data yang tersedia.
+
+----
+Versi ini **sudah lebih terstruktur**, tetapi masih ada beberapa bug logic yang cukup jelas. Yang paling penting: **Setup mengatakan Breakout, tetapi Trading Plan dan Entry Zone sebenarnya adalah Pullback/Support.**
+
+### Masalah utama MMLP
+
+1. **Setup tidak konsisten**
+
+   * `Strategi: Breakout`
+   * tetapi `Entry Zone: 330–334`
+   * `Support: 330`
+   * `Resistance: 358`
+   * `WAIT — TUNGGU PULLBACK`
+
+   Ini lebih cocok:
+
+   **Setup = BUY_ON_PULLBACK / BUY_ON_SUPPORT**
+
+   Kalau benar-benar `BREAKOUT`, entry harus berada di sekitar **resistance breakout**, bukan di support 330–334.
+
+2. **Swing Suitability 57 tetapi AI Score 67**
+
+   Ini tidak salah, asalkan definisinya jelas:
+
+   * **Swing Suitability** = seberapa cocok saham untuk swing 1–5 hari.
+   * **AI Score** = kualitas/kepercayaan analisis secara keseluruhan.
+
+   Jangan sampai user menganggap AI Score 67 berarti setup BUY.
+
+3. **Main Risk: Harga di bawah EMA200**
+
+   Ini harus diverifikasi. Jika harga memang di bawah EMA200, maka itu merupakan risiko trend utama. Tetapi kalimat:
+
+   > `Risk Gate: CONDITIONAL ... Zone Status: ABOVE ZONE — Harga di bawah EMA200`
+
+   mencampur **Zone Status** dengan **EMA200 risk**. Pisahkan.
+
+4. **Sentimen PALM masih salah**
+
+   Berita:
+
+   > PALM Putuskan Bagi Dividen...
+
+   jangan otomatis menjadi sentimen positif MMLP. Harus ada `News Relevance`.
+
+5. **"Valuasi Premium" masih terlalu sederhana**
+
+   PER 22.3x + PBV 0.48x menghasilkan gambaran yang tidak seragam. Lebih aman:
+
+   `Valuation: Mixed / PER relatif tinggi, PBV rendah`
+
+6. **RVOL 6.34x**
+
+   Label `Volume Meningkat` terlalu sederhana. Lebih baik:
+
+   `RVOL 6.34x — VERY HIGH`
+
+   lalu tentukan apakah volumenya **bullish confirmation**, **distribution**, atau **unconfirmed** berdasarkan price action.
+
+---
+
+## Prompt singkat untuk memperbaiki versi ini
+
+```text
+Perbaiki Equity Research Report EzySaham agar konsisten sebagai EOD Swing Trading 1–5 Hari.
+
+KASUS MMLP:
+Price=338
+Entry=330–334
+Support=330
+Resistance=358
+RSI=78
+MACD=Bullish
+Trend=Uptrend
+VWAP=337
+EMA9=338
+EMA21=337
+RVOL=6.34x
+Fundamental=57
+DER=32.7%
+ROE=3.1%
+Bandar=Neutral
+Trigger=Not Confirmed
+Risk Gate=Conditional
+Zone=Above Zone
+
+RULE:
+
+1. Setup harus konsisten dengan Trading Plan.
+   Jika Entry Zone berada di support dan Final Action menunggu pullback,
+   gunakan:
+   Setup=BUY_ON_PULLBACK atau BUY_ON_SUPPORT.
+   Jangan gunakan BREAKOUT.
+
+2. BREAKOUT hanya boleh digunakan jika:
+   Price mendekati/menembus resistance,
+   breakout terkonfirmasi,
+   volume mendukung,
+   dan entry plan berada pada breakout/retest zone.
+
+3. Karena Price 338 > EntryHigh 334:
+   ZoneStatus=ABOVE_ZONE.
+   FinalAction=WAIT_FOR_PULLBACK.
+   Jangan BUY_NOW.
+
+4. RSI 78:
+   RSIStatus=OVERBOUGHT.
+   ChasingRisk=HIGH.
+   Jangan otomatis SELL.
+
+5. Risk Gate harus terpisah dari Zone Status.
+   Jangan menulis:
+   "Zone Status ABOVE ZONE — Harga di bawah EMA200."
+   Gunakan field terpisah:
+   ZoneStatus=ABOVE_ZONE
+   PrimaryTrendRisk=BELOW_EMA200.
+
+6. AI Score tidak boleh menentukan BUY.
+   Swing Suitability menentukan kelayakan untuk Swing 1–5 Hari.
+   FinalAction ditentukan oleh RiskGate + ZoneStatus + EntryConfirmation.
+
+7. Sentiment wajib memiliki News Relevance:
+   DIRECT / INDIRECT / SECTOR / MARKET / UNRELATED.
+   Berita PALM tidak boleh otomatis menjadi sentiment positif MMLP jika tidak ada hubungan langsung yang relevan.
+
+8. Valuation jangan otomatis "Premium" hanya karena PER > threshold.
+   Gunakan benchmark sektor/historis.
+   Jika benchmark tidak tersedia, gunakan "Valuation Mixed".
+
+9. RVOL 6.34x = VERY_HIGH_VOLUME.
+   Jangan otomatis berarti bullish.
+   Tentukan VolumeConfirmation berdasarkan price action, VWAP, candle dan arah volume.
+
+10. Fundamental:
+    Score 57, DER 32.7%, ROE 3.1%
+    → FundamentalRisk=MODERATE/MIXED.
+    Pisahkan profitability, leverage dan valuation.
+
+EXPECTED RESULT:
+
+Market=BULLISH
+SwingSuitability=57
+Setup=BUY_ON_PULLBACK
+ZoneStatus=ABOVE_ZONE
+EntryStatus=NOT_CONFIRMED
+RiskGate=CONDITIONAL/WARNING
+BuyPermission=CONDITIONAL
+FinalAction=WAIT_FOR_PULLBACK
+
+Trading Plan:
+Entry 330–334
+Trigger = support hold + bullish reversal + volume confirmation
+SL = 328
+Invalidation = Close < 328.35
+TP1 = 346
+TP2 = 358
+Holding = 1–5 Hari
+
+LLM hanya menjelaskan deterministic result dan tidak boleh mengubah Setup, RiskGate, ZoneStatus, EntryStatus, BuyPermission atau FinalAction.
+```
+
+### Bentuk output yang ideal
+
+Untuk MMLP saya ingin EzySaham akhirnya menghasilkan sesuatu seperti:
+
+> 🟡 **SWING WATCH — WAIT FOR PULLBACK**
+>
+> **Swing Suitability:** 57/100 — Low Quality Setup
+> **Setup:** Buy on Pullback
+> **Current:** Rp338
+> **Entry:** Rp330–334
+> **Zone:** Above Zone
+> **RSI:** 78 — Overbought
+> **Trigger:** Not Confirmed
+>
+> **Trading Plan**
+>
+> * Entry: Rp330–334 setelah support bertahan
+> * Trigger: bullish reversal + volume confirmation
+> * SL: Rp328
+> * Invalidation: Close < Rp328,35
+> * TP1: Rp346
+> * TP2: Rp358
+> * Holding: 1–5 hari
+>
+> **Final Action: WAIT FOR PULLBACK**
+>
+> Jangan mengejar harga Rp338. Setup baru aktif jika harga masuk area Rp330–334 dan muncul konfirmasi rebound.
+
+Dengan begitu, **EzySaham benar-benar menjadi EOD Swing Planner**, bukan sekadar menghasilkan laporan indikator yang kemudian membingungkan antara *setup*, *permission*, dan *action*.
