@@ -28,8 +28,133 @@ export type ValidationErrorCode =
 export const ENTRY_DISTANCE_WARNING_PCT = 15;
 export const EXTREME_RR_THRESHOLD = 10;
 
+/** TRADE LEVEL RULE defaults — % of Current Price, LONG framing (SHORT mirrors the sign). */
+export const DEFAULT_SL_PCT = 7;
+export const DEFAULT_TP1_PCT = 5;
+export const DEFAULT_TP2_PCT = 10;
+
+/** How close a default level must sit to a real S/R level to count as "at a reasonable technical level". */
+const NEAR_LEVEL_TOLERANCE_PCT = 3;
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function isNearAnyLevel(value: number, levels: number[], tolerancePct = NEAR_LEVEL_TOLERANCE_PCT): boolean {
+  return levels.some((lvl) => lvl > 0 && Math.abs(value - lvl) / lvl <= tolerancePct / 100);
+}
+
+export interface TargetValidationFlags {
+  /** SL sits within NEAR_LEVEL_TOLERANCE_PCT of a real support (LONG) / resistance (SHORT) level. */
+  slNearTechnicalLevel: boolean;
+  tp1NearTechnicalLevel: boolean;
+  tp2NearTechnicalLevel: boolean;
+  /** TP already reached judging by Current Price — should not happen by construction, checked anyway. */
+  tp1AlreadyReached: boolean;
+  tp2AlreadyReached: boolean;
+  /** TP2 further from entry than TP1, in the scenario's favorable direction. */
+  tp2AheadOfTp1: boolean;
+  /** SL on the correct (losing) side of Current Price for this direction. */
+  slOnCorrectSide: boolean;
+}
+
+export interface DefaultTargetPlan {
+  direction: Direction;
+  currentPrice: number;
+  sl: number;
+  tp1: number;
+  tp2: number;
+  riskPct: number;
+  rewardPct1: number;
+  rewardPct2: number;
+  riskRewardRatio1: number;
+  riskRewardRatio2: number;
+  validation: TargetValidationFlags;
+  /** Human-readable (Indonesian) explanations for any failed check — never used to change sl/tp1/tp2 above. */
+  mismatchNotes: string[];
+}
+
+/**
+ * TRADE LEVEL RULE: SL/TP1/TP2 computed strictly off Current Price
+ * (SL = price×0.93, TP1 = price×1.05, TP2 = price×1.10 for LONG; mirrored for SHORT),
+ * then validated against the actual support/resistance levels. A failed check is surfaced
+ * as a note — the default numbers themselves are never silently changed to "fix" a mismatch.
+ */
+export function buildDefaultTargetPlan(
+  direction: Direction,
+  currentPrice: number,
+  supportPrices: number[],
+  resistancePrices: number[]
+): DefaultTargetPlan {
+  const isLong = direction === 'LONG';
+  const sl = round2(currentPrice * (isLong ? 1 - DEFAULT_SL_PCT / 100 : 1 + DEFAULT_SL_PCT / 100));
+  const tp1 = round2(currentPrice * (isLong ? 1 + DEFAULT_TP1_PCT / 100 : 1 - DEFAULT_TP1_PCT / 100));
+  const tp2 = round2(currentPrice * (isLong ? 1 + DEFAULT_TP2_PCT / 100 : 1 - DEFAULT_TP2_PCT / 100));
+
+  // LONG: SL should sit near support, TP near resistance. SHORT: mirrored.
+  const slLevels = isLong ? supportPrices : resistancePrices;
+  const tpLevels = isLong ? resistancePrices : supportPrices;
+
+  const slNearTechnicalLevel = isNearAnyLevel(sl, slLevels);
+  const tp1NearTechnicalLevel = isNearAnyLevel(tp1, tpLevels);
+  const tp2NearTechnicalLevel = isNearAnyLevel(tp2, tpLevels);
+  const tp1AlreadyReached = isLong ? tp1 <= currentPrice : tp1 >= currentPrice;
+  const tp2AlreadyReached = isLong ? tp2 <= currentPrice : tp2 >= currentPrice;
+  const tp2AheadOfTp1 = isLong ? tp2 > tp1 : tp2 < tp1;
+  const slOnCorrectSide = isLong ? sl < currentPrice : sl > currentPrice;
+
+  const risk1 = computeRiskReward(direction, currentPrice, sl, tp1);
+  const risk2 = computeRiskReward(direction, currentPrice, sl, tp2);
+
+  const mismatchNotes: string[] = [];
+  if (!slNearTechnicalLevel) {
+    mismatchNotes.push(
+      isLong
+        ? `Stop Loss default (Rp${sl.toLocaleString('id-ID')}) tidak berada di dekat level support teknikal mana pun — angka default tetap dipakai, bukan level teknikal.`
+        : `Stop Loss default (Rp${sl.toLocaleString('id-ID')}) tidak berada di dekat level resistance teknikal mana pun — angka default tetap dipakai, bukan level teknikal.`
+    );
+  }
+  if (!tp1NearTechnicalLevel) {
+    mismatchNotes.push(
+      isLong
+        ? `TP1 default (Rp${tp1.toLocaleString('id-ID')}) tidak berada di area resistance teknikal mana pun.`
+        : `TP1 default (Rp${tp1.toLocaleString('id-ID')}) tidak berada di area support teknikal mana pun.`
+    );
+  }
+  if (!tp2NearTechnicalLevel) {
+    mismatchNotes.push(
+      isLong
+        ? `TP2 default (Rp${tp2.toLocaleString('id-ID')}) tidak berada di area resistance teknikal mana pun.`
+        : `TP2 default (Rp${tp2.toLocaleString('id-ID')}) tidak berada di area support teknikal mana pun.`
+    );
+  }
+  if (tp1AlreadyReached) mismatchNotes.push('TP1 default sudah tercapai berdasarkan Current Price.');
+  if (tp2AlreadyReached) mismatchNotes.push('TP2 default sudah tercapai berdasarkan Current Price.');
+  if (!tp2AheadOfTp1) mismatchNotes.push('TP2 default tidak lebih jauh dari TP1 pada arah yang diuntungkan — periksa ulang data harga.');
+  if (!slOnCorrectSide) mismatchNotes.push('Stop Loss default tidak berada pada sisi yang benar dari Current Price — periksa ulang data harga.');
+
+  return {
+    direction,
+    currentPrice,
+    sl,
+    tp1,
+    tp2,
+    riskPct: risk1.riskPct,
+    rewardPct1: risk1.rewardPct,
+    rewardPct2: risk2.rewardPct,
+    riskRewardRatio1: risk1.riskRewardRatio,
+    riskRewardRatio2: risk2.riskRewardRatio,
+    validation: {
+      slNearTechnicalLevel,
+      tp1NearTechnicalLevel,
+      tp2NearTechnicalLevel,
+      tp1AlreadyReached,
+      tp2AlreadyReached,
+      tp2AheadOfTp1,
+      slOnCorrectSide,
+    },
+    mismatchNotes,
+  };
 }
 
 /** LONG: SL below entry, TP1/TP2 above entry, TP2 >= TP1. SHORT: mirrored. */

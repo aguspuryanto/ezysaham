@@ -27,7 +27,7 @@ import { ema, lastValid, sma } from '@/domain/indicators/movingAverages';
 import { macd } from '@/domain/indicators/macd';
 import { rsi } from '@/domain/indicators/rsi';
 import { formatCompact } from '@/lib/format';
-import { computeEntryDistancePct, computeRiskReward, ENTRY_DISTANCE_WARNING_PCT, invalidationRuleText, validateTradeScenario } from '@/domain/analysis/tradeValidation';
+import { buildDefaultTargetPlan, computeEntryDistancePct, computeRiskReward, ENTRY_DISTANCE_WARNING_PCT, invalidationRuleText, validateTradeScenario } from '@/domain/analysis/tradeValidation';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function closes(bars: OHLCVBar[]): number[] {
@@ -439,6 +439,13 @@ function buildTradingPlan(
   const recommendedBias: 'bullish' | 'bearish' | 'neutral' =
     trend === 'bullish' ? 'bullish' : trend === 'bearish' ? 'bearish' : 'neutral';
 
+  // TRADE LEVEL RULE: fixed Current-Price-based default (SL -7% / TP1 +5% / TP2 +10%, mirrored for
+  // SHORT), validated against real S/R but never used to silently overwrite entry/SL/TP above.
+  const supportPrices = sr.supports.map((s) => s.price);
+  const resistancePrices = sr.resistances.map((r) => r.price);
+  const bullDefaultTarget = buildDefaultTargetPlan('LONG', price, supportPrices, resistancePrices);
+  const bearDefaultTarget = buildDefaultTargetPlan('SHORT', price, supportPrices, resistancePrices);
+
   return {
     bullish: {
       direction: 'LONG',
@@ -456,6 +463,7 @@ function buildTradingPlan(
       notes: needsPullback
         ? `Jangan mengejar harga sekarang — entry di harga saat ini memberi risk/reward buruk (≈1:${chaseRR.toFixed(2)})${indicators.rsi14 >= 75 ? ` dan RSI ${indicators.rsi14.toFixed(1)} sudah overbought` : ''}. Tunggu pullback sehat ke area Rp${bullEntry.toLocaleString('id-ID')} (dekat support) dengan konfirmasi RSI turun & volume jual mengecil sebelum entry.`
         : `Entry buy saat pullback ke area ${bullEntry.toLocaleString('id-ID')} – ${round2(price * 1.002).toLocaleString('id-ID')}. Konfirmasi: volume > MA20.`,
+      defaultTarget: bullDefaultTarget,
     },
     bearish: {
       direction: 'SHORT',
@@ -470,6 +478,7 @@ function buildTradingPlan(
       invalidationRule: invalidationRuleText('SHORT', bearSl),
       validationErrors: validateTradeScenario('SHORT', bearEntry, bearSl, bearTp1, bearTp2),
       notes: `Bukan entry sekarang. Entry short hanya aktif JIKA harga rebound/retest ke ${r1.toLocaleString('id-ID')} dan gagal break (bearish rejection) — entry sell/short di ${bearEntry.toLocaleString('id-ID')}.`,
+      defaultTarget: bearDefaultTarget,
     },
     recommendedBias,
   };
@@ -566,6 +575,15 @@ export function computeStockAnalysis(
       macdValue: NaN, macdSignal: NaN, macdHistogram: NaN, macdSignalType: 'neutral', macdNote: '–',
       stochK: NaN, stochD: NaN, stochZone: 'neutral', stochNote: '–',
     };
+    const emptyDefaultTarget = (direction: 'LONG' | 'SHORT') => ({
+      direction, currentPrice: 0, sl: 0, tp1: 0, tp2: 0,
+      riskPct: 0, rewardPct1: 0, rewardPct2: 0, riskRewardRatio1: 0, riskRewardRatio2: 0,
+      validation: {
+        slNearTechnicalLevel: false, tp1NearTechnicalLevel: false, tp2NearTechnicalLevel: false,
+        tp1AlreadyReached: false, tp2AlreadyReached: false, tp2AheadOfTp1: false, slOnCorrectSide: false,
+      },
+      mismatchNotes: [] as string[],
+    });
     const emptyScenario = {
       entry: 0, tp1: 0, tp2: 0, sl: 0, riskRewardRatio: 0,
       riskPct: 0, rewardPct: 0, entryDistancePct: 0,
@@ -574,8 +592,8 @@ export function computeStockAnalysis(
       notes: '–',
     };
     const noTrade: TradingPlanAnalysis = {
-      bullish: { ...emptyScenario, direction: 'LONG', entryType: 'NO_TRADE', validationErrors: [...emptyScenario.validationErrors] },
-      bearish: { ...emptyScenario, direction: 'SHORT', entryType: 'NO_TRADE', validationErrors: [...emptyScenario.validationErrors] },
+      bullish: { ...emptyScenario, direction: 'LONG', entryType: 'NO_TRADE', validationErrors: [...emptyScenario.validationErrors], defaultTarget: emptyDefaultTarget('LONG') },
+      bearish: { ...emptyScenario, direction: 'SHORT', entryType: 'NO_TRADE', validationErrors: [...emptyScenario.validationErrors], defaultTarget: emptyDefaultTarget('SHORT') },
       recommendedBias: 'neutral',
     };
     const noConc: ConclusionAnalysis = {

@@ -3,6 +3,8 @@
  * Computed client-side via stockAnalysisEngine.ts.
  */
 
+import type { DefaultTargetPlan } from '@/domain/analysis/tradeValidation';
+
 export type Trend = 'bullish' | 'bearish' | 'sideways';
 
 // ── 1. Trend & EMA ────────────────────────────────────────────────────────────
@@ -122,6 +124,9 @@ export interface TradeScenario {
   /** Hard math validation (SL/TP ordering vs direction). Non-empty means this scenario must not be published as-is. */
   validationErrors: string[];
   notes: string;
+  /** TRADE LEVEL RULE default (Current Price × {-7%, +5%, +10%}), validated against S/R but never
+   * silently overridden by the technical entry/SL/TP above — see tradeValidation.ts. */
+  defaultTarget: DefaultTargetPlan;
 }
 
 export interface TradingPlanAnalysis {

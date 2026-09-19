@@ -58,7 +58,7 @@ import {
   VolumeAnalysis,
 } from '@/domain/models/StockAnalysis';
 import { classifyOversoldRisk, classifyRsiOverbought, classifyRvol, classifyFundamentalRisk, evaluateRiskGate, BuyPermission, EntryStatus, FundamentalRiskLevel, RiskGateStatus, TradeStatus } from '@/domain/analysis/riskGate';
-import { classifyZoneStatus, isEntryConfirmed, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
+import { classifyZoneStatus, DEFAULT_SL_PCT, DEFAULT_TP1_PCT, DEFAULT_TP2_PCT, DefaultTargetPlan, isEntryConfirmed, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
 import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuitabilityResult } from '@/domain/analysis/swingSuitability';
 import { atr, atrPercent } from '@/domain/indicators/atr';
 import { MarketRegimeResult } from '@/domain/analysis/marketRegimeEngine';
@@ -213,6 +213,65 @@ function Note({ text, tone = 'zinc' }: { text: string; tone?: 'green' | 'red' | 
       <span className="mt-1 shrink-0 opacity-40">•</span>
       <span>{text}</span>
     </li>
+  );
+}
+
+// ─── TRADE LEVEL RULE: Default Target block (Current Price basis, -7%/+5%/+10%) ────────────────
+// Shared by Section 6 (Rencana Aksi) and the sidebar Trading Plan card. The numbers here are fixed
+// per the rule — technical mismatches are surfaced as notes, never used to change sl/tp1/tp2.
+function DefaultTargetPlanBlock({ target, isLong }: { target: DefaultTargetPlan; isLong: boolean }) {
+  const slSign = isLong ? '-' : '+';
+  const tpSign = isLong ? '+' : '-';
+  return (
+    <div className="neo-border border-(--neo-line) bg-zinc-50 dark:bg-zinc-800/60 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          Default Target (Current Price)
+        </span>
+        <span className="text-[10px] font-mono text-zinc-400 shrink-0">
+          SL {slSign}{DEFAULT_SL_PCT}% · TP1 {tpSign}{DEFAULT_TP1_PCT}% · TP2 {tpSign}{DEFAULT_TP2_PCT}%
+        </span>
+      </div>
+      <div className="grid gap-1">
+        <KV
+          label="Stop Loss"
+          value={fmtRp(target.sl)}
+          valueClass="text-rose-600 dark:text-rose-400"
+          suffix={`${slSign}${DEFAULT_SL_PCT}%`}
+          suffixClass="text-rose-500 dark:text-rose-500 text-xs font-semibold"
+        />
+        <KV
+          label="TP 1"
+          value={fmtRp(target.tp1)}
+          valueClass="text-emerald-600 dark:text-emerald-400"
+          suffix={`${tpSign}${DEFAULT_TP1_PCT}%`}
+          suffixClass="text-emerald-500 dark:text-emerald-500 text-xs font-semibold"
+        />
+        <KV
+          label="TP 2"
+          value={fmtRp(target.tp2)}
+          valueClass="text-emerald-600 dark:text-emerald-400"
+          suffix={`${tpSign}${DEFAULT_TP2_PCT}%`}
+          suffixClass="text-emerald-500 dark:text-emerald-500 text-xs font-semibold"
+        />
+      </div>
+      <div className="flex items-center justify-between border-t-2 border-(--neo-line) pt-1.5">
+        <span className="text-[10px] font-bold uppercase text-zinc-400">R:R vs TP1 / TP2</span>
+        <span className="font-mono text-xs font-bold text-zinc-700 dark:text-zinc-300">
+          1:{fmtN(target.riskRewardRatio1, 2)} · 1:{fmtN(target.riskRewardRatio2, 2)}
+        </span>
+      </div>
+      {target.mismatchNotes.length > 0 && (
+        <ul className="space-y-1 pt-1">
+          {target.mismatchNotes.map((note) => (
+            <li key={note} className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+              <TriangleAlert className="size-3 mt-0.5 shrink-0" strokeWidth={2.5} />
+              {note}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -1088,6 +1147,8 @@ function TradingPlanSidebarCard({ plan }: { plan: TradingPlanAnalysis }) {
           1 : {fmtN(scenario.riskRewardRatio, 1)}
         </span>
       </div>
+
+      <DefaultTargetPlanBlock target={scenario.defaultTarget} isLong={isBull} />
 
       <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">{scenario.notes}</p>
     </div>
@@ -2587,6 +2648,12 @@ function EquityResearchReportCard2({
       if (scenario.extremeRRWarning) {
         entryLines.push(`⚠️ R:R ekstrem (1:${fmtN(scenario.riskRewardRatio, 2)}) — kemungkinan tidak actionable secara praktis, jangan anggap otomatis sebagai setup bagus.`);
       }
+      const dt = scenario.defaultTarget;
+      entryLines.push(
+        '',
+        `🎯 Default Target (Current Price Rp${fmtN(price, 0)}): SL ${fmtRp(dt.sl)} (${isLong ? '-' : '+'}${DEFAULT_SL_PCT}%) | TP1 ${fmtRp(dt.tp1)} (${isLong ? '+' : '-'}${DEFAULT_TP1_PCT}%) | TP2 ${fmtRp(dt.tp2)} (${isLong ? '+' : '-'}${DEFAULT_TP2_PCT}%) | R:R 1:${fmtN(dt.riskRewardRatio1, 2)} / 1:${fmtN(dt.riskRewardRatio2, 2)}`
+      );
+      dt.mismatchNotes.forEach((note) => entryLines.push(`⚠️ ${note}`));
     }
 
     return [
@@ -3007,6 +3074,9 @@ function EquityResearchReportCard2({
                     R:R ekstrem — kemungkinan tidak actionable secara praktis, jangan anggap otomatis sebagai setup bagus.
                   </span>
                 )}
+              </li>
+              <li className="pt-1">
+                <DefaultTargetPlanBlock target={scenario.defaultTarget} isLong={isLong} />
               </li>
               <li className="text-xs text-zinc-400 leading-relaxed pt-0.5">
                 {rewardLabel} dihitung dari {isLong ? 'batas atas Entry Zone (skenario entry paling konservatif)' : 'harga Entry/Rejection Trigger'} dan sudah memperhitungkan estimasi fee round-trip ~{fmtN(ROUND_TRIP_FEE_PCT, 2)}% pada kolom &quot;net&quot;. Stop Loss dibulatkan ke fraksi harga (tick) IDX yang valid.

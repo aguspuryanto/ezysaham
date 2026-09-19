@@ -123,6 +123,7 @@ function adjustScenario(
     invalidationRule: invalidationRuleText(scenario.direction, newSl),
     validationErrors: validateTradeScenario(scenario.direction, entry, newSl, newTp1, newTp2),
     notes,
+    defaultTarget: scenario.defaultTarget,
     slAdjusted,
     tp1Adjusted,
     tp2Adjusted,
