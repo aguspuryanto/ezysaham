@@ -147,13 +147,14 @@ export function computeSwingSuitability(input: SwingSuitabilityInput): SwingSuit
   return { score, classification, label: CLASSIFICATION_LABEL[classification], factors };
 }
 
-// ─── Setup detection (Buy on Pullback / Buy on Support / Breakout / No Setup) ──
-export type SwingSetup = 'BUY_ON_PULLBACK' | 'BUY_ON_SUPPORT' | 'BREAKOUT' | 'NO_SETUP';
+// ─── Setup detection (Buy on Pullback / Buy on Support / Breakout / Breakout Watch / No Setup) ──
+export type SwingSetup = 'BUY_ON_PULLBACK' | 'BUY_ON_SUPPORT' | 'BREAKOUT' | 'BREAKOUT_WATCH' | 'NO_SETUP';
 
 export const SWING_SETUP_LABEL: Record<SwingSetup, string> = {
   BUY_ON_PULLBACK: 'Buy on Pullback',
   BUY_ON_SUPPORT: 'Buy on Support',
   BREAKOUT: 'Breakout',
+  BREAKOUT_WATCH: 'Breakout Watch',
   NO_SETUP: 'No Setup',
 };
 
@@ -161,21 +162,25 @@ export const SWING_SETUP_LABEL: Record<SwingSetup, string> = {
  * Setup answers "how would this stock be traded", never "trade it now" — that's Final Action's job
  * (features_kontradiktif.md §9: Strategy/Setup and Action must never be collapsed into one field).
  *
- * BREAKOUT is only ever labeled when price has genuinely cleared its recent trading range
- * (priceAction.canContinueUp — close above the prior 20-bar high, not merely a green candle above
- * EMA20) AND that move is volume-confirmed (features_analisa.md rule 1: "Jangan gunakan BREAKOUT
- * kecuali harga benar-benar breakout resistance + confirmation + volume/retest" — the CAMP bug,
- * where an entry anchored at support was labeled "Breakout" off a much looser green-candle check).
- * Whether the breakout additionally survives a retest is still Entry Confirmation's job downstream.
+ * BREAKOUT requires all three: genuine range breakout momentum (priceAction.canContinueUp — close
+ * above the prior 20-bar high, not merely a green candle above EMA20), volume confirmation, AND price
+ * having actually reached/cleared the resistance/breakout level itself (breakoutPriceConfirmed).
+ * features_analisa.md's "FINAL PATCH" rule 1 is explicit that a high Breakout Hunter score, bullish
+ * MACD/EMA, or high RVOL must never be enough on their own — and that when momentum+volume are
+ * present but price hasn't cleared the level yet, the setup must read BREAKOUT_WATCH, not BREAKOUT
+ * (the CAMP case: RVOL 14x + gap-up day, but current price still below its R1 resistance).
  */
 export function detectSwingSetup(params: {
   direction: TradeDirection;
   entryType: EntryType;
   canContinueUp: boolean;
   volumeConfirmed: boolean;
+  breakoutPriceConfirmed: boolean;
 }): SwingSetup {
   if (params.direction !== 'LONG') return 'NO_SETUP';
-  if (params.canContinueUp && params.volumeConfirmed) return 'BREAKOUT';
+  if (params.canContinueUp && params.volumeConfirmed) {
+    return params.breakoutPriceConfirmed ? 'BREAKOUT' : 'BREAKOUT_WATCH';
+  }
   if (params.entryType === 'BUY_ON_SUPPORT') return 'BUY_ON_SUPPORT';
   return 'BUY_ON_PULLBACK';
 }

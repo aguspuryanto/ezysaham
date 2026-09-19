@@ -2218,6 +2218,13 @@ function EquityResearchReportCard2({
   const aboveMa50 = price > trendEma.ema50;
   const aboveMa200 = price > trendEma.ema200;
   const maLabel = `${aboveMa50 ? 'Di atas' : 'Di bawah'} MA50 · ${aboveMa200 ? 'Di atas' : 'Di bawah'} MA200`;
+  // Primary Trend Risk is its own field, separate from Risk Gate (features_analisa.md rule 8: "Jangan
+  // otomatis membuat RiskGate=BLOCK kecuali rule risk memang memblokir. Pisahkan RiskGate dan
+  // PrimaryTrendRisk.") — EMA200/EMA50 still feed Risk Gate as one of several hard reasons, but this
+  // gives the primary-trend read its own explicit label instead of only surfacing buried inside a
+  // Risk Gate reasons list.
+  const primaryTrendRisk: 'BELOW_EMA200' | 'BELOW_EMA50' | 'NONE' =
+    !aboveMa200 ? 'BELOW_EMA200' : !aboveMa50 ? 'BELOW_EMA50' : 'NONE';
 
   const nearestResistance = supportResistance.resistances[0];
   const nearestSupport = supportResistance.supports[0];
@@ -2231,8 +2238,11 @@ function EquityResearchReportCard2({
   const solvencyLabel = der == null ? null : der <= 100 ? 'Solvent' : 'Berisiko (Risky)';
   const solvencyTone: Tone = der == null ? 'zinc' : der <= 100 ? 'green' : 'red';
 
-  const topBullishNews = newsItems.find((n) => n.sentiment === 'bullish');
-  const topBearishNews = newsItems.find((n) => n.sentiment === 'bearish');
+  // UNRELATED items (a different company's news) must never be shown as this ticker's sentiment
+  // headline — same rule that already excludes them from netSentimentScore (features_analisa.md
+  // "FINAL PATCH" rule 4).
+  const topBullishNews = newsItems.find((n) => n.sentiment === 'bullish' && n.relevance !== 'UNRELATED');
+  const topBearishNews = newsItems.find((n) => n.sentiment === 'bearish' && n.relevance !== 'UNRELATED');
 
   // Checklist Swing vs Intraday — separates "this looks bullish" (swing, built from EOD data
   // this app already has) from "this is a confirmed intraday entry" (needs VWAP/EMA9-21/real-time
@@ -2402,15 +2412,24 @@ function EquityResearchReportCard2({
     value: summary.value,
     percentChange1M: summary.percentChange1M,
   });
+  // Breakout Level is the same resistance shown elsewhere on this report (Area Kunci / Resistance) —
+  // BREAKOUT can only be confirmed once price has actually reached/cleared it, never just from a
+  // high Breakout Hunter score, bullish MACD/EMA, or high RVOL alone (features_analisa.md "FINAL
+  // PATCH" rule 1/3). No resistance overhead at all (ATH) means there's nothing left to confirm
+  // against, so it reads confirmed by default.
+  const breakoutLevel = nearestResistance?.price ?? null;
+  const breakoutPriceConfirmed = breakoutLevel == null || price >= breakoutLevel;
   const swingSetup = detectSwingSetup({
     direction: scenario.direction,
     entryType: scenario.entryType,
     canContinueUp: priceAction.canContinueUp,
     volumeConfirmed: volume.isHighVolume,
+    breakoutPriceConfirmed,
   });
   // Unify "Strategi" with the new Setup concept for LONG (Buy on Pullback / Buy on Support /
-  // Breakout) instead of showing two labels that could read differently for the same scenario;
-  // SHORT scenarios keep the existing entryType-derived label since swingSetup only classifies LONG.
+  // Breakout / Breakout Watch) instead of showing two labels that could read differently for the
+  // same scenario; SHORT scenarios keep the existing entryType-derived label since swingSetup only
+  // classifies LONG.
   const strategiDisplay = isLong ? SWING_SETUP_LABEL[swingSetup] : strategiLabel;
   // Gaya Sinyal must never contradict the Setup pill right next to it (features_analisa.md rule 12:
   // Setup/Strategi and its "style" description must stay consistent) — it used to be a bare
@@ -2420,7 +2439,9 @@ function EquityResearchReportCard2({
     ? 'Breakdown / Short on Rejection'
     : swingSetup === 'BREAKOUT'
       ? 'Momentum / Breakout Continuation'
-      : 'Mean Reversion / Buy on Support';
+      : swingSetup === 'BREAKOUT_WATCH'
+        ? 'Momentum / Menunggu Konfirmasi Breakout'
+        : 'Mean Reversion / Buy on Support';
 
   // Main Risk — the single most material warning right now, prioritized so the report never buries
   // a hard blocker under a list of minor notes. Falls back to the first Risk Gate reason, then a
@@ -2572,9 +2593,9 @@ function EquityResearchReportCard2({
       `🚨 [EQUITY RESEARCH REPORT] - $${summary.ticker}`,
       `Market Status: ${marketStatus.label} | Trade Status: ${tradeStatusLabel}`,
       `Swing Suitability: ${swingSuitability.score}/100 — ${SWING_SUITABILITY_STYLE[swingSuitability.classification].label} (bukan sinyal BUY)`,
-      `Risk Gate: ${RISK_GATE_STATUS_STYLE[riskGateStatus].label} | Buy Permission: ${BUY_PERMISSION_STYLE[buyPermission].label} | Entry Status: ${ENTRY_STATUS_STYLE[entryStatus].label}${isLong ? ` | Zone Status: ${ZONE_STATUS_STYLE[zoneStatus].label}` : ''}`,
+      `Risk Gate: ${RISK_GATE_STATUS_STYLE[riskGateStatus].label} | Buy Permission: ${BUY_PERMISSION_STYLE[buyPermission].label} | Entry Status: ${ENTRY_STATUS_STYLE[entryStatus].label}${isLong ? ` | Zone Status: ${ZONE_STATUS_STYLE[zoneStatus].label}` : ''} | Primary Trend Risk: ${primaryTrendRisk}`,
       '',
-      `📌 Strategi (Setup): ${strategiDisplay} (Gaya: ${gayaLabel})`,
+      `📌 Strategi (Setup): ${strategiDisplay}${isLong && breakoutLevel != null && (swingSetup === 'BREAKOUT' || swingSetup === 'BREAKOUT_WATCH') ? ` (Breakout Level: ${fmtRp(breakoutLevel)}, Breakout Confirmed: ${breakoutPriceConfirmed ? 'YES' : 'NO'})` : ''} (Gaya: ${gayaLabel})`,
       `Expected Holding: 1–5 Hari (Swing) | Position Risk: ${riskRangeLabel} | Main Risk: ${mainRisk}`,
       `Exit Condition: ${exitCondition}`,
       '--------------------------------------------------',
@@ -2585,7 +2606,7 @@ function EquityResearchReportCard2({
       `2. Fundamental  : Valuasi ${valuation.label} (PER ${summary.per > 0 ? `${summary.per.toFixed(1)}x` : '–'} · PBV ${summary.pbv > 0 ? `${summary.pbv.toFixed(2)}x` : '–'}) · Skor Fundamental AI ${fundamentalScreening.score}/100${solvencyLabel ? `, ${solvencyLabel} (DER ${der != null ? `${der.toFixed(1)}%` : '–'} · ROE ${summary.roe !== 0 ? `${summary.roe.toFixed(1)}%` : '–'})` : ''} · Fundamental Risk ${FUNDAMENTAL_RISK_STYLE[fundamentalRisk].label}.`,
       `3. Bandar & Entry Timing: Fase Bandar ${faseBandarLabel} · Fase Siklus Pasar ${faseSiklusLabel} · Entry Timing ${entryTiming.label} — ${entryTiming.headline}${bandarScore.hiddenDistributionWarning ? ' ⚠️ Waspada hidden distribution (harga naik, OBV melemah).' : ''}`,
       `4. Checklist Intraday: VWAP ${vwapLabel} · EMA9/EMA21 ${emaLabel} · RVOL ${fmtN(volume.relativeVolume, 2)}× (${rvolClass.label}, Volume ${volumeTrendLabel})`,
-      `5. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title}` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title}` : ''}`,
+      `5. Sentimen     : ${topBullishNews ? `Positif — ${topBullishNews.title} [${topBullishNews.relevance ?? '–'}/${topBullishNews.ageBucket ?? '–'}]` : 'Belum ada sentimen positif signifikan'}${topBearishNews ? ` | Negatif — ${topBearishNews.title} [${topBearishNews.relevance ?? '–'}/${topBearishNews.ageBucket ?? '–'}]` : ''}`,
       '',
       `🚦 Risk Gate: ${RISK_GATE_STATUS_STYLE[riskGateStatus].label} · Buy Permission: ${BUY_PERMISSION_STYLE[buyPermission].label} · Entry Status: ${ENTRY_STATUS_STYLE[entryStatus].label}${isLong ? ` · Zone Status: ${ZONE_STATUS_STYLE[zoneStatus].label}` : ''}${riskGate.reasons.length > 0 ? ` — ${riskGate.reasons.join('; ')}.` : '.'}`,
       '',
@@ -2628,9 +2649,15 @@ function EquityResearchReportCard2({
               <Pill tone={SWING_SUITABILITY_STYLE[swingSuitability.classification].tone}>{SWING_SUITABILITY_STYLE[swingSuitability.classification].label}</Pill>
               <span className="text-[11px] text-zinc-400">bukan sinyal BUY</span>
             </div>
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Setup:</span>
               <Pill tone={swingSetup === 'NO_SETUP' ? 'zinc' : swingSetup === 'BREAKOUT' ? 'blue' : 'amber'}>{SWING_SETUP_LABEL[swingSetup]}</Pill>
+              {isLong && breakoutLevel != null && (swingSetup === 'BREAKOUT' || swingSetup === 'BREAKOUT_WATCH') && (
+                <>
+                  <span className="text-xs text-zinc-400">Breakout Level: {fmtRp(breakoutLevel)}</span>
+                  <Pill tone={breakoutPriceConfirmed ? 'green' : 'amber'}>Breakout Confirmed: {breakoutPriceConfirmed ? 'YES' : 'NO'}</Pill>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Status Transaksi:</span>
@@ -2665,6 +2692,10 @@ function EquityResearchReportCard2({
               <div className="flex items-center gap-2">
                 <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Fundamental Risk:</span>
                 <Pill tone={FUNDAMENTAL_RISK_STYLE[fundamentalRisk].tone}>{FUNDAMENTAL_RISK_STYLE[fundamentalRisk].label}</Pill>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0">Primary Trend Risk:</span>
+                <Pill tone={primaryTrendRisk === 'NONE' ? 'green' : primaryTrendRisk === 'BELOW_EMA200' ? 'red' : 'amber'}>{primaryTrendRisk}</Pill>
               </div>
             </div>
             {buyPermission !== 'TRUE' && (
@@ -2851,12 +2882,18 @@ function EquityResearchReportCard2({
               <Pill tone="green">Positif</Pill>
               <span className="text-zinc-600 dark:text-zinc-400 leading-snug">
                 {topBullishNews ? topBullishNews.title : 'Belum ada berita positif signifikan terdeteksi.'}
+                {topBullishNews && (
+                  <span className="ml-1 text-xs text-zinc-400">[{topBullishNews.relevance ?? '–'} · {topBullishNews.ageBucket ?? '–'}]</span>
+                )}
               </span>
             </li>
             <li className="flex items-start gap-2">
               <Pill tone="red">Negatif</Pill>
               <span className="text-zinc-600 dark:text-zinc-400 leading-snug">
                 {topBearishNews ? topBearishNews.title : 'Tidak ada isu negatif signifikan terdeteksi.'}
+                {topBearishNews && (
+                  <span className="ml-1 text-xs text-zinc-400">[{topBearishNews.relevance ?? '–'} · {topBearishNews.ageBucket ?? '–'}]</span>
+                )}
               </span>
             </li>
           </ul>

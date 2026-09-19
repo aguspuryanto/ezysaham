@@ -1,4 +1,13 @@
-import { NewsAgeBucket, NewsSentimentSummary, StockNewsItem } from '@/domain/models/News';
+import { NewsAgeBucket, NewsRelevance, NewsSentimentSummary, StockNewsItem } from '@/domain/models/News';
+
+/** Extra context to classify relevance beyond the ticker alone — not known until the stock summary
+ * has loaded, so the first pass (inside getStockNews) only has `ticker` and a second, fuller pass
+ * re-runs once useStockAnalysis has the summary (see useStockAnalysis.ts). */
+export interface NewsClassificationContext {
+  ticker: string;
+  name?: string;
+  sector?: string;
+}
 
 export async function getStockNews(ticker: string): Promise<{
   items: StockNewsItem[];
@@ -8,7 +17,7 @@ export async function getStockNews(ticker: string): Promise<{
     const res = await fetch(`/api/stocks/${ticker}/news`);
     if (!res.ok) throw new Error('Gagal memuat berita');
     const items: StockNewsItem[] = await res.json();
-    return processNewsSummary(items);
+    return processNewsSummary(items, { ticker });
   } catch {
     const fallbackItems: StockNewsItem[] = [
       {
@@ -23,7 +32,7 @@ export async function getStockNews(ticker: string): Promise<{
         impactScore: 3,
       },
     ];
-    return processNewsSummary(fallbackItems);
+    return processNewsSummary(fallbackItems, { ticker });
   }
 }
 
@@ -49,11 +58,58 @@ const NEWS_AGE_WEIGHT: Record<NewsAgeBucket, number> = {
   UNKNOWN: 1,
 };
 
-export function processNewsSummary(items: StockNewsItem[]): {
+const MARKET_KEYWORDS = [
+  'ihsg', 'bursa efek indonesia', ' bei ', 'pasar modal', 'pasar saham',
+  'rupiah', 'the fed', 'suku bunga', 'inflasi', 'bank indonesia',
+];
+
+const COMPANY_NAME_STOPWORDS = new Set(['pt', 'tbk', 'persero', 'indonesia', 'group', 'holding', 'holdings']);
+
+/**
+ * features_analisa.md "FINAL PATCH" rule 4: "Berita perusahaan lain tidak boleh menjadi sentiment
+ * saham" — every item must be tagged with how directly it relates to THIS ticker before it's allowed
+ * to move the sentiment score. Heuristic, text-only (title+snippet): a ticker/company-name mention is
+ * DIRECT, a sector mention without the company is SECTOR, generic market-wide news is MARKET,
+ * otherwise UNRELATED. INDIRECT (a related parent/subsidiary entity) isn't detectable from title text
+ * alone without a company-relationship dataset this app doesn't have — reserved for a future source.
+ */
+export function classifyNewsRelevance(
+  item: Pick<StockNewsItem, 'title' | 'snippet'>,
+  context: NewsClassificationContext
+): NewsRelevance {
+  const text = ` ${item.title} ${item.snippet} `.toLowerCase();
+
+  const tickerPattern = new RegExp(`[^a-z]${context.ticker.toLowerCase()}[^a-z]`);
+  if (tickerPattern.test(text)) return 'DIRECT';
+
+  const nameTokens = (context.name ?? '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !COMPANY_NAME_STOPWORDS.has(w));
+  if (nameTokens.some((w) => text.includes(w))) return 'DIRECT';
+
+  if (context.sector && context.sector.length > 2 && text.includes(context.sector.toLowerCase())) return 'SECTOR';
+
+  if (MARKET_KEYWORDS.some((k) => text.includes(k))) return 'MARKET';
+
+  return 'UNRELATED';
+}
+
+export function processNewsSummary(
+  items: StockNewsItem[],
+  context: NewsClassificationContext
+): {
   items: StockNewsItem[];
   summary: NewsSentimentSummary;
 } {
-  const totalNews = items.length;
+  const now = Date.now();
+  const classified = items.map((item) => ({
+    ...item,
+    relevance: classifyNewsRelevance(item, context),
+    ageBucket: classifyNewsAge(item.publishedAtMs, now),
+  }));
+
+  const totalNews = classified.length;
   let bullishCount = 0;
   let bearishCount = 0;
   let neutralCount = 0;
@@ -61,9 +117,10 @@ export function processNewsSummary(items: StockNewsItem[]): {
   let weightedNeutral = 0;
   let totalWeight = 0;
 
-  const now = Date.now();
-  items.forEach((item) => {
-    const weight = NEWS_AGE_WEIGHT[classifyNewsAge(item.publishedAtMs, now)];
+  classified.forEach((item) => {
+    // UNRELATED news is excluded from the score entirely — a headline about a different company
+    // must not move this ticker's sentiment (rule 4), only age discounts the rest.
+    const weight = item.relevance === 'UNRELATED' ? 0 : NEWS_AGE_WEIGHT[item.ageBucket];
     totalWeight += weight;
     if (item.sentiment === 'bullish') {
       bullishCount++;
@@ -85,7 +142,7 @@ export function processNewsSummary(items: StockNewsItem[]): {
   else if (netSentimentScore <= 40) overallSentiment = 'bearish';
 
   return {
-    items,
+    items: classified,
     summary: {
       totalNews,
       bullishCount,

@@ -20,10 +20,20 @@ export interface StockNewsItem {
   publishedAtMs?: number;
   sentiment: NewsSentiment;
   impactScore: number; // 1 to 5
+  /** Set by newsRepository.processNewsSummary — absent only before that first pass runs. */
+  relevance?: NewsRelevance;
+  ageBucket?: NewsAgeBucket;
 }
 
 /** features_analisa.md rule 10: berita lama tidak boleh diberi bobot seperti katalis terbaru. */
 export type NewsAgeBucket = 'CURRENT' | 'RECENT' | 'AGING' | 'HISTORICAL' | 'UNKNOWN';
+
+/** features_analisa.md "FINAL PATCH" rule 4: every news item must be tagged with how directly it
+ * relates to this ticker — "berita perusahaan lain tidak boleh menjadi sentiment saham". DIRECT =
+ * mentions the ticker/company name, SECTOR = mentions the sector without the company, MARKET =
+ * generic market-wide news (IHSG, bursa, suku bunga), INDIRECT = related entity (parent/subsidiary,
+ * not detectable from title/snippet alone today), UNRELATED = none of the above matched. */
+export type NewsRelevance = 'DIRECT' | 'INDIRECT' | 'SECTOR' | 'MARKET' | 'UNRELATED';
 
 export interface NewsSentimentSummary {
   totalNews: number;

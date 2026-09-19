@@ -10,7 +10,7 @@ import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { computeDataFreshness, DataFreshness } from '@/domain/analysis/dataFreshness';
 import { BreakoutScores, computeBreakoutScores } from '@/domain/screener/presets';
 import { getStockBrokerActivity, getStockFundamentals, getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
-import { getStockNews } from '@/data/repositories/newsRepository';
+import { getStockNews, processNewsSummary } from '@/data/repositories/newsRepository';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import {
   computeAiStockAdvisor,
@@ -107,6 +107,17 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
 
       const found = summaries.find((s) => s.ticker === code);
       if (!found) throw new Error('Ticker tidak ditemukan');
+
+      // First pass (inside getStockNews) only knew the ticker; re-classify news relevance now that
+      // the stock's name/sector are known, so a SECTOR match can be told apart from a plain ticker
+      // mention (features_analisa.md "FINAL PATCH" rule 4).
+      const reclassifiedNews = processNewsSummary(newsData.items, {
+        ticker: code,
+        name: found.name,
+        sector: found.sector,
+      });
+      newsData.items = reclassifiedNews.items;
+      newsData.summary = reclassifiedNews.summary;
 
       // Pasardana dipakai di Screener untuk daftar ~1000 saham sekaligus, tapi
       // datanya kadang stale untuk ticker tertentu. Yahoo (via history bars)
