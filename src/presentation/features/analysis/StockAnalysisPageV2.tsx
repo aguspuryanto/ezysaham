@@ -691,7 +691,10 @@ export function StockAnalysisPageV2({ ticker }: { ticker: string }) {
         </div>
       )}
 
-      <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6 pb-16 space-y-5">
+      <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6 pb-16 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 sm:gap-5 lg:items-start">
+
+      {/* ── LEFT / MAIN COLUMN — the core review ─────────────────────────── */}
+      <div className="min-w-0 space-y-5">
 
         {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
 
@@ -836,37 +839,38 @@ export function StockAnalysisPageV2({ ticker }: { ticker: string }) {
           </ul>
         </Card>
 
-        {/* ── 4. Level Penting ─────────────────────────────────────────── */}
-        <Card>
-          <SectionHeader icon={Target} title="Level Penting" />
-          <div className="space-y-1.5">
-            {resistanceLevels.map((r) => (
-              <LevelRow key={r.label} label={r.label} price={r.price} tone="up" distancePct={((r.price - summary.lastClose) / summary.lastClose) * 100} />
-            ))}
-            <LevelRow label="HARGA SEKARANG" price={summary.lastClose} tone="flat" highlight />
-            {supportLevels.map((s) => (
-              <LevelRow key={s.label} label={s.label} price={s.price} tone="down" distancePct={((s.price - summary.lastClose) / summary.lastClose) * 100} />
-            ))}
-          </div>
-        </Card>
+        {/* ── 4. Level Penting & 5. Manajemen Risiko ───────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 items-start">
+          <Card>
+            <SectionHeader icon={Target} title="Level Penting" />
+            <div className="space-y-1.5">
+              {resistanceLevels.map((r) => (
+                <LevelRow key={r.label} label={r.label} price={r.price} tone="up" distancePct={((r.price - summary.lastClose) / summary.lastClose) * 100} />
+              ))}
+              <LevelRow label="HARGA SEKARANG" price={summary.lastClose} tone="flat" highlight />
+              {supportLevels.map((s) => (
+                <LevelRow key={s.label} label={s.label} price={s.price} tone="down" distancePct={((s.price - summary.lastClose) / summary.lastClose) * 100} />
+              ))}
+            </div>
+          </Card>
 
-        {/* ── 5. Manajemen Risiko ──────────────────────────────────────── */}
-        <Card>
-          <SectionHeader icon={ShieldAlert} title="Manajemen Risiko" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3">
-            <ConditionChip label="Risk Level" value={riskLevel.label} tone={riskLevel.tone} />
-            <ConditionChip label="Chasing Risk" value={chasingRisk.label} tone={chasingRisk.tone} />
-            <ConditionChip label="Breakdown Risk" value={breakdownRiskFlag ? 'Terdeteksi' : 'Tidak Terdeteksi'} tone={breakdownRiskFlag ? 'red' : 'green'} />
-          </div>
-          <div className="neo-border border-zinc-200 dark:border-zinc-700 px-3 py-2.5 mb-3">
-            <span className="text-[11px] font-bold uppercase text-zinc-400 block mb-0.5">Area Invalidasi</span>
-            <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{decision.scenario.invalidationRule}</p>
-          </div>
-          <div className="flex gap-2.5 text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed neo-border border-zinc-200 dark:border-zinc-700 px-3 py-2.5">
-            <Flame className="size-3.5 shrink-0 text-zinc-400 mt-0.5" strokeWidth={2.5} />
-            <p><strong className="text-zinc-700 dark:text-zinc-300">Catatan disiplin:</strong> selalu gunakan stop loss dan ukuran posisi yang wajar. Tidak ada indikator yang 100% akurat — analisis ini bukan jaminan/janji keuntungan, kelola risiko sendiri sebelum mengambil keputusan.</p>
-          </div>
-        </Card>
+          <Card>
+            <SectionHeader icon={ShieldAlert} title="Manajemen Risiko" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2.5 mb-3">
+              <ConditionChip label="Risk Level" value={riskLevel.label} tone={riskLevel.tone} />
+              <ConditionChip label="Chasing Risk" value={chasingRisk.label} tone={chasingRisk.tone} />
+              <ConditionChip label="Breakdown Risk" value={breakdownRiskFlag ? 'Terdeteksi' : 'Tidak Terdeteksi'} tone={breakdownRiskFlag ? 'red' : 'green'} />
+            </div>
+            <div className="neo-border border-zinc-200 dark:border-zinc-700 px-3 py-2.5 mb-3">
+              <span className="text-[11px] font-bold uppercase text-zinc-400 block mb-0.5">Area Invalidasi</span>
+              <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{decision.scenario.invalidationRule}</p>
+            </div>
+            <div className="flex gap-2.5 text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed neo-border border-zinc-200 dark:border-zinc-700 px-3 py-2.5">
+              <Flame className="size-3.5 shrink-0 text-zinc-400 mt-0.5" strokeWidth={2.5} />
+              <p><strong className="text-zinc-700 dark:text-zinc-300">Catatan disiplin:</strong> selalu gunakan stop loss dan ukuran posisi yang wajar. Tidak ada indikator yang 100% akurat — analisis ini bukan jaminan/janji keuntungan, kelola risiko sendiri sebelum mengambil keputusan.</p>
+            </div>
+          </Card>
+        </div>
 
         {/* ── 6. Indikator / Status (checklist) ────────────────────────── */}
         <Card>
@@ -890,9 +894,14 @@ export function StockAnalysisPageV2({ ticker }: { ticker: string }) {
           </div>
         </div>
 
-        {/* ── Analisis Lanjutan (collapsible) ──────────────────────────── */}
-        <div className="space-y-2.5 pt-2">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 px-1">Analisis Lanjutan</h2>
+        <p className="text-[11px] text-zinc-400 text-center pt-2">
+          {SITE_NAME} — Analisis ini bukan rekomendasi beli/jual dan bukan jaminan keuntungan. Selalu terapkan manajemen risiko sendiri.
+        </p>
+      </div>
+
+      {/* ── RIGHT SIDEBAR — Analisis Lanjutan ───────────────────────────── */}
+      <aside className="space-y-2.5 lg:sticky lg:top-20">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 px-1">Analisis Lanjutan</h2>
 
           <Collapse title="Rencana Trading" icon={Target}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -965,11 +974,8 @@ export function StockAnalysisPageV2({ ticker }: { ticker: string }) {
               </div>
             </Collapse>
           )}
-        </div>
+      </aside>
 
-        <p className="text-[11px] text-zinc-400 text-center pt-2">
-          {SITE_NAME} — Analisis ini bukan rekomendasi beli/jual dan bukan jaminan keuntungan. Selalu terapkan manajemen risiko sendiri.
-        </p>
       </main>
     </div>
   );
