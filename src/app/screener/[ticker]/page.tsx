@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { StockAnalysisPageV2 } from '@/presentation/features/analysis/StockAnalysisPageV2';
 import { StockAnalysisPageNew } from '@/presentation/features/analysis/StockAnalysisPageNew';
+import { StockAnalysisPage } from '@/presentation/features/analysis/StockAnalysisPage';
 
 interface Props {
   params: Promise<{ ticker: string }>;
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function Page({ params }: Props) {
   const { ticker } = await params;
-  return <StockAnalysisPageV2 ticker={ticker.toUpperCase()} />;
+  // return <StockAnalysisPageV2 ticker={ticker.toUpperCase()} />;
   // return <StockAnalysisPageNew ticker={ticker.toUpperCase()} />;
-  // return <StockAnalysisPage ticker={ticker.toUpperCase()} />;
+  return <StockAnalysisPage ticker={ticker.toUpperCase()} />;
 }
