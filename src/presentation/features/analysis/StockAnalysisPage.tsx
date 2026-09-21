@@ -261,15 +261,31 @@ function DefaultTargetPlanBlock({ target, isLong }: { target: DefaultTargetPlan;
           1:{fmtN(target.riskRewardRatio1, 2)} · 1:{fmtN(target.riskRewardRatio2, 2)}
         </span>
       </div>
-      {target.mismatchNotes.length > 0 && (
-        <ul className="space-y-1 pt-1">
-          {target.mismatchNotes.map((note) => (
-            <li key={note} className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
-              <TriangleAlert className="size-3 mt-0.5 shrink-0" strokeWidth={2.5} />
-              {note}
-            </li>
-          ))}
-        </ul>
+      {!target.stopLossValidation.ok && (
+        <div className="space-y-1 pt-1">
+          <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400">⚠️ Stop Loss Validation</span>
+          <ul className="space-y-1">
+            {target.stopLossValidation.notes.map((note) => (
+              <li key={note} className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+                <TriangleAlert className="size-3 mt-0.5 shrink-0" strokeWidth={2.5} />
+                {note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {!target.targetValidation.ok && (
+        <div className="space-y-1 pt-1">
+          <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400">⚠️ Target Validation</span>
+          <ul className="space-y-1">
+            {target.targetValidation.notes.map((note) => (
+              <li key={note} className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+                <TriangleAlert className="size-3 mt-0.5 shrink-0" strokeWidth={2.5} />
+                {note}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -2653,7 +2669,12 @@ function EquityResearchReportCard2({
         '',
         `🎯 Default Target (Current Price Rp${fmtN(price, 0)}): SL ${fmtRp(dt.sl)} (${isLong ? '-' : '+'}${DEFAULT_SL_PCT}%) | TP1 ${fmtRp(dt.tp1)} (${isLong ? '+' : '-'}${DEFAULT_TP1_PCT}%) | TP2 ${fmtRp(dt.tp2)} (${isLong ? '+' : '-'}${DEFAULT_TP2_PCT}%) | R:R 1:${fmtN(dt.riskRewardRatio1, 2)} / 1:${fmtN(dt.riskRewardRatio2, 2)}`
       );
-      dt.mismatchNotes.forEach((note) => entryLines.push(`⚠️ ${note}`));
+      if (!dt.stopLossValidation.ok) {
+        entryLines.push(`⚠️ Stop Loss Validation: ${dt.stopLossValidation.notes.join('; ')}`);
+      }
+      if (!dt.targetValidation.ok) {
+        entryLines.push(`⚠️ Target Validation: ${dt.targetValidation.notes.join('; ')}`);
+      }
     }
 
     return [

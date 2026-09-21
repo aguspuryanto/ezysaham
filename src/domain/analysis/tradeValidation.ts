@@ -58,6 +58,13 @@ export interface TargetValidationFlags {
   slOnCorrectSide: boolean;
 }
 
+/** A validation group's verdict + its human-readable (Indonesian) warning notes — the notes explain
+ * a mismatch, they never change sl/tp1/tp2 on the plan itself. */
+export interface ValidationGroup {
+  ok: boolean;
+  notes: string[];
+}
+
 export interface DefaultTargetPlan {
   direction: Direction;
   currentPrice: number;
@@ -70,7 +77,11 @@ export interface DefaultTargetPlan {
   riskRewardRatio1: number;
   riskRewardRatio2: number;
   validation: TargetValidationFlags;
-  /** Human-readable (Indonesian) explanations for any failed check — never used to change sl/tp1/tp2 above. */
+  /** "Stop Loss Validation" — SL near a real technical level & on the correct side of Current Price. */
+  stopLossValidation: ValidationGroup;
+  /** "Target Validation" — TP1/TP2 near real resistance/support, not already reached, TP2 ahead of TP1. */
+  targetValidation: ValidationGroup;
+  /** Flat concatenation of stopLossValidation.notes + targetValidation.notes — for a single-list display. */
   mismatchNotes: string[];
 }
 
@@ -106,32 +117,41 @@ export function buildDefaultTargetPlan(
   const risk1 = computeRiskReward(direction, currentPrice, sl, tp1);
   const risk2 = computeRiskReward(direction, currentPrice, sl, tp2);
 
-  const mismatchNotes: string[] = [];
+  // Stop Loss Validation — SL near a real technical level & on the correct (losing) side of price.
+  // A failed check never changes `sl` above; it only produces a warning note.
+  const stopLossNotes: string[] = [];
   if (!slNearTechnicalLevel) {
-    mismatchNotes.push(
+    stopLossNotes.push(
       isLong
-        ? `Stop Loss default (Rp${sl.toLocaleString('id-ID')}) tidak berada di dekat level support teknikal mana pun — angka default tetap dipakai, bukan level teknikal.`
-        : `Stop Loss default (Rp${sl.toLocaleString('id-ID')}) tidak berada di dekat level resistance teknikal mana pun — angka default tetap dipakai, bukan level teknikal.`
+        ? `SL default (Rp${sl.toLocaleString('id-ID')}) tidak dekat level support teknikal mana pun.`
+        : `SL default (Rp${sl.toLocaleString('id-ID')}) tidak dekat level resistance teknikal mana pun.`
     );
   }
+  if (!slOnCorrectSide) stopLossNotes.push('SL default tidak berada pada sisi yang benar dari Current Price — periksa ulang data harga.');
+
+  // Target Validation — TP1/TP2 near real resistance/support, not already reached, TP2 ahead of TP1.
+  // A failed check never changes `tp1`/`tp2` above; it only produces a warning note.
+  const targetNotes: string[] = [];
   if (!tp1NearTechnicalLevel) {
-    mismatchNotes.push(
+    targetNotes.push(
       isLong
-        ? `TP1 default (Rp${tp1.toLocaleString('id-ID')}) tidak berada di area resistance teknikal mana pun.`
-        : `TP1 default (Rp${tp1.toLocaleString('id-ID')}) tidak berada di area support teknikal mana pun.`
+        ? `TP1 default (Rp${tp1.toLocaleString('id-ID')}) tidak dekat area resistance teknikal mana pun.`
+        : `TP1 default (Rp${tp1.toLocaleString('id-ID')}) tidak dekat area support teknikal mana pun.`
     );
   }
   if (!tp2NearTechnicalLevel) {
-    mismatchNotes.push(
+    targetNotes.push(
       isLong
-        ? `TP2 default (Rp${tp2.toLocaleString('id-ID')}) tidak berada di area resistance teknikal mana pun.`
-        : `TP2 default (Rp${tp2.toLocaleString('id-ID')}) tidak berada di area support teknikal mana pun.`
+        ? `TP2 default (Rp${tp2.toLocaleString('id-ID')}) tidak dekat area resistance teknikal mana pun.`
+        : `TP2 default (Rp${tp2.toLocaleString('id-ID')}) tidak dekat area support teknikal mana pun.`
     );
   }
-  if (tp1AlreadyReached) mismatchNotes.push('TP1 default sudah tercapai berdasarkan Current Price.');
-  if (tp2AlreadyReached) mismatchNotes.push('TP2 default sudah tercapai berdasarkan Current Price.');
-  if (!tp2AheadOfTp1) mismatchNotes.push('TP2 default tidak lebih jauh dari TP1 pada arah yang diuntungkan — periksa ulang data harga.');
-  if (!slOnCorrectSide) mismatchNotes.push('Stop Loss default tidak berada pada sisi yang benar dari Current Price — periksa ulang data harga.');
+  if (tp1AlreadyReached) targetNotes.push('TP1 default sudah tercapai berdasarkan Current Price.');
+  if (tp2AlreadyReached) targetNotes.push('TP2 default sudah tercapai berdasarkan Current Price.');
+  if (!tp2AheadOfTp1) targetNotes.push('TP2 default tidak lebih jauh dari TP1 pada arah yang diuntungkan — periksa ulang data harga.');
+
+  const stopLossValidation: ValidationGroup = { ok: stopLossNotes.length === 0, notes: stopLossNotes };
+  const targetValidation: ValidationGroup = { ok: targetNotes.length === 0, notes: targetNotes };
 
   return {
     direction,
@@ -153,7 +173,9 @@ export function buildDefaultTargetPlan(
       tp2AheadOfTp1,
       slOnCorrectSide,
     },
-    mismatchNotes,
+    stopLossValidation,
+    targetValidation,
+    mismatchNotes: [...stopLossNotes, ...targetNotes],
   };
 }
 

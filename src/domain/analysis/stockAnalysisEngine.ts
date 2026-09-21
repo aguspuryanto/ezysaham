@@ -582,6 +582,8 @@ export function computeStockAnalysis(
         slNearTechnicalLevel: false, tp1NearTechnicalLevel: false, tp2NearTechnicalLevel: false,
         tp1AlreadyReached: false, tp2AlreadyReached: false, tp2AheadOfTp1: false, slOnCorrectSide: false,
       },
+      stopLossValidation: { ok: false, notes: [] as string[] },
+      targetValidation: { ok: false, notes: [] as string[] },
       mismatchNotes: [] as string[],
     });
     const emptyScenario = {
