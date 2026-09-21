@@ -449,12 +449,12 @@ function ScenarioMiniCard({ scenario, isBias }: { scenario: TradeScenario; isBia
   const isLong = scenario.direction === 'LONG';
   return (
     <div className={cn('neo-border p-3 space-y-1.5', isLong ? 'bg-emerald-50 dark:bg-emerald-500/10' : 'bg-rose-50 dark:bg-rose-500/10')}>
-      <div className="flex items-center justify-between">
+      {/* <div className="flex items-center justify-between">
         <span className={cn('text-xs font-bold uppercase', isLong ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>
           {isLong ? 'Skenario Bullish' : 'Skenario Bearish'} {isBias && '· Rekomendasi'}
         </span>
         <span className="text-[10px] font-mono text-zinc-400">R:R 1:{fmtN(scenario.riskRewardRatio, 1)}</span>
-      </div>
+      </div> */}
       <MiniKV label="Entry" value={fmtRp(scenario.entry)} />
       <MiniKV label="TP1 / TP2" value={`${fmtRp(scenario.tp1)} / ${fmtRp(scenario.tp2)}`} valueClass="text-emerald-600 dark:text-emerald-400" />
       <MiniKV label="Stop Loss" value={fmtRp(scenario.sl)} valueClass="text-rose-600 dark:text-rose-400" />
@@ -693,220 +693,220 @@ export function StockAnalysisPageV2({ ticker }: { ticker: string }) {
 
       <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6 pb-16 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 sm:gap-5 lg:items-start">
 
-      {/* ── LEFT / MAIN COLUMN — the core review ─────────────────────────── */}
-      <div className="min-w-0 space-y-5">
+        {/* ── LEFT / MAIN COLUMN — the core review ─────────────────────────── */}
+        <div className="min-w-0 space-y-5">
 
-        {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
+          {freshness && <DataFreshnessStaleBanner freshness={freshness} />}
 
-        {/* ── Summary Card ─────────────────────────────────────────────── */}
-        <Card className={cn('space-y-2.5', TONE_SOFT_BG[trend.tone])}>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{summary.ticker}</span>
+          {/* ── Summary Card ─────────────────────────────────────────────── */}
+          <Card className={cn('space-y-2.5', TONE_SOFT_BG[trend.tone])}>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-baseline gap-2">
+                <span className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{summary.ticker}</span>
+                <span className="text-zinc-400">—</span>
+                <span className="font-mono text-lg font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{formatRupiah(summary.lastClose)}</span>
+                <span className={cn('inline-flex items-center gap-0.5 text-xs font-mono font-bold tabular-nums', positiveDay ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                  {positiveDay ? <TrendingUp className="size-3.5" strokeWidth={2.5} /> : <TrendingDown className="size-3.5" strokeWidth={2.5} />}
+                  {formatPercent(summary.percentChange1D)}
+                </span>
+                {freshness && <DataFreshnessPill freshness={freshness} />}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button type="button" onClick={handleShare} className="neo-press flex items-center gap-1 px-2.5 py-1.5 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 text-xs font-bold text-zinc-600 dark:text-zinc-300 rounded-lg">
+                  <Share2 className="size-3.5" strokeWidth={2.5} /><span className="hidden sm:inline">{justCopied ? 'Disalin!' : 'Bagikan'}</span>
+                </button>
+                <button type="button" onClick={() => watchlist.toggle(summary.ticker)}
+                  className={cn('neo-press flex items-center gap-1 px-2.5 py-1.5 neo-border neo-shadow-sm text-xs font-bold rounded-lg', isWatched ? 'bg-amber-300 text-black' : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300')}>
+                  {isWatched ? <BookmarkCheck className="size-3.5" strokeWidth={2.5} /> : <Bookmark className="size-3.5" strokeWidth={2.5} />}
+                  <span className="hidden sm:inline">{isWatched ? 'Watching' : 'Watch'}</span>
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{trend.emoji}</span>
+              <span className={cn('text-xl sm:text-2xl font-black tracking-tight', TONE_TEXT[trend.tone])}>{trend.label}</span>
               <span className="text-zinc-400">—</span>
-              <span className="font-mono text-lg font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{formatRupiah(summary.lastClose)}</span>
-              <span className={cn('inline-flex items-center gap-0.5 text-xs font-mono font-bold tabular-nums', positiveDay ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                {positiveDay ? <TrendingUp className="size-3.5" strokeWidth={2.5} /> : <TrendingDown className="size-3.5" strokeWidth={2.5} />}
-                {formatPercent(summary.percentChange1D)}
-              </span>
-              {freshness && <DataFreshnessPill freshness={freshness} />}
+              <span className="text-base font-bold text-zinc-700 dark:text-zinc-300">{STATUS_LABEL[simpleStatus]}</span>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button type="button" onClick={handleShare} className="neo-press flex items-center gap-1 px-2.5 py-1.5 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 text-xs font-bold text-zinc-600 dark:text-zinc-300 rounded-lg">
-                <Share2 className="size-3.5" strokeWidth={2.5} /><span className="hidden sm:inline">{justCopied ? 'Disalin!' : 'Bagikan'}</span>
-              </button>
-              <button type="button" onClick={() => watchlist.toggle(summary.ticker)}
-                className={cn('neo-press flex items-center gap-1 px-2.5 py-1.5 neo-border neo-shadow-sm text-xs font-bold rounded-lg', isWatched ? 'bg-amber-300 text-black' : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300')}>
-                {isWatched ? <BookmarkCheck className="size-3.5" strokeWidth={2.5} /> : <Bookmark className="size-3.5" strokeWidth={2.5} />}
-                <span className="hidden sm:inline">{isWatched ? 'Watching' : 'Watch'}</span>
-              </button>
+            <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">{summaryDescription}</p>
+            <p className="text-sm font-bold text-zinc-800 dark:text-zinc-100">{focusLine}</p>
+          </Card>
+
+          {/* ── Chart Candlestick (tetap elemen utama) ───────────────────── */}
+          {bars.length > 0 && (
+            <div className="neo-border neo-shadow overflow-hidden">
+              <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xl">{trend.emoji}</span>
-            <span className={cn('text-xl sm:text-2xl font-black tracking-tight', TONE_TEXT[trend.tone])}>{trend.label}</span>
-            <span className="text-zinc-400">—</span>
-            <span className="text-base font-bold text-zinc-700 dark:text-zinc-300">{STATUS_LABEL[simpleStatus]}</span>
-          </div>
-          <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">{summaryDescription}</p>
-          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-100">{focusLine}</p>
-        </Card>
+          )}
 
-        {/* ── Chart Candlestick (tetap elemen utama) ───────────────────── */}
-        {bars.length > 0 && (
-          <div className="neo-border neo-shadow overflow-hidden">
-            <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
-          </div>
-        )}
-
-        {/* ── 1. Data Hari Ini ─────────────────────────────────────────── */}
-        <Card>
-          <SectionHeader icon={Activity} title="Data Hari Ini" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <StatTile label="Open" value={lastBar ? fmtRp(lastBar.open) : '–'} />
-            <StatTile label="High" value={lastBar ? fmtRp(lastBar.high) : '–'} />
-            <StatTile label="Low" value={lastBar ? fmtRp(lastBar.low) : '–'} />
-            <StatTile label="Close" value={fmtRp(summary.lastClose)} />
-            <StatTile label="Perubahan %" value={formatPercent(summary.percentChange1D)} />
-            <StatTile label="Volume" value={lastBar ? formatCompact(lastBar.volume) : '–'} />
-            <StatTile label="MA20 Volume" value={formatCompact(volume.volumeMa20)} />
-            <StatTile label="RVOL" value={Number.isNaN(volume.relativeVolume) ? '–' : `${volume.relativeVolume.toFixed(2)}×`} />
-          </div>
-        </Card>
-
-        {/* ── 2. Indikator Utama ───────────────────────────────────────── */}
-        <div>
-          <SectionHeader icon={Gauge} title="Indikator Utama" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <IndicatorDetailCard
-              icon={TrendingUp} title="EMA 20 / 50 / 200" badgeLabel={trend.label} badgeTone={trend.tone}
-              rows={[
-                { label: 'EMA 20', value: fmtRp(trendEma.ema20) },
-                { label: 'EMA 50', value: fmtRp(trendEma.ema50) },
-                { label: 'EMA 200', value: fmtRp(trendEma.ema200) },
-              ]}
-              note={trendEma.trendDescription}
-            />
-            <IndicatorDetailCard
-              icon={Waves} title="Bollinger Bands" badgeLabel={bollingerInfo?.label ?? 'Data Belum Cukup'} badgeTone={bollingerInfo?.tone ?? 'zinc'}
-              rows={bollinger ? [
-                { label: 'Upper', value: fmtRp(bollinger.upper) },
-                { label: 'Middle (SMA20)', value: fmtRp(bollinger.middle) },
-                { label: 'Lower', value: fmtRp(bollinger.lower) },
-              ] : [{ label: 'Upper / Middle / Lower', value: '–' }]}
-              note={bollingerInfo?.note ?? 'Butuh minimal 20 hari data harga untuk menghitung Bollinger Bands.'}
-            />
-            <IndicatorDetailCard
-              icon={Activity} title="RSI / Stochastic" badgeLabel={indicators.rsiZone === 'oversold' ? 'Oversold' : indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'Overbought' : 'Netral'}
-              badgeTone={indicators.rsiZone === 'oversold' ? 'amber' : indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'red' : 'green'}
-              rows={[
-                { label: 'RSI (14)', value: fmtN(indicators.rsi14) },
-                { label: 'Stochastic %K', value: fmtN(indicators.stochK) },
-                { label: 'Stochastic %D', value: fmtN(indicators.stochD) },
-              ]}
-              note={`${indicators.rsiNote} ${indicators.stochNote}`}
-            />
-            <IndicatorDetailCard
-              icon={Sparkles} title="MACD" badgeLabel={indicators.macdSignalType.replace('_', ' ')}
-              badgeTone={indicators.macdSignalType.includes('bullish') ? 'green' : indicators.macdSignalType.includes('bearish') ? 'red' : 'amber'}
-              rows={[
-                { label: 'MACD', value: fmtN(indicators.macdValue, 2) },
-                { label: 'Signal', value: fmtN(indicators.macdSignal, 2) },
-                { label: 'Histogram', value: fmtN(indicators.macdHistogram, 2) },
-              ]}
-              note={indicators.macdNote}
-            />
-            <IndicatorDetailCard
-              icon={Eye} title="Accumulation / Distribution" badgeLabel={decision.bandarScore.classification.label} badgeTone={adTone}
-              rows={[
-                { label: 'Fase Wyckoff', value: decision.bandarScore.phaseLabel },
-                { label: 'Skor', value: `${decision.bandarScore.total}/${decision.bandarScore.max}` },
-              ]}
-              note={decision.bandarScore.hiddenDistributionWarning
-                ? 'Harga naik/flat tapi volume (OBV) melemah — indikasi hidden distribution, smart money bisa jadi mulai menjual.'
-                : 'Proksi akumulasi/distribusi dari pola harga & volume (Wyckoff) — bukan data broker riil.'}
-            />
-            <IndicatorDetailCard
-              icon={Globe} title="Foreign Flow" badgeLabel={foreignFlow.label} badgeTone={foreignFlow.tone}
-              rows={netForeign != null ? [{ label: 'Net Foreign', value: `${netForeign >= 0 ? '+' : ''}Rp${formatCompact(netForeign)}` }] : [{ label: 'Net Foreign', value: '–' }]}
-              note={foreignFlow.note}
-            />
-          </div>
-        </div>
-
-        {/* ── 3. Tren & Kondisi ────────────────────────────────────────── */}
-        <Card>
-          <SectionHeader icon={TrendingUp} title="Tren & Kondisi" />
-          <div className={cn('flex items-center gap-3 neo-border px-4 py-3 mb-3', TONE_SOFT_BG[trend.tone])}>
-            <span className="text-2xl">{trend.emoji}</span>
-            <span className={cn('text-2xl font-black tracking-tight', TONE_TEXT[trend.tone])}>{trend.label}</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
-            <ConditionChip label="Trend" value={trend.label} tone={trend.tone} />
-            <ConditionChip label="Momentum" value={momentum.label} tone={momentum.tone} />
-            <ConditionChip label="Volume" value={volumeCond.label} tone={volumeCond.tone} />
-            <ConditionChip label="Foreign Flow" value={foreignFlow.label} tone={foreignFlow.tone} />
-            <ConditionChip label="A/D" value={decision.bandarScore.classification.label} tone={adTone} />
-          </div>
-          <p className="text-xs font-bold uppercase text-zinc-400 mb-2">Kenapa kondisinya begini?</p>
-          <ul className="space-y-2">
-            {reasons.map((reason, i) => (
-              <li key={i} className="flex gap-2.5 text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                <span className="shrink-0 flex size-5 items-center justify-center neo-border bg-zinc-100 dark:bg-zinc-800 text-[11px] font-bold text-zinc-500 mt-0.5">{i + 1}</span>
-                <span>{reason}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        {/* ── 4. Level Penting & 5. Manajemen Risiko ───────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 items-start">
+          {/* ── 1. Data Hari Ini ─────────────────────────────────────────── */}
           <Card>
-            <SectionHeader icon={Target} title="Level Penting" />
-            <div className="space-y-1.5">
-              {resistanceLevels.map((r) => (
-                <LevelRow key={r.label} label={r.label} price={r.price} tone="up" distancePct={((r.price - summary.lastClose) / summary.lastClose) * 100} />
-              ))}
-              <LevelRow label="HARGA SEKARANG" price={summary.lastClose} tone="flat" highlight />
-              {supportLevels.map((s) => (
-                <LevelRow key={s.label} label={s.label} price={s.price} tone="down" distancePct={((s.price - summary.lastClose) / summary.lastClose) * 100} />
-              ))}
+            <SectionHeader icon={Activity} title="Data Hari Ini" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <StatTile label="Open" value={lastBar ? fmtRp(lastBar.open) : '–'} />
+              <StatTile label="High" value={lastBar ? fmtRp(lastBar.high) : '–'} />
+              <StatTile label="Low" value={lastBar ? fmtRp(lastBar.low) : '–'} />
+              <StatTile label="Close" value={fmtRp(summary.lastClose)} />
+              <StatTile label="Perubahan %" value={formatPercent(summary.percentChange1D)} />
+              <StatTile label="Volume" value={lastBar ? formatCompact(lastBar.volume) : '–'} />
+              <StatTile label="MA20 Volume" value={formatCompact(volume.volumeMa20)} />
+              <StatTile label="RVOL" value={Number.isNaN(volume.relativeVolume) ? '–' : `${volume.relativeVolume.toFixed(2)}×`} />
             </div>
           </Card>
 
-          <Card>
-            <SectionHeader icon={ShieldAlert} title="Manajemen Risiko" />
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2.5 mb-3">
-              <ConditionChip label="Risk Level" value={riskLevel.label} tone={riskLevel.tone} />
-              <ConditionChip label="Chasing Risk" value={chasingRisk.label} tone={chasingRisk.tone} />
-              <ConditionChip label="Breakdown Risk" value={breakdownRiskFlag ? 'Terdeteksi' : 'Tidak Terdeteksi'} tone={breakdownRiskFlag ? 'red' : 'green'} />
-            </div>
-            <div className="neo-border border-zinc-200 dark:border-zinc-700 px-3 py-2.5 mb-3">
-              <span className="text-[11px] font-bold uppercase text-zinc-400 block mb-0.5">Area Invalidasi</span>
-              <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{decision.scenario.invalidationRule}</p>
-            </div>
-            <div className="flex gap-2.5 text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed neo-border border-zinc-200 dark:border-zinc-700 px-3 py-2.5">
-              <Flame className="size-3.5 shrink-0 text-zinc-400 mt-0.5" strokeWidth={2.5} />
-              <p><strong className="text-zinc-700 dark:text-zinc-300">Catatan disiplin:</strong> selalu gunakan stop loss dan ukuran posisi yang wajar. Tidak ada indikator yang 100% akurat — analisis ini bukan jaminan/janji keuntungan, kelola risiko sendiri sebelum mengambil keputusan.</p>
-            </div>
-          </Card>
-        </div>
-
-        {/* ── 6. Indikator / Status (checklist) ────────────────────────── */}
-        <Card>
-          <SectionHeader icon={CheckCircle2} title="Indikator / Status" />
+          {/* ── 2. Indikator Utama ───────────────────────────────────────── */}
           <div>
-            <ChecklistRow label="Trend" tone={trend.tone} value={trend.label} />
-            <ChecklistRow label="Momentum" tone={momentum.tone} value={momentum.label} />
-            <ChecklistRow label="Volume" tone={volumeCond.tone} value={volumeCond.label} />
-            <ChecklistRow label="RSI / Stochastic" tone={indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'red' : indicators.rsiZone === 'oversold' ? 'amber' : 'green'} value={fmtN(indicators.rsi14)} />
-            <ChecklistRow label="MACD" tone={indicators.macdSignalType.includes('bullish') ? 'green' : indicators.macdSignalType.includes('bearish') ? 'red' : 'amber'} value={indicators.macdSignalType.replace('_', ' ')} />
-            <ChecklistRow label="Foreign Flow" tone={foreignFlow.tone} value={foreignFlow.label} />
-            <ChecklistRow label="Accumulation/Distribution" tone={adTone} value={decision.bandarScore.classification.label} />
+            <SectionHeader icon={Gauge} title="Indikator Utama" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <IndicatorDetailCard
+                icon={TrendingUp} title="EMA 20 / 50 / 200" badgeLabel={trend.label} badgeTone={trend.tone}
+                rows={[
+                  { label: 'EMA 20', value: fmtRp(trendEma.ema20) },
+                  { label: 'EMA 50', value: fmtRp(trendEma.ema50) },
+                  { label: 'EMA 200', value: fmtRp(trendEma.ema200) },
+                ]}
+                note={trendEma.trendDescription}
+              />
+              <IndicatorDetailCard
+                icon={Waves} title="Bollinger Bands" badgeLabel={bollingerInfo?.label ?? 'Data Belum Cukup'} badgeTone={bollingerInfo?.tone ?? 'zinc'}
+                rows={bollinger ? [
+                  { label: 'Upper', value: fmtRp(bollinger.upper) },
+                  { label: 'Middle (SMA20)', value: fmtRp(bollinger.middle) },
+                  { label: 'Lower', value: fmtRp(bollinger.lower) },
+                ] : [{ label: 'Upper / Middle / Lower', value: '–' }]}
+                note={bollingerInfo?.note ?? 'Butuh minimal 20 hari data harga untuk menghitung Bollinger Bands.'}
+              />
+              <IndicatorDetailCard
+                icon={Activity} title="RSI / Stochastic" badgeLabel={indicators.rsiZone === 'oversold' ? 'Oversold' : indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'Overbought' : 'Netral'}
+                badgeTone={indicators.rsiZone === 'oversold' ? 'amber' : indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'red' : 'green'}
+                rows={[
+                  { label: 'RSI (14)', value: fmtN(indicators.rsi14) },
+                  { label: 'Stochastic %K', value: fmtN(indicators.stochK) },
+                  { label: 'Stochastic %D', value: fmtN(indicators.stochD) },
+                ]}
+                note={`${indicators.rsiNote} ${indicators.stochNote}`}
+              />
+              <IndicatorDetailCard
+                icon={Sparkles} title="MACD" badgeLabel={indicators.macdSignalType.replace('_', ' ')}
+                badgeTone={indicators.macdSignalType.includes('bullish') ? 'green' : indicators.macdSignalType.includes('bearish') ? 'red' : 'amber'}
+                rows={[
+                  { label: 'MACD', value: fmtN(indicators.macdValue, 2) },
+                  { label: 'Signal', value: fmtN(indicators.macdSignal, 2) },
+                  { label: 'Histogram', value: fmtN(indicators.macdHistogram, 2) },
+                ]}
+                note={indicators.macdNote}
+              />
+              <IndicatorDetailCard
+                icon={Eye} title="Accumulation / Distribution" badgeLabel={decision.bandarScore.classification.label} badgeTone={adTone}
+                rows={[
+                  { label: 'Fase Wyckoff', value: decision.bandarScore.phaseLabel },
+                  { label: 'Skor', value: `${decision.bandarScore.total}/${decision.bandarScore.max}` },
+                ]}
+                note={decision.bandarScore.hiddenDistributionWarning
+                  ? 'Harga naik/flat tapi volume (OBV) melemah — indikasi hidden distribution, smart money bisa jadi mulai menjual.'
+                  : 'Proksi akumulasi/distribusi dari pola harga & volume (Wyckoff) — bukan data broker riil.'}
+              />
+              <IndicatorDetailCard
+                icon={Globe} title="Foreign Flow" badgeLabel={foreignFlow.label} badgeTone={foreignFlow.tone}
+                rows={netForeign != null ? [{ label: 'Net Foreign', value: `${netForeign >= 0 ? '+' : ''}Rp${formatCompact(netForeign)}` }] : [{ label: 'Net Foreign', value: '–' }]}
+                note={foreignFlow.note}
+              />
+            </div>
           </div>
-        </Card>
 
-        {/* ── 7. Skenario Intraday ─────────────────────────────────────── */}
-        <div>
-          <SectionHeader icon={Waves} title="Skenario Intraday" />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {scenarios.map((s) => <ScenarioCard key={s.type} scenario={s} />)}
+          {/* ── 3. Tren & Kondisi ────────────────────────────────────────── */}
+          <Card>
+            <SectionHeader icon={TrendingUp} title="Tren & Kondisi" />
+            <div className={cn('flex items-center gap-3 neo-border px-4 py-3 mb-3', TONE_SOFT_BG[trend.tone])}>
+              <span className="text-2xl">{trend.emoji}</span>
+              <span className={cn('text-2xl font-black tracking-tight', TONE_TEXT[trend.tone])}>{trend.label}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+              <ConditionChip label="Trend" value={trend.label} tone={trend.tone} />
+              <ConditionChip label="Momentum" value={momentum.label} tone={momentum.tone} />
+              <ConditionChip label="Volume" value={volumeCond.label} tone={volumeCond.tone} />
+              <ConditionChip label="Foreign Flow" value={foreignFlow.label} tone={foreignFlow.tone} />
+              <ConditionChip label="A/D" value={decision.bandarScore.classification.label} tone={adTone} />
+            </div>
+            <p className="text-xs font-bold uppercase text-zinc-400 mb-2">Kenapa kondisinya begini?</p>
+            <ul className="space-y-2">
+              {reasons.map((reason, i) => (
+                <li key={i} className="flex gap-2.5 text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                  <span className="shrink-0 flex size-5 items-center justify-center neo-border bg-zinc-100 dark:bg-zinc-800 text-[11px] font-bold text-zinc-500 mt-0.5">{i + 1}</span>
+                  <span>{reason}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          {/* ── 4. Level Penting & 5. Manajemen Risiko ───────────────────── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 items-start">
+            <Card>
+              <SectionHeader icon={Target} title="Level Penting" />
+              <div className="space-y-1.5">
+                {resistanceLevels.map((r) => (
+                  <LevelRow key={r.label} label={r.label} price={r.price} tone="up" distancePct={((r.price - summary.lastClose) / summary.lastClose) * 100} />
+                ))}
+                <LevelRow label="HARGA SEKARANG" price={summary.lastClose} tone="flat" highlight />
+                {supportLevels.map((s) => (
+                  <LevelRow key={s.label} label={s.label} price={s.price} tone="down" distancePct={((s.price - summary.lastClose) / summary.lastClose) * 100} />
+                ))}
+              </div>
+            </Card>
+
+            <Card>
+              <SectionHeader icon={ShieldAlert} title="Manajemen Risiko" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2.5 mb-3">
+                <ConditionChip label="Risk Level" value={riskLevel.label} tone={riskLevel.tone} />
+                <ConditionChip label="Chasing Risk" value={chasingRisk.label} tone={chasingRisk.tone} />
+                <ConditionChip label="Breakdown Risk" value={breakdownRiskFlag ? 'Terdeteksi' : 'Tidak Terdeteksi'} tone={breakdownRiskFlag ? 'red' : 'green'} />
+              </div>
+              <div className="neo-border border-zinc-200 dark:border-zinc-700 px-3 py-2.5 mb-3">
+                <span className="text-[11px] font-bold uppercase text-zinc-400 block mb-0.5">Area Invalidasi</span>
+                <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{decision.scenario.invalidationRule}</p>
+              </div>
+              <div className="flex gap-2.5 text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed neo-border border-zinc-200 dark:border-zinc-700 px-3 py-2.5">
+                <Flame className="size-3.5 shrink-0 text-zinc-400 mt-0.5" strokeWidth={2.5} />
+                <p><strong className="text-zinc-700 dark:text-zinc-300">Catatan disiplin:</strong> selalu gunakan stop loss dan ukuran posisi yang wajar. Tidak ada indikator yang 100% akurat — analisis ini bukan jaminan/janji keuntungan, kelola risiko sendiri sebelum mengambil keputusan.</p>
+              </div>
+            </Card>
           </div>
+
+          {/* ── 6. Indikator / Status (checklist) ────────────────────────── */}
+          <Card>
+            <SectionHeader icon={CheckCircle2} title="Indikator / Status" />
+            <div>
+              <ChecklistRow label="Trend" tone={trend.tone} value={trend.label} />
+              <ChecklistRow label="Momentum" tone={momentum.tone} value={momentum.label} />
+              <ChecklistRow label="Volume" tone={volumeCond.tone} value={volumeCond.label} />
+              <ChecklistRow label="RSI / Stochastic" tone={indicators.rsiZone === 'overbought' || indicators.rsiZone === 'overbought_risk' ? 'red' : indicators.rsiZone === 'oversold' ? 'amber' : 'green'} value={fmtN(indicators.rsi14)} />
+              <ChecklistRow label="MACD" tone={indicators.macdSignalType.includes('bullish') ? 'green' : indicators.macdSignalType.includes('bearish') ? 'red' : 'amber'} value={indicators.macdSignalType.replace('_', ' ')} />
+              <ChecklistRow label="Foreign Flow" tone={foreignFlow.tone} value={foreignFlow.label} />
+              <ChecklistRow label="Accumulation/Distribution" tone={adTone} value={decision.bandarScore.classification.label} />
+            </div>
+          </Card>
+
+          {/* ── 7. Skenario Intraday ─────────────────────────────────────── */}
+          <div>
+            <SectionHeader icon={Waves} title="Skenario Intraday" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {scenarios.map((s) => <ScenarioCard key={s.type} scenario={s} />)}
+            </div>
+          </div>
+
+          <p className="text-[11px] text-zinc-400 text-center pt-2">
+            {SITE_NAME} — Analisis ini bukan rekomendasi beli/jual dan bukan jaminan keuntungan. Selalu terapkan manajemen risiko sendiri.
+          </p>
         </div>
 
-        <p className="text-[11px] text-zinc-400 text-center pt-2">
-          {SITE_NAME} — Analisis ini bukan rekomendasi beli/jual dan bukan jaminan keuntungan. Selalu terapkan manajemen risiko sendiri.
-        </p>
-      </div>
-
-      {/* ── RIGHT SIDEBAR — Analisis Lanjutan ───────────────────────────── */}
-      <aside className="space-y-2.5 lg:sticky lg:top-20">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 px-1">Analisis Lanjutan</h2>
+        {/* ── RIGHT SIDEBAR — Analisis Lanjutan ───────────────────────────── */}
+        <aside className="space-y-2.5 lg:sticky lg:top-20">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 px-1">Analisis Lanjutan</h2>
 
           <Collapse title="Rencana Trading" icon={Target}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
               <ScenarioMiniCard scenario={analysis.tradingPlan.bullish} isBias={analysis.tradingPlan.recommendedBias === 'bullish'} />
-              <ScenarioMiniCard scenario={analysis.tradingPlan.bearish} isBias={analysis.tradingPlan.recommendedBias === 'bearish'} />
+              {/* <ScenarioMiniCard scenario={analysis.tradingPlan.bearish} isBias={analysis.tradingPlan.recommendedBias === 'bearish'} /> */}
             </div>
             {riskGate.reasons.length > 0 && (
               <div className="pt-2 border-t-2 border-(--neo-line) space-y-1">
@@ -974,7 +974,7 @@ export function StockAnalysisPageV2({ ticker }: { ticker: string }) {
               </div>
             </Collapse>
           )}
-      </aside>
+        </aside>
 
       </main>
     </div>
