@@ -60,7 +60,8 @@ import {
 import { classifyOversoldRisk, classifyRsiOverbought, classifyRvol, classifyFundamentalRisk, evaluateRiskGate, BuyPermission, EntryStatus, FundamentalRiskLevel, RiskGateStatus, TradeStatus } from '@/domain/analysis/riskGate';
 import { classifyZoneStatus, DEFAULT_SL_PCT, DEFAULT_TP1_PCT, DEFAULT_TP2_PCT, DefaultTargetPlan, isEntryConfirmed, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
 import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuitabilityResult } from '@/domain/analysis/swingSuitability';
-import { buildTenSecondReview, formatTenSecondReview, REVIEW_STATUS_LABEL, REVIEW_STRATEGY_LABEL, ReviewStatus } from '@/domain/analysis/tenSecondReview';
+import { buildTenSecondReview, REVIEW_STRATEGY_LABEL } from '@/domain/analysis/tenSecondReview';
+import { buildTodayMoveAnalysis, CATALYST_STATUS_LABEL, describeClosePosition, EVIDENCE_KIND_LABEL, EvidenceKind, formatTodayMoveAnalysis, MOVE_TYPE_LABEL, MoveType, TODAY_TRADE_STATUS_LABEL, TodayTradeStatus } from '@/domain/analysis/todayMoveAnalysis';
 import { atr, atrPercent } from '@/domain/indicators/atr';
 import { MarketRegimeResult } from '@/domain/analysis/marketRegimeEngine';
 import { useMarketRegime } from './useMarketRegime';
@@ -3173,12 +3174,44 @@ function EquityResearchReportCard2({
 // Same Risk Gate / Zone / Entry Confirmation inputs as EquityResearchReportCard2 (so the two can
 // never disagree for the same stock), collapsed into one beginner-readable verdict by
 // tenSecondReview.ts. No AI score, R:R, TP/SL or raw indicator dump.
-const REVIEW_STATUS_STYLE: Record<ReviewStatus, { emoji: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc'; box: string }> = {
-  BUY_SETUP: { emoji: '🟢', tone: 'green', box: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-400/10' },
+const TODAY_STATUS_STYLE: Record<TodayTradeStatus, { emoji: string; tone: 'green' | 'red' | 'amber'; box: string }> = {
+  BUY: { emoji: '🟢', tone: 'green', box: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-400/10' },
   WAIT: { emoji: '🟡', tone: 'amber', box: 'border-amber-400 bg-amber-50 dark:bg-amber-400/10' },
-  WATCHLIST: { emoji: '🔵', tone: 'blue', box: 'border-blue-400 bg-blue-50 dark:bg-blue-400/10' },
   NO_TRADE: { emoji: '🔴', tone: 'red', box: 'border-rose-400 bg-rose-50 dark:bg-rose-400/10' },
 };
+
+const MOVE_TYPE_TONE: Record<MoveType, 'green' | 'red' | 'amber' | 'blue' | 'zinc'> = {
+  NORMAL: 'zinc',
+  PRICE_VOLUME_EXPANSION: 'amber',
+  BREAKOUT: 'green',
+  ACCUMULATION: 'blue',
+  EVENT: 'blue',
+  REOPENING: 'red',
+  UNKNOWN: 'red',
+};
+
+const EVIDENCE_KIND_CLASS: Record<EvidenceKind, string> = {
+  FAKTA: 'bg-blue-50 text-blue-700 dark:bg-blue-400/10 dark:text-blue-300',
+  INDIKASI: 'bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300',
+  BELUM_TERVERIFIKASI: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+};
+
+function MoveRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <li className="flex flex-wrap items-center gap-2">
+      <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-36">{label}:</span>
+      {children}
+    </li>
+  );
+}
+
+function MoveHeading({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">{children}</h3>;
+}
+
+function MoveDivider() {
+  return <div className="h-[2px] bg-(--neo-line)" />;
+}
 
 function EquityResearchReportCardv3({
   summary,
@@ -3191,6 +3224,8 @@ function EquityResearchReportCardv3({
   tradingPlan,
   volume,
   priceAction,
+  newsItems,
+  brokerActivity,
 }: {
   summary: StockSummary;
   bars: OHLCVBar[];
@@ -3202,6 +3237,8 @@ function EquityResearchReportCardv3({
   tradingPlan: TradingPlanAnalysis;
   volume: VolumeAnalysis;
   priceAction: PriceActionAnalysis;
+  newsItems: StockNewsItem[];
+  brokerActivity: BrokerActivityDetail | null;
 }) {
   const bandarScore = useMemo(() => computeBandarScore(summary, bars ?? []), [summary, bars]);
 
@@ -3297,99 +3334,211 @@ function EquityResearchReportCardv3({
     });
   }, [summary, trendEma, indicators, supportResistance, fundamentalScreening, fundamentals, tradingPlan, volume, priceAction, bandarScore]);
 
-  const statusStyle = REVIEW_STATUS_STYLE[review.status];
-  const toneOf = (label: string): 'green' | 'red' | 'amber' | 'zinc' =>
-    label === 'Bullish' || label === 'Positif' || label === 'Kuat' ? 'green' :
-      label === 'Bearish' || label === 'Lemah' ? 'red' :
-        label === 'Data belum tersedia' ? 'zinc' : 'amber';
+  // Today-vs-previous-close read layered on top of the 10-second review: move type + catalyst come
+  // first, and the review's status is only ever capped (never upgraded) by chase/event risk.
+  const move = useMemo(() => buildTodayMoveAnalysis({
+    summary,
+    bars: bars ?? [],
+    newsItems,
+    brokerActivity,
+    trend: trendEma.trend,
+    ema50: trendEma.ema50,
+    ema200: trendEma.ema200,
+    rsi14: indicators.rsi14,
+    macdSignalType: indicators.macdSignalType,
+    macdHistogram: indicators.macdHistogram,
+    support: review.support,
+    resistance: review.resistance,
+    fundamentalRisk: classifyFundamentalRisk(fundamentalScreening.score, fundamentals?.debtToEquity ?? null, summary.roe),
+    isStrongDistribution: bandarScore.classification.label === 'Strong Distribution',
+    isDistributionRisk: bandarScore.classification.label === 'Distribution Risk',
+    hiddenDistribution: bandarScore.hiddenDistributionWarning,
+    baseStatus: review.status,
+    baseScenario: review.scenario,
+  }), [summary, bars, newsItems, brokerActivity, trendEma, indicators, fundamentalScreening, fundamentals, bandarScore, review]);
+
+  const statusStyle = TODAY_STATUS_STYLE[move.tradeStatus];
+  const riskTone = (r: 'LOW' | 'MEDIUM' | 'HIGH'): 'green' | 'amber' | 'red' => (r === 'HIGH' ? 'red' : r === 'MEDIUM' ? 'amber' : 'green');
+  const positive = move.changePct >= 0;
+  const fmtVol = (n: number | null) => (n == null ? '–' : `${formatCompact(n)} lbr`);
+  const fmtX = (n: number | null) => (n == null || Number.isNaN(n) ? '–' : `${n.toFixed(2)}×`);
+  const fmtPct = (n: number | null, dec = 1) => (n == null || Number.isNaN(n) ? '–' : `${n >= 0 ? '+' : ''}${n.toFixed(dec)}%`);
 
   return (
     <SectionCard
-      title={`🚨 ${summary.ticker} — Review Singkat`}
+      title={`🚨 ${summary.ticker} — Today Move Analysis`}
       icon={<Sparkles className="size-4" />}
       accentClass="bg-violet-600"
-      headerAction={<CopyShareButton getText={() => formatTenSecondReview(summary.ticker, summary.lastClose, review)} />}
+      headerAction={<CopyShareButton getText={() => formatTodayMoveAnalysis(summary.ticker, move)} />}
     >
       <div className="space-y-4">
-        {/* Status utama */}
-        <div className={cn('neo-border flex flex-wrap items-center justify-between gap-2 px-4 py-3', statusStyle.box)}>
-          <div className="text-sm text-zinc-500 dark:text-zinc-400">
-            Harga: <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fmtRp(summary.lastClose)}</span>
+        {/* Header: previous close → today close */}
+        <div className={cn('neo-border px-4 py-3', statusStyle.box)}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400">
+              <span>Prev Close: <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fmtRp(move.prevClose)}</span></span>
+              <span>Today Close: <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fmtRp(move.close)}</span></span>
+              <span className={cn('font-mono font-bold', positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                {fmtPct(move.changePct, 2)}
+              </span>
+            </div>
+            <Pill tone={statusStyle.tone}>{statusStyle.emoji} {TODAY_TRADE_STATUS_LABEL[move.tradeStatus]}</Pill>
           </div>
-          <Pill tone={statusStyle.tone}>{statusStyle.emoji} {REVIEW_STATUS_LABEL[review.status]}</Pill>
-        </div>
-
-        {/* 📈 Kondisi */}
-        <div>
-          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">📈 Kondisi</h3>
-          <ul className="space-y-1.5 text-sm">
-            {([['Trend', review.trendLabel], ['Momentum', review.momentumLabel], ['Volume', review.volumeLabel]] as const).map(([label, value]) => (
-              <li key={label} className="flex items-center gap-2">
-                <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-28">{label}:</span>
-                <Pill tone={toneOf(value)}>{value}</Pill>
-              </li>
-            ))}
-            <li className="flex flex-wrap items-center gap-2">
-              <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-28">Risiko utama:</span>
-              {review.mainRisks.length > 0
-                ? review.mainRisks.map((r) => <Pill key={r} tone="red">{r}</Pill>)
-                : <Pill tone="green">Tidak ada risiko besar</Pill>}
-            </li>
-          </ul>
-        </div>
-
-        <div className="h-[2px] bg-(--neo-line)" />
-
-        {/* 🎯 Strategi */}
-        <div>
-          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">🎯 Strategi</h3>
-          <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-            {review.strategy ? REVIEW_STRATEGY_LABEL[review.strategy] : 'Belum ada strategi beli'}
-          </p>
-          {review.strategyNote && (
-            <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+          {move.explosive && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-400">
               <TriangleAlert className="size-3.5 mt-0.5 shrink-0" strokeWidth={2.5} />
-              {review.strategyNote}
+              EXPLOSIVE MOVE TERDETEKSI — kenaikan besar hari ini tidak otomatis berarti entry masih layak.
             </p>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-semibold text-emerald-600 dark:text-emerald-400">Support {fmtRp(review.support ?? 0)}</span>
-            <span className="text-zinc-300 dark:text-zinc-700">|</span>
-            <span className="font-semibold text-rose-600 dark:text-rose-400">Resistance {fmtRp(review.resistance ?? 0)}</span>
-          </div>
         </div>
 
-        <div className="h-[2px] bg-(--neo-line)" />
-
-        {/* 🔎 Yang perlu ditunggu */}
+        {/* 📊 Price & Volume */}
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">🔎 Yang Perlu Ditunggu</h3>
-          <ul className="space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300">
-            <li><span className="font-semibold">Skenario utama:</span> {review.scenario}</li>
-            <li><span className="font-semibold">Konfirmasi:</span> {review.confirmation}</li>
+          <MoveHeading>📊 Price &amp; Volume</MoveHeading>
+          <ul className="space-y-1.5 text-sm">
+            <MoveRow label="O / H / L / C">
+              <span className="font-mono text-zinc-800 dark:text-zinc-200">
+                {move.open != null ? fmtRp(move.open) : '–'} / {fmtRp(move.high)} / {fmtRp(move.low)} / {fmtRp(move.close)}
+              </span>
+            </MoveRow>
+            <MoveRow label="Price Change">
+              <Pill tone={Math.abs(move.changePct) >= 5 ? (positive ? 'green' : 'red') : 'zinc'}>{fmtPct(move.changePct, 2)}</Pill>
+              {move.gapPct != null && Math.abs(move.gapPct) >= 1 && (
+                <span className="text-xs text-zinc-500">gap open {fmtPct(move.gapPct)}</span>
+              )}
+            </MoveRow>
+            <MoveRow label="Volume Change">
+              <span className="font-mono text-zinc-800 dark:text-zinc-200">{fmtVol(move.volume)} vs {fmtVol(move.prevVolume)}</span>
+              {move.volumeChangePct != null && (
+                <Pill tone={move.volumeChangePct >= 100 ? 'green' : move.volumeChangePct <= -30 ? 'amber' : 'zinc'}>{fmtPct(move.volumeChangePct, 0)}</Pill>
+              )}
+            </MoveRow>
+            <MoveRow label="RVOL">
+              <Pill tone={move.rvol == null ? 'zinc' : move.rvol >= 2 ? 'green' : move.rvol >= 1 ? 'blue' : 'amber'}>{fmtX(move.rvol)}</Pill>
+              {move.avgVolume20 != null && <span className="text-xs text-zinc-500">avg 20D {fmtVol(move.avgVolume20)}</span>}
+            </MoveRow>
+            <MoveRow label="Range Expansion">
+              <Pill tone={move.rangeExpansion == null ? 'zinc' : move.rangeExpansion >= 1.5 ? 'amber' : 'zinc'}>{fmtX(move.rangeExpansion)}</Pill>
+            </MoveRow>
+            <MoveRow label="Close Position">
+              <span className="text-zinc-700 dark:text-zinc-300">{describeClosePosition(move.closePosition)}</span>
+            </MoveRow>
           </ul>
         </div>
 
-        <div className="h-[2px] bg-(--neo-line)" />
+        <MoveDivider />
 
-        {/* ⚠️ Peringatan */}
+        {/* 🚨 Move Type */}
+        <div>
+          <MoveHeading>🚨 Move Type</MoveHeading>
+          <Pill tone={MOVE_TYPE_TONE[move.moveType]}>{MOVE_TYPE_LABEL[move.moveType]}</Pill>
+          <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300">{move.moveTypeReason}</p>
+        </div>
+
+        <MoveDivider />
+
+        {/* 🔎 Catalyst */}
+        <div>
+          <MoveHeading>🔎 Catalyst</MoveHeading>
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill tone={move.catalystStatus === 'VERIFIED' ? 'blue' : move.catalystStatus === 'SUSPECTED' ? 'amber' : 'zinc'}>
+              {CATALYST_STATUS_LABEL[move.catalystStatus]}
+            </Pill>
+          </div>
+          <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300">{move.catalystSummary}</p>
+          {move.evidence.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {move.evidence.map((e) => (
+                <li key={e.text} className="flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                  <span className={cn('shrink-0 px-1.5 py-px font-bold border-2 border-(--neo-line)', EVIDENCE_KIND_CLASS[e.kind])}>
+                    {EVIDENCE_KIND_LABEL[e.kind]}
+                  </span>
+                  {e.url
+                    ? <a href={e.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{e.text}</a>
+                    : <span>{e.text}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <MoveDivider />
+
+        {/* 📈 Technical */}
+        <div>
+          <MoveHeading>📈 Technical</MoveHeading>
+          <ul className="space-y-1.5 text-sm">
+            <MoveRow label="Trend"><span className="text-zinc-800 dark:text-zinc-200">{move.trendLabel}</span></MoveRow>
+            <MoveRow label="Momentum">
+              <Pill tone={move.momentumLabel === 'Positif' ? 'green' : move.momentumLabel === 'Lemah' ? 'red' : 'amber'}>{move.momentumLabel}</Pill>
+            </MoveRow>
+            <MoveRow label="RSI"><span className="text-zinc-800 dark:text-zinc-200">{move.rsiLabel}</span></MoveRow>
+            <MoveRow label="MACD"><span className="text-zinc-800 dark:text-zinc-200">{move.macdLabel}</span></MoveRow>
+            <MoveRow label="EMA9 / EMA21">
+              <span className="font-mono text-zinc-800 dark:text-zinc-200">
+                {move.ema9 != null ? fmtRp(Math.round(move.ema9)) : '–'} / {move.ema21 != null ? fmtRp(Math.round(move.ema21)) : '–'}
+              </span>
+            </MoveRow>
+            <MoveRow label="EMA200"><span className="text-zinc-800 dark:text-zinc-200">{move.ema200Label}</span></MoveRow>
+            <MoveRow label="Support"><span className="font-semibold text-emerald-600 dark:text-emerald-400">{move.support ? fmtRp(move.support) : '–'}</span></MoveRow>
+            <MoveRow label="Resistance"><span className="font-semibold text-rose-600 dark:text-rose-400">{move.resistance ? fmtRp(move.resistance) : '–'}</span></MoveRow>
+          </ul>
+        </div>
+
+        <MoveDivider />
+
+        {/* ⚠️ Risk */}
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-400/20 dark:bg-amber-400/5">
-          <h3 className="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-1">⚠️ Peringatan</h3>
-          <ul className="space-y-0.5">
-            {review.warnings.map((w) => (
-              <li key={w} className="flex items-start gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
-                <span className="mt-1 size-1 shrink-0 rounded-full bg-amber-500" />
-                {w}
+          <h3 className="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-2">⚠️ Risk</h3>
+          <ul className="space-y-2 text-sm">
+            {([
+              ['Chase Risk', move.chaseRisk, move.chaseRiskNote],
+              ['Event Risk', move.eventRisk, move.eventRiskNote],
+              ['Primary Trend Risk', move.primaryTrendRisk, move.primaryTrendRiskNote],
+            ] as const).map(([label, level, note]) => (
+              <li key={label} className="flex flex-wrap items-start gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-36">{label}:</span>
+                <Pill tone={riskTone(level)}>{level}</Pill>
+                <span className="text-xs text-zinc-600 dark:text-zinc-400 basis-full sm:basis-auto sm:flex-1">{note}</span>
               </li>
             ))}
           </ul>
+          {move.otherRisks.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {move.otherRisks.map((r) => <Pill key={r} tone="red">{r}</Pill>)}
+            </div>
+          )}
+        </div>
+
+        {/* 🎯 Trade Status */}
+        <div>
+          <MoveHeading>🎯 Trade Status</MoveHeading>
+          <ul className="space-y-1.5 text-sm">
+            <MoveRow label="Status"><Pill tone={statusStyle.tone}>{statusStyle.emoji} {TODAY_TRADE_STATUS_LABEL[move.tradeStatus]}</Pill></MoveRow>
+            <MoveRow label="Buy Permission">
+              <Pill tone={move.buyPermission === 'YES' ? 'green' : move.buyPermission === 'CONDITIONAL' ? 'amber' : 'red'}>{move.buyPermission}</Pill>
+            </MoveRow>
+          </ul>
+          <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
+            <span className="font-semibold">Entry Status:</span> {move.entryStatus}
+          </p>
+          {review.strategy && (
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Strategi: {REVIEW_STRATEGY_LABEL[review.strategy]} · Konfirmasi: {review.confirmation}
+            </p>
+          )}
         </div>
 
         {/* 🧠 Kesimpulan 10 detik */}
         <div className={cn('neo-border px-4 py-3', statusStyle.box)}>
           <p className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300 mb-1">🧠 Kesimpulan 10 Detik</p>
-          <p className="text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed">{review.conclusion}</p>
+          <p className="text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed">{move.conclusion}</p>
         </div>
+
+        <p className="text-xs text-zinc-400 leading-relaxed">
+          Katalis hanya ditandai FAKTA jika berasal dari data harga/volume atau berita langsung ≤7 hari yang menyebut event tersebut.
+          Aliran broker/asing dan berita tanpa kata kunci event hanya INDIKASI. Selalu cek keterbukaan informasi IDX sebelum mengambil keputusan.
+        </p>
       </div>
     </SectionCard>
   );
@@ -4245,6 +4394,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   tradingPlan={tradingPlan}
                   volume={volume}
                   priceAction={priceAction}
+                  newsItems={newsItems}
+                  brokerActivity={brokerActivity}
                 />
 
                 <div className={cn(

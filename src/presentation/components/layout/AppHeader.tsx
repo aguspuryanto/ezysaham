@@ -112,7 +112,7 @@ export function AppHeader({
           </span>
         )}
 
-        {/* <AuthButton /> */}
+        <AuthButton />
       </div>
     </header>
   );
