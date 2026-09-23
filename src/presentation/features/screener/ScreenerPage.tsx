@@ -22,7 +22,7 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStockFundamentals, getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
-import { computeMarketPhase, MarketPhaseResult } from '@/domain/analysis/marketPhase';
+import { computeScreenerVerdict, ScreenerVerdict } from '@/domain/analysis/screenerVerdict';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { NewJournalEntryInput } from '@/domain/models/JournalEntry';
 import { StockSummary } from '@/domain/models/Stock';
@@ -41,6 +41,7 @@ import { TopLoserCard } from './components/TopLoserCard';
 import { useWatchlist } from './hooks/useWatchlist';
 import { PhilosophyBanner } from './components/PhilosophyBanner';
 import { IhsgChart } from './components/IhsgChart';
+import { ResultsTableNew } from './components/ResultsTableNew';
 
 const JOURNAL_PRESETS: ScreenerPresetId[] = ['dayTrading', 'swingHunter'];
 const JOURNAL_TOP_N = 5;
@@ -95,8 +96,8 @@ export function ScreenerPage() {
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [creatingJurnal, setCreatingJurnal] = useState(false);
   const [jurnalMessage, setJurnalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [phaseByTicker, setPhaseByTicker] = useState<Record<string, MarketPhaseResult | null>>({});
-  const phaseAttemptedRef = useRef<Set<string>>(new Set());
+  const [verdictByTicker, setVerdictByTicker] = useState<Record<string, ScreenerVerdict>>({});
+  const verdictAttemptedRef = useRef<Set<string>>(new Set());
   const watchlist = useWatchlist();
   const journal = useJournal();
 
@@ -228,24 +229,27 @@ export function ScreenerPage() {
   const visibleResults = useMemo(() => displayedResults.slice(0, visibleCount), [displayedResults, visibleCount]);
   const hasMoreResults = displayedResults.length > visibleResults.length;
 
-  // Lazily classifies each visible row into a Market Phase (BULLISH_AWAL / BREAKOUT /
-  // EXTENDED / DISTRIBUTION / PULLBACK / BEARISH) for the "Skor" column — only for
-  // rows actually on screen, since it needs a per-ticker history fetch.
+  // Lazily computes each visible row's Market Phase / Fundamental / Setup / Trade Status
+  // (ResultsTableNew's columns) — only for rows actually on screen, since it needs a
+  // per-ticker history + fundamentals fetch.
   useEffect(() => {
-    const pending = visibleResults.filter((r) => !phaseAttemptedRef.current.has(r.summary.ticker));
+    const pending = visibleResults.filter((r) => !verdictAttemptedRef.current.has(r.summary.ticker));
     if (pending.length === 0) return;
-    pending.forEach((r) => phaseAttemptedRef.current.add(r.summary.ticker));
+    pending.forEach((r) => verdictAttemptedRef.current.add(r.summary.ticker));
 
     let cancelled = false;
     (async () => {
       const entries = await mapWithConcurrency(pending, HISTORY_CONCURRENCY, async ({ summary }) => {
-        const bars = await getStockHistory(summary.ticker);
-        return [summary.ticker, computeMarketPhase(summary, bars)] as const;
+        const [bars, fundamentals] = await Promise.all([
+          getStockHistory(summary.ticker),
+          getStockFundamentals(summary.ticker),
+        ]);
+        return [summary.ticker, computeScreenerVerdict(summary, bars, fundamentals)] as const;
       });
       if (cancelled) return;
-      setPhaseByTicker((prev) => {
+      setVerdictByTicker((prev) => {
         const next = { ...prev };
-        for (const [ticker, phase] of entries) next[ticker] = phase;
+        for (const [ticker, verdict] of entries) next[ticker] = verdict;
         return next;
       });
     })();
@@ -537,7 +541,7 @@ export function ScreenerPage() {
             </div>
           )}
 
-          <ResultsTable
+          {/* <ResultsTable
             results={visibleResults}
             view={view}
             isWatchlisted={watchlist.has}
@@ -545,6 +549,16 @@ export function ScreenerPage() {
             isCompareSelected={isCompareSelected}
             onToggleCompare={toggleCompare}
             phaseByTicker={phaseByTicker}
+          /> */}
+
+          <ResultsTableNew
+            results={visibleResults}
+            view={view}
+            isWatchlisted={watchlist.has}
+            onToggleWatchlist={watchlist.toggle}
+            isCompareSelected={isCompareSelected}
+            onToggleCompare={toggleCompare}
+            verdictByTicker={verdictByTicker}
           />
 
           {hasMoreResults && (

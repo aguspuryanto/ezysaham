@@ -47,7 +47,7 @@ function avatarTone(ticker: string): string {
   return AVATAR_TONES[sum % AVATAR_TONES.length];
 }
 
-function TickerAvatar({ ticker, size = 'md' }: { ticker: string; size?: 'sm' | 'md' }) {
+export function TickerAvatar({ ticker, size = 'md' }: { ticker: string; size?: 'sm' | 'md' }) {
   return (
     <span
       className={cn(
@@ -62,7 +62,7 @@ function TickerAvatar({ ticker, size = 'md' }: { ticker: string; size?: 'sm' | '
 }
 
 // ── Watchlist star ─────────────────────────────────────────────────────────────
-function WatchlistStar({
+export function WatchlistStar({
   active,
   onToggle,
   ticker,
@@ -88,7 +88,7 @@ function WatchlistStar({
 }
 
 // ── Compare toggle ────────────────────────────────────────────────────────────
-function CompareToggle({
+export function CompareToggle({
   active,
   onToggle,
   ticker,
@@ -115,7 +115,7 @@ function CompareToggle({
 }
 
 // ── ChangeBadge ────────────────────────────────────────────────────────────────
-function ChangeBadge({ value }: { value: number }) {
+export function ChangeBadge({ value }: { value: number }) {
   const positive = value >= 0;
   const Icon = positive ? TrendingUp : TrendingDown;
   return (
@@ -140,7 +140,7 @@ const FRESHNESS_STYLES: Record<DataFreshness['tier'], string> = {
   stale: 'bg-rose-50 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300',
 };
 
-function FreshnessBadge({ freshness }: { freshness: DataFreshness }) {
+export function FreshnessBadge({ freshness }: { freshness: DataFreshness }) {
   const label =
     freshness.tier === 'fresh'
       ? 'EOD terkini'
@@ -379,7 +379,7 @@ function AraProbabilityBadge({ score }: { score: AraProbabilityScore }) {
 }
 
 // ── Fundamental Score badge ───────────────────────────────────────────────────
-const FUNDAMENTAL_STATUS_STYLES: Record<FundamentalScore['status'], string> = {
+export const FUNDAMENTAL_STATUS_STYLES: Record<FundamentalScore['status'], string> = {
   EXCELLENT: 'bg-emerald-600 text-white dark:bg-emerald-600',
   GOOD: 'bg-emerald-500 text-white dark:bg-emerald-600',
   FAIR: 'bg-amber-400 text-white dark:bg-amber-500',
@@ -611,7 +611,7 @@ function BandarBadge({ score }: { score: BandarScoreResult }) {
 }
 
 // ── Empty state ────────────────────────────────────────────────────────────────
-function EmptyState() {
+export function EmptyState() {
   return (
     <div className="flex flex-col items-center gap-2 neo-border border-dashed px-6 py-14 text-center">
       <SearchX className="size-7 text-zinc-500 dark:text-zinc-400" strokeWidth={2} />
@@ -741,7 +741,7 @@ function StockCard({
 }
 
 // ── Composite score summary (table view — badges above are grid/card-only) ─────
-function compositeScoreInfo(evaluation: PresetEvaluation): { label: string; composite: number; className: string } | null {
+export function compositeScoreInfo(evaluation: PresetEvaluation): { label: string; composite: number; className: string } | null {
   if (evaluation.breakoutScores) {
     const s = evaluation.breakoutScores;
     return { label: s.status === 'BUY_WATCH' ? 'BUY WATCH' : s.status, composite: s.composite, className: STATUS_STYLES[s.status] };
@@ -784,7 +784,7 @@ const PHASE_STYLES: Record<MarketPhase, string> = {
   NEUTRAL: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
 };
 
-function PhaseBadge({ phase }: { phase: MarketPhaseResult }) {
+export function PhaseBadge({ phase }: { phase: MarketPhaseResult }) {
   return (
     <span className={cn('inline-flex items-center gap-1 border border-(--neo-line) px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', PHASE_STYLES[phase.phase])}>
       <span>{phase.emoji}</span>
@@ -964,7 +964,9 @@ function StockTableRow({
 
 
 // ── Sortable column header ────────────────────────────────────────────────────
-function SortableHeader({
+// Generic over the column-key union so ResultsTableNew.tsx (a different set of sortable
+// columns) can reuse this exact button/icon markup instead of duplicating it.
+export function SortableHeader<K extends string>({
   label,
   colKey,
   sort,
@@ -972,9 +974,9 @@ function SortableHeader({
   className,
 }: {
   label: string;
-  colKey: ColumnSortKey;
-  sort: ColumnSort | null;
-  onSort: (key: ColumnSortKey) => void;
+  colKey: K;
+  sort: { key: K; dir: ColumnSortDir } | null;
+  onSort: (key: K) => void;
   className?: string;
 }) {
   const isActive = sort?.key === colKey;

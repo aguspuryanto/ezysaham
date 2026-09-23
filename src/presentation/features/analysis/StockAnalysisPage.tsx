@@ -60,6 +60,7 @@ import {
 import { classifyOversoldRisk, classifyRsiOverbought, classifyRvol, classifyFundamentalRisk, evaluateRiskGate, BuyPermission, EntryStatus, FundamentalRiskLevel, RiskGateStatus, TradeStatus } from '@/domain/analysis/riskGate';
 import { classifyZoneStatus, DEFAULT_SL_PCT, DEFAULT_TP1_PCT, DEFAULT_TP2_PCT, DefaultTargetPlan, isEntryConfirmed, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
 import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuitabilityResult } from '@/domain/analysis/swingSuitability';
+import { buildTenSecondReview, formatTenSecondReview, REVIEW_STATUS_LABEL, REVIEW_STRATEGY_LABEL, ReviewStatus } from '@/domain/analysis/tenSecondReview';
 import { atr, atrPercent } from '@/domain/indicators/atr';
 import { MarketRegimeResult } from '@/domain/analysis/marketRegimeEngine';
 import { useMarketRegime } from './useMarketRegime';
@@ -3168,6 +3169,232 @@ function EquityResearchReportCard2({
   );
 }
 
+// ─── Equity Research Report V3 — "EzySaham 10-Second Review" ───────────────────
+// Same Risk Gate / Zone / Entry Confirmation inputs as EquityResearchReportCard2 (so the two can
+// never disagree for the same stock), collapsed into one beginner-readable verdict by
+// tenSecondReview.ts. No AI score, R:R, TP/SL or raw indicator dump.
+const REVIEW_STATUS_STYLE: Record<ReviewStatus, { emoji: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'zinc'; box: string }> = {
+  BUY_SETUP: { emoji: '🟢', tone: 'green', box: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-400/10' },
+  WAIT: { emoji: '🟡', tone: 'amber', box: 'border-amber-400 bg-amber-50 dark:bg-amber-400/10' },
+  WATCHLIST: { emoji: '🔵', tone: 'blue', box: 'border-blue-400 bg-blue-50 dark:bg-blue-400/10' },
+  NO_TRADE: { emoji: '🔴', tone: 'red', box: 'border-rose-400 bg-rose-50 dark:bg-rose-400/10' },
+};
+
+function EquityResearchReportCardv3({
+  summary,
+  bars,
+  trendEma,
+  indicators,
+  supportResistance,
+  fundamentalScreening,
+  fundamentals,
+  tradingPlan,
+  volume,
+  priceAction,
+}: {
+  summary: StockSummary;
+  bars: OHLCVBar[];
+  trendEma: TrendEmaAnalysis;
+  indicators: IndicatorAnalysis;
+  supportResistance: SupportResistanceAnalysis;
+  fundamentalScreening: FundamentalScreeningResult;
+  fundamentals: FundamentalDetail | null;
+  tradingPlan: TradingPlanAnalysis;
+  volume: VolumeAnalysis;
+  priceAction: PriceActionAnalysis;
+}) {
+  const bandarScore = useMemo(() => computeBandarScore(summary, bars ?? []), [summary, bars]);
+
+  const review = useMemo(() => {
+    const price = summary.lastClose;
+    const aboveMa50 = price > trendEma.ema50;
+    const aboveMa200 = price > trendEma.ema200;
+    const nearestResistance = supportResistance.resistances[0];
+    const nearestSupport = supportResistance.supports[0];
+    const der = fundamentals?.debtToEquity ?? null;
+
+    const bias = tradingPlan.recommendedBias === 'bearish' ? 'bearish' : 'bullish';
+    const scenario = tradingPlan[bias];
+    const isLong = scenario.direction === 'LONG';
+    const isStrongDistribution = bandarScore.classification.label === 'Strong Distribution';
+    const isDistributionRisk = bandarScore.classification.label === 'Distribution Risk';
+
+    const priceAtEntryTrigger = isPriceAtEntryTrigger(scenario.direction, price, scenario.entry);
+    const setupInvalidated = isSetupInvalidated(scenario.direction, price, scenario.sl);
+    const entryPrice = roundToTick(scenario.entry);
+    const entryZoneLow = isLong && nearestSupport ? roundToTick(nearestSupport.price) : entryPrice;
+    const entryZoneHigh = entryPrice;
+    const zoneStatus = classifyZoneStatus(price, entryZoneLow, entryZoneHigh);
+    const fundamentalRisk = classifyFundamentalRisk(fundamentalScreening.score, der, summary.roe);
+
+    const bullishReversalCandle = priceAction.lastCandleColor === 'green' ||
+      priceAction.pattern === 'bullish_engulfing' || priceAction.pattern === 'hammer' || priceAction.pattern === 'marubozu_bullish';
+    const bearishReversalCandle = priceAction.lastCandleColor === 'red' ||
+      priceAction.pattern === 'bearish_engulfing' || priceAction.pattern === 'shooting_star' || priceAction.pattern === 'marubozu_bearish';
+    const entryConfirmed = isEntryConfirmed({
+      priceAtEntryTrigger,
+      setupInvalidated,
+      trendValid: isLong ? trendEma.trend !== 'bearish' : trendEma.trend !== 'bullish',
+      reversalConfirmed: isLong ? bullishReversalCandle : bearishReversalCandle,
+      volumeSupportive: volume.relativeVolume >= 1,
+    });
+
+    const riskGate = evaluateRiskGate({
+      direction: scenario.direction,
+      trend: trendEma.trend,
+      rsi14: indicators.rsi14,
+      fundamentalScore: fundamentalScreening.score,
+      isStrongDistribution,
+      priceBelowEma50: !aboveMa50,
+      priceBelowEma200: !aboveMa200,
+      priceAtEntryTrigger,
+      setupInvalidated,
+      extremeDistanceWarning: scenario.extremeDistanceWarning,
+      isDistributionRisk,
+      zoneStatus,
+      der,
+      roe: summary.roe,
+      entryConfirmed,
+    });
+
+    const breakoutPriceConfirmed = nearestResistance == null || price >= nearestResistance.price;
+    const swingSetup = detectSwingSetup({
+      direction: scenario.direction,
+      entryType: scenario.entryType,
+      canContinueUp: priceAction.canContinueUp,
+      volumeConfirmed: volume.isHighVolume,
+      breakoutPriceConfirmed,
+    });
+    const hasSetupErrors = scenario.validationErrors.length > 0;
+
+    return buildTenSecondReview({
+      ticker: summary.ticker,
+      price,
+      trend: trendEma.trend,
+      rsi14: indicators.rsi14,
+      macdBullish: indicators.macdSignalType === 'bullish' || indicators.macdSignalType === 'bullish_crossover',
+      macdBearish: indicators.macdSignalType === 'bearish' || indicators.macdSignalType === 'bearish_crossover',
+      relativeVolume: volume.relativeVolume,
+      lastCandleColor: priceAction.lastCandleColor,
+      support: nearestSupport?.price ?? null,
+      resistance: nearestResistance?.price ?? null,
+      direction: scenario.direction,
+      swingSetup,
+      entryZoneLow,
+      entryZoneHigh,
+      zoneStatus,
+      tradeStatus: hasSetupErrors ? 'NO_TRADE' : riskGate.tradeStatus,
+      entryConfirmed,
+      setupInvalidated,
+      breakoutConfirmed: swingSetup === 'BREAKOUT',
+      aboveEma50: aboveMa50,
+      aboveEma200: aboveMa200,
+      fundamentalRisk,
+      isStrongDistribution,
+      isDistributionRisk,
+      hiddenDistribution: bandarScore.hiddenDistributionWarning,
+      hasSetupErrors,
+    });
+  }, [summary, trendEma, indicators, supportResistance, fundamentalScreening, fundamentals, tradingPlan, volume, priceAction, bandarScore]);
+
+  const statusStyle = REVIEW_STATUS_STYLE[review.status];
+  const toneOf = (label: string): 'green' | 'red' | 'amber' | 'zinc' =>
+    label === 'Bullish' || label === 'Positif' || label === 'Kuat' ? 'green' :
+      label === 'Bearish' || label === 'Lemah' ? 'red' :
+        label === 'Data belum tersedia' ? 'zinc' : 'amber';
+
+  return (
+    <SectionCard
+      title={`🚨 ${summary.ticker} — Review Singkat`}
+      icon={<Sparkles className="size-4" />}
+      accentClass="bg-violet-600"
+      headerAction={<CopyShareButton getText={() => formatTenSecondReview(summary.ticker, summary.lastClose, review)} />}
+    >
+      <div className="space-y-4">
+        {/* Status utama */}
+        <div className={cn('neo-border flex flex-wrap items-center justify-between gap-2 px-4 py-3', statusStyle.box)}>
+          <div className="text-sm text-zinc-500 dark:text-zinc-400">
+            Harga: <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fmtRp(summary.lastClose)}</span>
+          </div>
+          <Pill tone={statusStyle.tone}>{statusStyle.emoji} {REVIEW_STATUS_LABEL[review.status]}</Pill>
+        </div>
+
+        {/* 📈 Kondisi */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">📈 Kondisi</h3>
+          <ul className="space-y-1.5 text-sm">
+            {([['Trend', review.trendLabel], ['Momentum', review.momentumLabel], ['Volume', review.volumeLabel]] as const).map(([label, value]) => (
+              <li key={label} className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-28">{label}:</span>
+                <Pill tone={toneOf(value)}>{value}</Pill>
+              </li>
+            ))}
+            <li className="flex flex-wrap items-center gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-28">Risiko utama:</span>
+              {review.mainRisks.length > 0
+                ? review.mainRisks.map((r) => <Pill key={r} tone="red">{r}</Pill>)
+                : <Pill tone="green">Tidak ada risiko besar</Pill>}
+            </li>
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 🎯 Strategi */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">🎯 Strategi</h3>
+          <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+            {review.strategy ? REVIEW_STRATEGY_LABEL[review.strategy] : 'Belum ada strategi beli'}
+          </p>
+          {review.strategyNote && (
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+              <TriangleAlert className="size-3.5 mt-0.5 shrink-0" strokeWidth={2.5} />
+              {review.strategyNote}
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-semibold text-emerald-600 dark:text-emerald-400">Support {fmtRp(review.support ?? 0)}</span>
+            <span className="text-zinc-300 dark:text-zinc-700">|</span>
+            <span className="font-semibold text-rose-600 dark:text-rose-400">Resistance {fmtRp(review.resistance ?? 0)}</span>
+          </div>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* 🔎 Yang perlu ditunggu */}
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-200 mb-2">🔎 Yang Perlu Ditunggu</h3>
+          <ul className="space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+            <li><span className="font-semibold">Skenario utama:</span> {review.scenario}</li>
+            <li><span className="font-semibold">Konfirmasi:</span> {review.confirmation}</li>
+          </ul>
+        </div>
+
+        <div className="h-[2px] bg-(--neo-line)" />
+
+        {/* ⚠️ Peringatan */}
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-400/20 dark:bg-amber-400/5">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-1">⚠️ Peringatan</h3>
+          <ul className="space-y-0.5">
+            {review.warnings.map((w) => (
+              <li key={w} className="flex items-start gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
+                <span className="mt-1 size-1 shrink-0 rounded-full bg-amber-500" />
+                {w}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* 🧠 Kesimpulan 10 detik */}
+        <div className={cn('neo-border px-4 py-3', statusStyle.box)}>
+          <p className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300 mb-1">🧠 Kesimpulan 10 Detik</p>
+          <p className="text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed">{review.conclusion}</p>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ─── Kesimpulan Objektif (cross-check: price move + divergence + Bandar + regulator) ──
 const QUICK_VERDICT_STYLES: Record<QuickVerdict, { emoji: string; label: string; border: string; bg: string; text: string }> = {
   TRADE: { emoji: '🟢', label: 'TRADE', border: 'border-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-400/10', text: 'text-emerald-700 dark:text-emerald-400' },
@@ -3989,7 +4216,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             {/* Tab: Screening & Analisis Teknikal (+ Equity Research Report sebagai ringkasan) */}
             {activeTab === 'teknikal' && (
               <div className="space-y-4 sm:space-y-5">
-                <EquityResearchReportCard2
+                {/* <EquityResearchReportCard2
                   summary={summary}
                   bars={bars}
                   advisor={displayAdvisor}
@@ -4005,6 +4232,19 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   priceAction={priceAction}
                   snapshot={quickDecisionSnapshot}
                   marketRegime={marketRegime}
+                /> */}
+
+                <EquityResearchReportCardv3
+                  summary={summary}
+                  bars={bars}
+                  trendEma={trendEma}
+                  indicators={indicators}
+                  supportResistance={supportResistance}
+                  fundamentalScreening={fundamentalScreening}
+                  fundamentals={fundamentals}
+                  tradingPlan={tradingPlan}
+                  volume={volume}
+                  priceAction={priceAction}
                 />
 
                 <div className={cn(
