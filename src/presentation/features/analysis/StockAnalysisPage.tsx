@@ -61,8 +61,9 @@ import { classifyOversoldRisk, classifyRsiOverbought, classifyRvol, classifyFund
 import { classifyZoneStatus, DEFAULT_SL_PCT, DEFAULT_TP1_PCT, DEFAULT_TP2_PCT, DefaultTargetPlan, isEntryConfirmed, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
 import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuitabilityResult } from '@/domain/analysis/swingSuitability';
 import { buildTenSecondReview, REVIEW_STRATEGY_LABEL } from '@/domain/analysis/tenSecondReview';
-import { BULLISH_PHASE_LABEL, BullishPhase, buildSimpleEntryReview, BuyPermission as SimpleBuyPermission, FOMO_RISK_LABEL, formatSimpleEntryReview, MOMENTUM_STATE_LABEL, MomentumState, PRICE_ACTION_LABEL, PriceActionSignal, SIMPLE_ENTRY_LABEL, SIMPLE_FUNDAMENTAL_LABEL, SIMPLE_VOLUME_LABEL, SimpleEntry, SimpleFundamental, SimpleVolume, TREND_STATE_LABEL, TrendState } from '@/domain/analysis/simpleEntryReview';
-import { buildTodayMoveAnalysis, CATALYST_STATUS_LABEL, describeClosePosition, EVIDENCE_KIND_LABEL, EvidenceKind, formatTodayMoveAnalysis, MOVE_TYPE_LABEL, MoveType, TODAY_TRADE_STATUS_LABEL, TodayTradeStatus } from '@/domain/analysis/todayMoveAnalysis';
+import { BULLISH_PHASE_LABEL, BullishPhase, buildSimpleEntryReview, BuyPermission as SimpleBuyPermission, FOMO_RISK_LABEL, formatDailyMoveLines, formatRiskLines, formatSimpleEntryReview, formatSummaryLines, formatTechnicalLines, MOMENTUM_STATE_LABEL, MomentumState, PRICE_ACTION_LABEL, PriceActionSignal, SIMPLE_ENTRY_LABEL, SIMPLE_FUNDAMENTAL_LABEL, SIMPLE_VOLUME_LABEL, SimpleEntry, SimpleEntryReview, SimpleFundamental, SimpleVolume, TREND_STATE_LABEL, TrendState } from '@/domain/analysis/simpleEntryReview';
+import { applyFundamentalFilter, buildFundamentalPillars, formatFundamentalPillars, FUNDAMENTAL_FILTER_LABEL, FundamentalFilter, FundamentalPillars, HEALTH_VERDICT_LABEL, HealthVerdict, VALUATION_VERDICT_LABEL, ValuationVerdict } from '@/domain/analysis/fundamentalPillars';
+import { buildTodayMoveAnalysis, CATALYST_STATUS_LABEL, describeClosePosition, EVIDENCE_KIND_LABEL, EvidenceKind, formatTodayMoveAnalysis, MOVE_TYPE_LABEL, MoveType, TODAY_TRADE_STATUS_LABEL, TodayMoveAnalysis, TodayTradeStatus } from '@/domain/analysis/todayMoveAnalysis';
 import { atr, atrPercent } from '@/domain/indicators/atr';
 import { MarketRegimeResult } from '@/domain/analysis/marketRegimeEngine';
 import { useMarketRegime } from './useMarketRegime';
@@ -3556,8 +3557,9 @@ function EquityResearchReportCardv3(props: EquityReportProps) {
   );
 }
 
-// ─── Equity Research Report V4 — EARLY BULLISH finder, 4 sections ─────────────────
-// 1. Ringkasan Eksekutif → 2. Pergerakan Harian & Volume → 3. Dashboard Teknikal → 4. Risiko & Buy Trigger.
+// ─── Equity Research Report V4 / V5 — shared sections ─────────────────────────────
+// V4: 1. Ringkasan Eksekutif → 2. Pergerakan Harian & Volume → 3. Dashboard Teknikal → 4. Risiko & Buy Trigger.
+// V5: 3 Pilar Fundamental (filter utama) on top of the same four sections + Stochastic/EMA200 + Action Plan.
 // Decision comes from simpleEntryReview.ts (Trend → Momentum → Volume → Price Action → Entry Distance →
 // FOMO) on top of the same shared review as v3 (a NO TRADE there is never upgraded here); the daily
 // move, catalyst and risk reads are the v3 todayMoveAnalysis.ts data. Never chase a flown stock.
@@ -3577,6 +3579,11 @@ const VOLUME_TONE: Record<SimpleVolume, V4Tone> = { SUPPORTIVE: 'green', NEUTRAL
 const PRICE_ACTION_TONE: Record<PriceActionSignal, V4Tone> = { BREAKOUT_RETEST: 'green', BREAKOUT: 'green', REVERSAL: 'green', HIGHER_LOW: 'green', NONE: 'zinc', BREAKDOWN: 'red' };
 const RISK3_TONE: Record<'LOW' | 'MEDIUM' | 'HIGH', V4Tone> = { LOW: 'green', MEDIUM: 'amber', HIGH: 'red' };
 const BUY_PERMISSION_TONE: Record<SimpleBuyPermission, V4Tone> = { YES: 'green', CONDITIONAL: 'amber', NO: 'red' };
+const HEALTH_TONE: Record<HealthVerdict, V4Tone> = { SEHAT: 'green', CUKUP: 'amber', LEMAH: 'red', DATA_KURANG: 'zinc' };
+const VALUATION_TONE: Record<ValuationVerdict, V4Tone> = { UNDERVALUED: 'green', WAJAR: 'green', PREMIUM: 'amber', OVERVALUED: 'red', TIDAK_DAPAT_DINILAI: 'zinc' };
+const FILTER_TONE: Record<FundamentalFilter, V4Tone> = { PASS: 'green', CAUTION: 'amber', FAIL: 'red' };
+
+const v4Pct = (n: number | null, dec = 1) => (n == null || Number.isNaN(n) ? '–' : `${n >= 0 ? '+' : ''}${n.toFixed(dec)}%`);
 
 function V4Block({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -3587,7 +3594,8 @@ function V4Block({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function EquityResearchReportCardv4(props: EquityReportProps) {
+/** Shared by v4 and v5: the EARLY BULLISH read on top of the same Risk Gate / Today-Move review. */
+function useSimpleEntryReview(props: EquityReportProps) {
   const { summary, bars, trendEma, indicators, priceAction, volume } = props;
   const { review, move } = useEquityReportReview(props);
 
@@ -3625,14 +3633,198 @@ function EquityResearchReportCardv4(props: EquityReportProps) {
     baseTradeStatus: move.tradeStatus,
   }), [summary, bars, move, review, trendEma, indicators, priceAction, volume]);
 
-  const entryStyle = SIMPLE_ENTRY_STYLE[simple.decision];
-  const positive = move.changePct >= 0;
-  const fmtVol = (n: number | null) => (n == null ? '–' : `${formatCompact(n)} lbr`);
-  const fmtX = (n: number | null) => (n == null || Number.isNaN(n) ? '–' : `${n.toFixed(2)}×`);
-  const fmtPct = (n: number | null, dec = 1) => (n == null || Number.isNaN(n) ? '–' : `${n >= 0 ? '+' : ''}${n.toFixed(dec)}%`);
   const zoneTxt = review.entryZoneLow > 0 && review.entryZoneLow !== review.entryZoneHigh
     ? `${fmtRp(review.entryZoneLow)} – ${fmtRp(review.entryZoneHigh)}`
     : review.entryZoneHigh > 0 ? fmtRp(review.entryZoneHigh) : '–';
+
+  return { review, move, simple, zoneTxt };
+}
+
+function ReportSummarySection({ price, simple, move, zoneTxt, children }: {
+  price: number; simple: SimpleEntryReview; move: TodayMoveAnalysis; zoneTxt: string; children?: React.ReactNode;
+}) {
+  const entryStyle = SIMPLE_ENTRY_STYLE[simple.decision];
+  const positive = move.changePct >= 0;
+  return (
+    <div className={cn('neo-border px-4 py-3 space-y-3', entryStyle.box)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <span className="font-mono text-lg font-bold text-zinc-900 dark:text-zinc-100">{fmtRp(price)}</span>
+          <span className={cn('font-mono font-bold text-sm', positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+            {v4Pct(move.changePct, 2)}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Pill tone={entryStyle.tone}>{entryStyle.emoji} {SIMPLE_ENTRY_LABEL[simple.decision]}</Pill>
+          <Pill tone={PHASE_TONE[simple.phase]}>{BULLISH_PHASE_LABEL[simple.phase]}</Pill>
+        </div>
+      </div>
+      <V4Block label="🧠 Insight">{simple.insight}</V4Block>
+      <V4Block label="💡 Why">{simple.why}</V4Block>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">⚠️ FOMO Risk</span>
+        <Pill tone={RISK3_TONE[simple.fomoRisk]}>{FOMO_RISK_LABEL[simple.fomoRisk]}</Pill>
+        {simple.distanceFromZonePct != null && (
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            {v4Pct(simple.distanceFromZonePct)} dari area beli {zoneTxt}
+          </span>
+        )}
+      </div>
+      {children}
+      {move.explosive && (
+        <p className="flex items-start gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-400">
+          <TriangleAlert className="size-3.5 mt-0.5 shrink-0" strokeWidth={2.5} />
+          EXPLOSIVE MOVE — kenaikan besar hari ini tidak otomatis berarti entry masih layak.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DailyMoveSection({ simple, move }: { simple: SimpleEntryReview; move: TodayMoveAnalysis }) {
+  const positive = move.changePct >= 0;
+  const fmtVol = (n: number | null) => (n == null ? '–' : `${formatCompact(n)} lbr`);
+  const fmtX = (n: number | null) => (n == null || Number.isNaN(n) ? '–' : `${n.toFixed(2)}×`);
+  return (
+    <div>
+      <MoveHeading>📊 Pergerakan Harian &amp; Volume</MoveHeading>
+      <ul className="space-y-1.5 text-sm">
+        <MoveRow label="O / H / L / C">
+          <span className="font-mono text-zinc-800 dark:text-zinc-200">
+            {move.open != null ? fmtRp(move.open) : '–'} / {fmtRp(move.high)} / {fmtRp(move.low)} / {fmtRp(move.close)}
+          </span>
+          <Pill tone={Math.abs(move.changePct) >= 5 ? (positive ? 'green' : 'red') : 'zinc'}>{v4Pct(move.changePct, 2)}</Pill>
+        </MoveRow>
+        <MoveRow label="Volume vs MA20">
+          <span className="font-mono text-zinc-800 dark:text-zinc-200">{fmtVol(move.volume)} vs {fmtVol(move.avgVolume20)}</span>
+        </MoveRow>
+        <MoveRow label="RVOL">
+          <Pill tone={move.rvol == null ? 'zinc' : move.rvol >= 1.5 ? 'green' : move.rvol >= 1 ? 'blue' : 'amber'}>{fmtX(move.rvol)}</Pill>
+          <Pill tone={VOLUME_TONE[simple.volume]}>{SIMPLE_VOLUME_LABEL[simple.volume]}</Pill>
+        </MoveRow>
+        <MoveRow label="Close Position">
+          <span className="text-zinc-700 dark:text-zinc-300">{describeClosePosition(move.closePosition)}</span>
+        </MoveRow>
+        <MoveRow label="Move Type">
+          <Pill tone={MOVE_TYPE_TONE[move.moveType]}>{MOVE_TYPE_LABEL[move.moveType]}</Pill>
+        </MoveRow>
+      </ul>
+      <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300">{move.moveTypeReason}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-zinc-500 dark:text-zinc-400">🔎 Katalis:</span>
+        <Pill tone={move.catalystStatus === 'VERIFIED' ? 'blue' : move.catalystStatus === 'SUSPECTED' ? 'amber' : 'zinc'}>
+          {CATALYST_STATUS_LABEL[move.catalystStatus]}
+        </Pill>
+        <span className="text-zinc-700 dark:text-zinc-300">{move.catalystSummary}</span>
+      </div>
+      {move.evidence.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {move.evidence.map((e) => (
+            <li key={e.text} className="flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <span className={cn('shrink-0 px-1.5 py-px font-bold border-2 border-(--neo-line)', EVIDENCE_KIND_CLASS[e.kind])}>
+                {EVIDENCE_KIND_LABEL[e.kind]}
+              </span>
+              {e.url
+                ? <a href={e.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{e.text}</a>
+                : <span>{e.text}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** `children` renders extra indicator rows (v5: EMA200 position, Stochastic) under MACD. */
+function TechnicalSection({ simple, move, trendEma, zoneTxt, showFundamental, children }: {
+  simple: SimpleEntryReview; move: TodayMoveAnalysis; trendEma: TrendEmaAnalysis; zoneTxt: string;
+  showFundamental: boolean; children?: React.ReactNode;
+}) {
+  return (
+    <div>
+      <MoveHeading>📈 Dashboard Teknikal</MoveHeading>
+      <ul className="space-y-1.5 text-sm">
+        <MoveRow label="Trend Utama">
+          <Pill tone={TREND_TONE[simple.trend]}>{TREND_STATE_LABEL[simple.trend]}</Pill>
+          <span className="font-mono text-xs text-zinc-700 dark:text-zinc-300">{simple.emaStack}</span>
+        </MoveRow>
+        <li className="text-xs text-zinc-600 dark:text-zinc-400 sm:pl-38">{simple.emaStackNote}</li>
+        <MoveRow label="EMA20 / 50 / 200">
+          <span className="font-mono text-zinc-800 dark:text-zinc-200">
+            {fmtRp(Math.round(trendEma.ema20))} / {fmtRp(Math.round(trendEma.ema50))} / {fmtRp(Math.round(trendEma.ema200))}
+          </span>
+        </MoveRow>
+        <MoveRow label="Momentum">
+          <Pill tone={MOMENTUM_TONE[simple.momentum]}>{MOMENTUM_STATE_LABEL[simple.momentum]}</Pill>
+        </MoveRow>
+        <MoveRow label="RSI 14"><span className="text-zinc-800 dark:text-zinc-200">{simple.rsiText}</span></MoveRow>
+        <MoveRow label="MACD"><span className="text-zinc-800 dark:text-zinc-200">{simple.macdText}</span></MoveRow>
+        {children}
+        <MoveRow label="Price Action">
+          <Pill tone={PRICE_ACTION_TONE[simple.priceAction]}>{PRICE_ACTION_LABEL[simple.priceAction]}</Pill>
+        </MoveRow>
+        <MoveRow label="Support"><span className="font-semibold text-emerald-600 dark:text-emerald-400">{move.support ? fmtRp(move.support) : '–'}</span></MoveRow>
+        <MoveRow label="Resistance"><span className="font-semibold text-rose-600 dark:text-rose-400">{move.resistance ? fmtRp(move.resistance) : '–'}</span></MoveRow>
+        <MoveRow label="Area Beli"><span className="font-mono text-zinc-800 dark:text-zinc-200">{zoneTxt}</span></MoveRow>
+        {showFundamental && (
+          <MoveRow label="Fundamental">
+            <Pill tone={FUNDAMENTAL_TONE[simple.fundamental]}>{SIMPLE_FUNDAMENTAL_LABEL[simple.fundamental]}</Pill>
+          </MoveRow>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+/** `children` renders extra action-plan content (v5: Area Buy / Stop Loss / Target) inside the trigger box. */
+function RiskTriggerSection({ simple, move, title, children }: {
+  simple: SimpleEntryReview; move: TodayMoveAnalysis; title: string; children?: React.ReactNode;
+}) {
+  const entryStyle = SIMPLE_ENTRY_STYLE[simple.decision];
+  return (
+    <div className="space-y-3">
+      <MoveHeading>{title}</MoveHeading>
+      <ul className="space-y-2 text-sm">
+        {([
+          ['Chase Risk', move.chaseRisk, move.chaseRiskNote],
+          ['Event Risk', move.eventRisk, move.eventRiskNote],
+          ['Primary Trend Risk', move.primaryTrendRisk, move.primaryTrendRiskNote],
+        ] as const).map(([label, level, note]) => (
+          <li key={label} className="flex flex-wrap items-start gap-2">
+            <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-36">{label}:</span>
+            <Pill tone={RISK3_TONE[level]}>{level}</Pill>
+            <span className="text-xs text-zinc-600 dark:text-zinc-400 basis-full sm:basis-auto sm:flex-1">{note}</span>
+          </li>
+        ))}
+        <li className="flex flex-wrap items-start gap-2">
+          <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-36">FOMO Risk:</span>
+          <Pill tone={RISK3_TONE[simple.fomoRisk]}>{FOMO_RISK_LABEL[simple.fomoRisk]}</Pill>
+        </li>
+      </ul>
+      {move.otherRisks.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {move.otherRisks.map((r) => <Pill key={r} tone="red">{r}</Pill>)}
+        </div>
+      )}
+
+      <div className={cn('neo-border px-4 py-3 space-y-2', entryStyle.box)}>
+        <V4Block label="⏳ Buy Trigger">{simple.buyTrigger}</V4Block>
+        {children}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">🎯 Keputusan</span>
+          <Pill tone={entryStyle.tone}>{entryStyle.emoji} {SIMPLE_ENTRY_LABEL[simple.decision]}</Pill>
+          <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Buy Permission</span>
+          <Pill tone={BUY_PERMISSION_TONE[simple.buyPermission]}>{simple.buyPermission}</Pill>
+        </div>
+        <p className="text-sm text-zinc-700 dark:text-zinc-300">{simple.buyPermissionReason}</p>
+      </div>
+    </div>
+  );
+}
+
+function EquityResearchReportCardv4(props: EquityReportProps) {
+  const { summary, trendEma } = props;
+  const { move, simple, zoneTxt } = useSimpleEntryReview(props);
 
   return (
     <SectionCard
@@ -3642,159 +3834,195 @@ function EquityResearchReportCardv4(props: EquityReportProps) {
       headerAction={<CopyShareButton getText={() => formatSimpleEntryReview(summary.ticker, simple, move)} />}
     >
       <div className="space-y-4">
-        {/* 1️⃣ Kartu Ringkasan Eksekutif */}
-        <div className={cn('neo-border px-4 py-3 space-y-3', entryStyle.box)}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-baseline gap-x-3">
-              <span className="font-mono text-lg font-bold text-zinc-900 dark:text-zinc-100">{fmtRp(summary.lastClose)}</span>
-              <span className={cn('font-mono font-bold text-sm', positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                {fmtPct(move.changePct, 2)}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Pill tone={entryStyle.tone}>{entryStyle.emoji} {SIMPLE_ENTRY_LABEL[simple.decision]}</Pill>
-              <Pill tone={PHASE_TONE[simple.phase]}>{BULLISH_PHASE_LABEL[simple.phase]}</Pill>
-            </div>
-          </div>
-          <V4Block label="🧠 Insight">{simple.insight}</V4Block>
-          <V4Block label="💡 Why">{simple.why}</V4Block>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">⚠️ FOMO Risk</span>
-            <Pill tone={RISK3_TONE[simple.fomoRisk]}>{FOMO_RISK_LABEL[simple.fomoRisk]}</Pill>
-            {simple.distanceFromZonePct != null && (
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                {fmtPct(simple.distanceFromZonePct)} dari area beli {zoneTxt}
-              </span>
-            )}
-          </div>
-          {move.explosive && (
-            <p className="flex items-start gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-400">
-              <TriangleAlert className="size-3.5 mt-0.5 shrink-0" strokeWidth={2.5} />
-              EXPLOSIVE MOVE — kenaikan besar hari ini tidak otomatis berarti entry masih layak.
-            </p>
-          )}
-        </div>
-
-        {/* 2️⃣ Pergerakan Harian & Volume */}
-        <div>
-          <MoveHeading>📊 Pergerakan Harian &amp; Volume</MoveHeading>
-          <ul className="space-y-1.5 text-sm">
-            <MoveRow label="O / H / L / C">
-              <span className="font-mono text-zinc-800 dark:text-zinc-200">
-                {move.open != null ? fmtRp(move.open) : '–'} / {fmtRp(move.high)} / {fmtRp(move.low)} / {fmtRp(move.close)}
-              </span>
-              <Pill tone={Math.abs(move.changePct) >= 5 ? (positive ? 'green' : 'red') : 'zinc'}>{fmtPct(move.changePct, 2)}</Pill>
-            </MoveRow>
-            <MoveRow label="Volume vs Avg 20D">
-              <span className="font-mono text-zinc-800 dark:text-zinc-200">{fmtVol(move.volume)} vs {fmtVol(move.avgVolume20)}</span>
-            </MoveRow>
-            <MoveRow label="RVOL">
-              <Pill tone={move.rvol == null ? 'zinc' : move.rvol >= 1.5 ? 'green' : move.rvol >= 1 ? 'blue' : 'amber'}>{fmtX(move.rvol)}</Pill>
-              <Pill tone={VOLUME_TONE[simple.volume]}>{SIMPLE_VOLUME_LABEL[simple.volume]}</Pill>
-            </MoveRow>
-            <MoveRow label="Close Position">
-              <span className="text-zinc-700 dark:text-zinc-300">{describeClosePosition(move.closePosition)}</span>
-            </MoveRow>
-            <MoveRow label="Move Type">
-              <Pill tone={MOVE_TYPE_TONE[move.moveType]}>{MOVE_TYPE_LABEL[move.moveType]}</Pill>
-            </MoveRow>
-          </ul>
-          <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300">{move.moveTypeReason}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-zinc-500 dark:text-zinc-400">🔎 Katalis:</span>
-            <Pill tone={move.catalystStatus === 'VERIFIED' ? 'blue' : move.catalystStatus === 'SUSPECTED' ? 'amber' : 'zinc'}>
-              {CATALYST_STATUS_LABEL[move.catalystStatus]}
-            </Pill>
-            <span className="text-zinc-700 dark:text-zinc-300">{move.catalystSummary}</span>
-          </div>
-          {move.evidence.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {move.evidence.map((e) => (
-                <li key={e.text} className="flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-                  <span className={cn('shrink-0 px-1.5 py-px font-bold border-2 border-(--neo-line)', EVIDENCE_KIND_CLASS[e.kind])}>
-                    {EVIDENCE_KIND_LABEL[e.kind]}
-                  </span>
-                  {e.url
-                    ? <a href={e.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{e.text}</a>
-                    : <span>{e.text}</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
+        <ReportSummarySection price={summary.lastClose} simple={simple} move={move} zoneTxt={zoneTxt} />
+        <DailyMoveSection simple={simple} move={move} />
         <MoveDivider />
-
-        {/* 3️⃣ Dashboard Teknikal & Indikator */}
-        <div>
-          <MoveHeading>📈 Dashboard Teknikal</MoveHeading>
-          <ul className="space-y-1.5 text-sm">
-            <MoveRow label="Trend Utama">
-              <Pill tone={TREND_TONE[simple.trend]}>{TREND_STATE_LABEL[simple.trend]}</Pill>
-              <span className="font-mono text-xs text-zinc-700 dark:text-zinc-300">{simple.emaStack}</span>
-            </MoveRow>
-            <li className="text-xs text-zinc-600 dark:text-zinc-400 sm:pl-38">{simple.emaStackNote}</li>
-            <MoveRow label="EMA20 / 50 / 200">
-              <span className="font-mono text-zinc-800 dark:text-zinc-200">
-                {fmtRp(Math.round(trendEma.ema20))} / {fmtRp(Math.round(trendEma.ema50))} / {fmtRp(Math.round(trendEma.ema200))}
-              </span>
-            </MoveRow>
-            <MoveRow label="Momentum">
-              <Pill tone={MOMENTUM_TONE[simple.momentum]}>{MOMENTUM_STATE_LABEL[simple.momentum]}</Pill>
-            </MoveRow>
-            <MoveRow label="RSI 14"><span className="text-zinc-800 dark:text-zinc-200">{simple.rsiText}</span></MoveRow>
-            <MoveRow label="MACD"><span className="text-zinc-800 dark:text-zinc-200">{simple.macdText}</span></MoveRow>
-            <MoveRow label="Price Action">
-              <Pill tone={PRICE_ACTION_TONE[simple.priceAction]}>{PRICE_ACTION_LABEL[simple.priceAction]}</Pill>
-            </MoveRow>
-            <MoveRow label="Support"><span className="font-semibold text-emerald-600 dark:text-emerald-400">{move.support ? fmtRp(move.support) : '–'}</span></MoveRow>
-            <MoveRow label="Resistance"><span className="font-semibold text-rose-600 dark:text-rose-400">{move.resistance ? fmtRp(move.resistance) : '–'}</span></MoveRow>
-            <MoveRow label="Area Beli"><span className="font-mono text-zinc-800 dark:text-zinc-200">{zoneTxt}</span></MoveRow>
-            <MoveRow label="Fundamental">
-              <Pill tone={FUNDAMENTAL_TONE[simple.fundamental]}>{SIMPLE_FUNDAMENTAL_LABEL[simple.fundamental]}</Pill>
-            </MoveRow>
-          </ul>
-        </div>
-
+        <TechnicalSection simple={simple} move={move} trendEma={trendEma} zoneTxt={zoneTxt} showFundamental />
         <MoveDivider />
-
-        {/* 4️⃣ Manajemen Risiko & Buy Trigger */}
-        <div className="space-y-3">
-          <MoveHeading>⚠️ Manajemen Risiko &amp; Buy Trigger</MoveHeading>
-          <ul className="space-y-2 text-sm">
-            {([
-              ['Chase Risk', move.chaseRisk, move.chaseRiskNote],
-              ['Event Risk', move.eventRisk, move.eventRiskNote],
-              ['Primary Trend Risk', move.primaryTrendRisk, move.primaryTrendRiskNote],
-            ] as const).map(([label, level, note]) => (
-              <li key={label} className="flex flex-wrap items-start gap-2">
-                <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-36">{label}:</span>
-                <Pill tone={RISK3_TONE[level]}>{level}</Pill>
-                <span className="text-xs text-zinc-600 dark:text-zinc-400 basis-full sm:basis-auto sm:flex-1">{note}</span>
-              </li>
-            ))}
-          </ul>
-          {move.otherRisks.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {move.otherRisks.map((r) => <Pill key={r} tone="red">{r}</Pill>)}
-            </div>
-          )}
-
-          <div className={cn('neo-border px-4 py-3 space-y-2', entryStyle.box)}>
-            <V4Block label="⏳ Buy Trigger">{simple.buyTrigger}</V4Block>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">🎯 Status</span>
-              <Pill tone={entryStyle.tone}>{entryStyle.emoji} {SIMPLE_ENTRY_LABEL[simple.decision]}</Pill>
-              <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Buy Permission</span>
-              <Pill tone={BUY_PERMISSION_TONE[simple.buyPermission]}>{simple.buyPermission}</Pill>
-            </div>
-            <p className="text-sm text-zinc-700 dark:text-zinc-300">{simple.buyPermissionReason}</p>
-          </div>
-        </div>
-
+        <RiskTriggerSection simple={simple} move={move} title="⚠️ Manajemen Risiko & Buy Trigger" />
         <p className="text-xs text-zinc-400 leading-relaxed">
           Cari saham yang mulai bullish ketika entry masih masuk akal, bukan membeli setelah harga sudah terbang.
           Katalis FAKTA hanya dari data harga/volume atau berita langsung ≤7 hari — selalu cek keterbukaan informasi IDX.
+        </p>
+      </div>
+    </SectionCard>
+  );
+}
+
+// ─── Equity Research Report V5 — 3 Pilar Fundamental + Teknikal & Eksekusi ─────────
+// Pahami Bisnis → Cek Keuangan → Nilai Harganya (fundamentalPillars.ts, the main filter that only ever
+// caps the technical decision), then the v4 daily move / technical / risk sections, extended with
+// Stochastic, EMA200 position and an Action Plan (Area Buy, Stop Loss / invalidation, target).
+function PillarHeading({ n, title, verdict, tone }: { n: string; title: string; verdict?: string; tone?: V4Tone }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-2">
+      <h4 className="text-xs font-bold uppercase tracking-wide text-zinc-700 dark:text-zinc-200">{n} {title}</h4>
+      {verdict && tone && <Pill tone={tone}>{verdict}</Pill>}
+    </div>
+  );
+}
+
+function FundamentalPillarsSection({ pillars }: { pillars: FundamentalPillars }) {
+  const { business, health, valuation } = pillars;
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <MoveHeading>🧱 3 Pilar Fundamental</MoveHeading>
+      </div>
+
+      <div>
+        <PillarHeading n="🏢" title="Pahami Bisnisnya" />
+        <ul className="space-y-1.5 text-sm">
+          <MoveRow label="Emiten"><span className="text-zinc-800 dark:text-zinc-200">{business.name}</span></MoveRow>
+          <MoveRow label="Sektor / Sub-sektor"><span className="text-zinc-800 dark:text-zinc-200">{business.sector} / {business.subSector}</span></MoveRow>
+          <MoveRow label="Free Float"><span className="font-mono text-zinc-800 dark:text-zinc-200">{business.freeFloat}</span></MoveRow>
+        </ul>
+        <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300">{business.sizeNote}</p>
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{business.note}</p>
+      </div>
+
+      <div>
+        <PillarHeading n="💰" title="Cek Kesehatan Keuangan" verdict={HEALTH_VERDICT_LABEL[health.verdict]} tone={HEALTH_TONE[health.verdict]} />
+        <ul className="space-y-1.5 text-sm">
+          {health.metrics.map((m) => (
+            <MoveRow key={m.label} label={m.label}>
+              <Pill tone={m.tone}>{m.value}</Pill>
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">{m.note}</span>
+            </MoveRow>
+          ))}
+        </ul>
+        <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300">{health.summary}</p>
+      </div>
+
+      <div>
+        <PillarHeading n="⚖️" title="Nilai Kewajaran Harga" verdict={VALUATION_VERDICT_LABEL[valuation.verdict]} tone={VALUATION_TONE[valuation.verdict]} />
+        <ul className="space-y-1.5 text-sm">
+          <MoveRow label="PER / PBV"><span className="font-mono text-zinc-800 dark:text-zinc-200">{valuation.per} / {valuation.pbv}</span></MoveRow>
+          {valuation.methods.map((m) => (
+            <MoveRow key={m.label} label={m.label}>
+              <span className="font-mono text-zinc-800 dark:text-zinc-200">{m.fairValue != null ? fmtRp(Math.round(m.fairValue)) : '–'}</span>
+            </MoveRow>
+          ))}
+          <MoveRow label="Nilai Wajar (median)">
+            <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{valuation.fairValue != null ? fmtRp(Math.round(valuation.fairValue)) : '–'}</span>
+            {valuation.upsidePct != null && <Pill tone={valuation.upsidePct >= 0 ? 'green' : 'red'}>{v4Pct(valuation.upsidePct, 0)}</Pill>}
+          </MoveRow>
+          {valuation.accumulationLow != null && valuation.accumulationHigh != null && (
+            <MoveRow label="Area Akumulasi">
+              <span className="font-mono text-emerald-700 dark:text-emerald-400">
+                {fmtRp(Math.round(valuation.accumulationLow))} – {fmtRp(Math.round(valuation.accumulationHigh))}
+              </span>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">margin of safety 10–20%</span>
+            </MoveRow>
+          )}
+        </ul>
+        <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300">{valuation.summary}</p>
+      </div>
+
+      <div className={cn('neo-border px-4 py-2.5 flex flex-wrap items-center gap-2',
+        pillars.filter === 'PASS' ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-400/10'
+          : pillars.filter === 'FAIL' ? 'border-rose-400 bg-rose-50 dark:bg-rose-400/10'
+            : 'border-amber-400 bg-amber-50 dark:bg-amber-400/10')}>
+        <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Filter Fundamental</span>
+        <Pill tone={FILTER_TONE[pillars.filter]}>{FUNDAMENTAL_FILTER_LABEL[pillars.filter]}</Pill>
+        <span className="text-sm text-zinc-700 dark:text-zinc-300">{pillars.filterReason}</span>
+      </div>
+    </div>
+  );
+}
+
+function EquityResearchReportCardv5(props: EquityReportProps) {
+  const { summary, trendEma, indicators, fundamentals, fundamentalScreening, tradingPlan } = props;
+  const { move, simple: technical, zoneTxt } = useSimpleEntryReview(props);
+
+  const pillars = useMemo(
+    () => buildFundamentalPillars(summary, fundamentals, fundamentalScreening),
+    [summary, fundamentals, fundamentalScreening],
+  );
+  const simple = useMemo(() => applyFundamentalFilter(technical, pillars), [technical, pillars]);
+
+  const price = summary.lastClose;
+  const ema200Pct = trendEma.ema200 > 0 ? ((price - trendEma.ema200) / trendEma.ema200) * 100 : null;
+  const ema200Txt = ema200Pct == null ? '–' : `${ema200Pct >= 0 ? 'di atas' : 'di bawah'} EMA200 (${v4Pct(ema200Pct)})`;
+  const stochZone = indicators.stochZone === 'oversold' ? 'oversold' : indicators.stochZone === 'overbought' ? 'overbought' : 'netral';
+  const stochTxt = `%K ${indicators.stochK.toFixed(1)} / %D ${indicators.stochD.toFixed(1)} — ${stochZone}, %K ${indicators.stochK >= indicators.stochD ? 'di atas' : 'di bawah'} %D`;
+
+  // Action plan comes from the LONG scenario of the shared trading plan — never recomputed here.
+  const longPlan = tradingPlan.bullish.direction === 'LONG' ? tradingPlan.bullish : null;
+  const stopLoss = longPlan && longPlan.sl > 0 ? longPlan.sl : null;
+  const target = longPlan && longPlan.tp1 > price ? longPlan.tp1 : null;
+  const riskPct = stopLoss != null && price > 0 ? ((price - stopLoss) / price) * 100 : null;
+  const planAllowed = simple.decision === 'BUY' || simple.decision === 'WAIT';
+
+  const buildShareText = () => [
+    `📌 ${summary.ticker} — EQUITY RESEARCH REPORT (Fundamental + Teknikal)`,
+    '',
+    'BAGIAN 1: 3 PILAR FUNDAMENTAL',
+    ...formatFundamentalPillars(pillars),
+    '',
+    'RINGKASAN',
+    ...formatSummaryLines(simple),
+    '',
+    'BAGIAN 2: PERGERAKAN HARIAN & VOLUME',
+    ...formatDailyMoveLines(move),
+    '',
+    'BAGIAN 3: DASHBOARD TEKNIKAL',
+    ...formatTechnicalLines(simple, move, [`EMA200: ${ema200Txt}`, `Stochastic: ${stochTxt}`]),
+    '',
+    'BAGIAN 4: MANAJEMEN RISIKO, FOMO RISK & BUY TRIGGER',
+    ...formatRiskLines(simple, move, planAllowed ? [
+      `Area Buy: ${zoneTxt}`,
+      `Stop Loss / Invalidasi: ${stopLoss != null ? `${fmtRp(stopLoss)}${riskPct != null ? ` (risiko ${riskPct.toFixed(1)}%)` : ''}` : '–'}`,
+      `Target 1: ${target != null ? fmtRp(target) : '–'}`,
+    ] : []),
+    '',
+    '⚠️ Disclaimer: Analisis ini untuk edukasi, bukan ajakan jual/beli. Keputusan investasi & manajemen risiko sepenuhnya tanggung jawab masing-masing investor.',
+  ].join('\n');
+
+  return (
+    <SectionCard
+      title="Equity Research Report"
+      icon={<Sparkles className="size-4" />}
+      accentClass="bg-violet-600"
+      headerAction={<CopyShareButton getText={buildShareText} />}
+    >
+      <div className="space-y-4">
+        <ReportSummarySection price={price} simple={simple} move={move} zoneTxt={zoneTxt}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">🧱 Fundamental</span>
+            <Pill tone={FILTER_TONE[pillars.filter]}>{FUNDAMENTAL_FILTER_LABEL[pillars.filter]}</Pill>
+            <Pill tone={HEALTH_TONE[pillars.health.verdict]}>Keuangan {HEALTH_VERDICT_LABEL[pillars.health.verdict]}</Pill>
+            <Pill tone={VALUATION_TONE[pillars.valuation.verdict]}>{VALUATION_VERDICT_LABEL[pillars.valuation.verdict]}</Pill>
+          </div>
+        </ReportSummarySection>
+
+        <FundamentalPillarsSection pillars={pillars} />
+        <MoveDivider />
+        <DailyMoveSection simple={simple} move={move} />
+        <MoveDivider />
+        <TechnicalSection simple={simple} move={move} trendEma={trendEma} zoneTxt={zoneTxt} showFundamental={false}>
+          <MoveRow label="Posisi EMA200">
+            <Pill tone={ema200Pct == null ? 'zinc' : ema200Pct >= 0 ? 'green' : 'red'}>{ema200Txt}</Pill>
+          </MoveRow>
+          <MoveRow label="Stochastic"><span className="text-zinc-800 dark:text-zinc-200">{stochTxt}</span></MoveRow>
+        </TechnicalSection>
+        <MoveDivider />
+        <RiskTriggerSection simple={simple} move={move} title="⚠️ Manajemen Risiko, FOMO & Buy Trigger">
+          {planAllowed && (
+            <ul className="space-y-1.5 text-sm">
+              <MoveRow label="Area Buy"><span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{zoneTxt}</span></MoveRow>
+              <MoveRow label="Stop Loss / Invalidasi">
+                <span className="font-mono font-semibold text-rose-600 dark:text-rose-400">{stopLoss != null ? fmtRp(stopLoss) : '–'}</span>
+                {riskPct != null && <span className="text-xs text-zinc-500 dark:text-zinc-400">risiko {riskPct.toFixed(1)}% dari harga</span>}
+              </MoveRow>
+              <MoveRow label="Target 1"><span className="font-mono text-zinc-800 dark:text-zinc-200">{target != null ? fmtRp(target) : '–'}</span></MoveRow>
+            </ul>
+          )}
+        </RiskTriggerSection>
+
+        <p className="text-xs text-zinc-400 leading-relaxed">
+          ⚠️ Disclaimer edukasi: beli perusahaan yang tepat, di harga yang wajar, pada momen yang rasional — bukan karena harganya sedang naik.
+          Nilai wajar memakai asumsi umum (Graham, ROE ÷ 12%, PER 15×) dan bukan target harga. Keputusan investasi sepenuhnya tanggung jawab masing-masing investor.
         </p>
       </div>
     </SectionCard>
@@ -4640,7 +4868,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   marketRegime={marketRegime}
                 /> */}
 
-                <EquityResearchReportCardv4
+                <EquityResearchReportCardv5
                   summary={summary}
                   bars={bars}
                   trendEma={trendEma}
@@ -4654,6 +4882,21 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   newsItems={newsItems}
                   brokerActivity={brokerActivity}
                 />
+
+                {/* <EquityResearchReportCardv4
+                  summary={summary}
+                  bars={bars}
+                  trendEma={trendEma}
+                  indicators={indicators}
+                  supportResistance={supportResistance}
+                  fundamentalScreening={fundamentalScreening}
+                  fundamentals={fundamentals}
+                  tradingPlan={tradingPlan}
+                  volume={volume}
+                  priceAction={priceAction}
+                  newsItems={newsItems}
+                  brokerActivity={brokerActivity}
+                /> */}
 
                 {/* <EquityResearchReportCardv3
                   summary={summary}

@@ -578,40 +578,70 @@ function describeMove(i: SimpleEntryInput, volume: SimpleVolume, pa: PriceAction
   return `Harga naik ${chg} tanpa pemicu yang jelas.`;
 }
 
-/** Plain-text version of the 4-section report, for copy/share. */
-export function formatSimpleEntryReview(ticker: string, r: SimpleEntryReview, m: TodayMoveAnalysis): string {
-  const rpx = (n: number | null) => rp(n) ?? '–';
-  const x = (n: number | null) => (n == null || Number.isNaN(n) ? '–' : `${n.toFixed(2)}×`);
-  const vol = (n: number | null) => (n == null ? '–' : `${formatCompact(Math.round(n))} lbr`);
+// ── Plain-text sections for copy/share — shared by the v4 and v5 report cards. ────────
+const rpx = (n: number | null) => rp(n) ?? '–';
+
+export function formatSummaryLines(r: SimpleEntryReview): string[] {
   return [
-    `📌 ${ticker} — EQUITY RESEARCH REPORT`,
-    '',
-    '1️⃣ KARTU RINGKASAN EKSEKUTIF',
     `Harga: ${rpx(r.price)} (${pct(r.changePct)})`,
     `🧠 Insight: ${r.insight}`,
     `🎯 Keputusan: ${SIMPLE_ENTRY_LABEL[r.decision]} (${BULLISH_PHASE_LABEL[r.phase]})`,
     `💡 Why: ${r.why}`,
     `⚠️ FOMO Risk: ${FOMO_RISK_LABEL[r.fomoRisk]}`,
-    '',
-    '2️⃣ PERGERAKAN HARIAN & VOLUME',
+  ];
+}
+
+export function formatDailyMoveLines(m: TodayMoveAnalysis): string[] {
+  const x = (n: number | null) => (n == null || Number.isNaN(n) ? '–' : `${n.toFixed(2)}×`);
+  const vol = (n: number | null) => (n == null ? '–' : `${formatCompact(Math.round(n))} lbr`);
+  return [
     `O/H/L/C: ${rpx(m.open)} / ${rpx(m.high)} / ${rpx(m.low)} / ${rpx(m.close)} (${pct(m.changePct)})`,
     `Volume: ${vol(m.volume)} vs avg 20D ${vol(m.avgVolume20)} · RVOL ${x(m.rvol)}`,
     `Close Position: ${describeClosePosition(m.closePosition)}`,
     `Move Type: ${MOVE_TYPE_LABEL[m.moveType]} — ${m.moveTypeReason}`,
     `Katalis: ${CATALYST_STATUS_LABEL[m.catalystStatus]} — ${m.catalystSummary}`,
     ...m.evidence.map((e) => `- [${EVIDENCE_KIND_LABEL[e.kind]}] ${e.text}`),
-    '',
-    '3️⃣ DASHBOARD TEKNIKAL',
+  ];
+}
+
+/** `extra` lets v5 add Stochastic / EMA200 lines without changing the v4 output. */
+export function formatTechnicalLines(r: SimpleEntryReview, m: TodayMoveAnalysis, extra: string[] = []): string[] {
+  return [
     `Trend: ${TREND_STATE_LABEL[r.trend]} · ${r.emaStack} — ${r.emaStackNote}`,
     `Momentum: ${MOMENTUM_STATE_LABEL[r.momentum]} · RSI ${r.rsiText} · ${r.macdText}`,
+    ...extra,
     `Price Action: ${PRICE_ACTION_LABEL[r.priceAction]}`,
     `Support: ${rpx(m.support)} · Resistance: ${rpx(m.resistance)}`,
-    '',
-    '4️⃣ MANAJEMEN RISIKO & BUY TRIGGER',
+  ];
+}
+
+export function formatRiskLines(r: SimpleEntryReview, m: TodayMoveAnalysis, extra: string[] = []): string[] {
+  return [
     `Chase Risk: ${m.chaseRisk} — ${m.chaseRiskNote}`,
     `Event Risk: ${m.eventRisk} — ${m.eventRiskNote}`,
     `Primary Trend Risk: ${m.primaryTrendRisk} — ${m.primaryTrendRiskNote}`,
+    `⚠️ FOMO Risk: ${FOMO_RISK_LABEL[r.fomoRisk]}`,
     `⏳ Buy Trigger: ${r.buyTrigger}`,
+    ...extra,
     `Status: ${SIMPLE_ENTRY_LABEL[r.decision]} · Buy Permission: ${r.buyPermission} — ${r.buyPermissionReason}`,
+  ];
+}
+
+/** Plain-text version of the v4 4-section report, for copy/share. */
+export function formatSimpleEntryReview(ticker: string, r: SimpleEntryReview, m: TodayMoveAnalysis): string {
+  return [
+    `📌 ${ticker} — EQUITY RESEARCH REPORT`,
+    '',
+    '1️⃣ KARTU RINGKASAN EKSEKUTIF',
+    ...formatSummaryLines(r),
+    '',
+    '2️⃣ PERGERAKAN HARIAN & VOLUME',
+    ...formatDailyMoveLines(m),
+    '',
+    '3️⃣ DASHBOARD TEKNIKAL',
+    ...formatTechnicalLines(r, m),
+    '',
+    '4️⃣ MANAJEMEN RISIKO & BUY TRIGGER',
+    ...formatRiskLines(r, m),
   ].join('\n');
 }
