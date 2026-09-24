@@ -116,7 +116,8 @@ export function mapToStockSummary(item: PasardanaStockItem): StockSummary {
     per: item.Per || 0,
     pbv: item.Pbr || 0,
     roe: (item.Roe || 0) * 100,
-    freeFloat: (item.FreeFloatPct || 0) * 100,
+    // FreeFloatPct is already a percentage (e.g. 42.46), unlike Roe which is a fraction.
+    freeFloat: item.FreeFloatPct || 0,
     annualHigh: item.AdjustedAnnualHighPrice || last,
     annualLow: item.AdjustedAnnualLowPrice || last * 0.7,
   };

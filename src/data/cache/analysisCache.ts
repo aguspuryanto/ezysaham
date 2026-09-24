@@ -23,6 +23,8 @@ export interface CachedTickerAnalysis {
 }
 
 const DEFAULT_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes TTL
+/** Bump when the cached shape/mapping changes so stale sessionStorage entries are ignored (v2: freeFloat no longer ×100). */
+const CACHE_VERSION = 'v2';
 
 // In-memory memory map for instant 0ms access within active session
 const memoryAnalysisCache = new Map<string, CachedTickerAnalysis>();
@@ -45,7 +47,7 @@ export const AnalysisCacheManager = {
     // 2. Fallback check sessionStorage
     if (typeof window !== 'undefined' && window.sessionStorage) {
       try {
-        const raw = sessionStorage.getItem(`stockpilot_analysis_${key}`);
+        const raw = sessionStorage.getItem(`stockpilot_${CACHE_VERSION}_analysis_${key}`);
         if (raw) {
           const parsed: CachedTickerAnalysis = JSON.parse(raw);
           if (Date.now() - parsed.cachedAt < ttlMs) {
@@ -75,7 +77,7 @@ export const AnalysisCacheManager = {
 
     if (typeof window !== 'undefined' && window.sessionStorage) {
       try {
-        sessionStorage.setItem(`stockpilot_analysis_${key}`, JSON.stringify(entry));
+        sessionStorage.setItem(`stockpilot_${CACHE_VERSION}_analysis_${key}`, JSON.stringify(entry));
       } catch {
         // Ignore storage quota exceeded errors
       }
@@ -92,7 +94,7 @@ export const AnalysisCacheManager = {
 
     if (typeof window !== 'undefined' && window.sessionStorage) {
       try {
-        const raw = sessionStorage.getItem('stockpilot_summaries');
+        const raw = sessionStorage.getItem(`stockpilot_${CACHE_VERSION}_summaries`);
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Date.now() - parsed.fetchedAt < ttlMs) {
@@ -117,7 +119,7 @@ export const AnalysisCacheManager = {
 
     if (typeof window !== 'undefined' && window.sessionStorage) {
       try {
-        sessionStorage.setItem('stockpilot_summaries', JSON.stringify(entry));
+        sessionStorage.setItem(`stockpilot_${CACHE_VERSION}_summaries`, JSON.stringify(entry));
       } catch {
         // Ignore session storage errors
       }
@@ -143,7 +145,7 @@ export const AnalysisCacheManager = {
     memoryAnalysisCache.delete(key);
     if (typeof window !== 'undefined' && window.sessionStorage) {
       try {
-        sessionStorage.removeItem(`stockpilot_analysis_${key}`);
+        sessionStorage.removeItem(`stockpilot_${CACHE_VERSION}_analysis_${key}`);
       } catch {
         // Ignore
       }
