@@ -204,7 +204,9 @@ function macdHistSeries(closes: number[]): number[] {
   return macd.map((m, idx) => m - signal[idx]);
 }
 
-interface ChartChange {
+export interface ChartChange {
+  /** false when there are too few bars (< 60) — every change read below is then unknown. */
+  available: boolean;
   reclaimedEma20: boolean;
   reclaimedEma50: boolean;
   emaCrossUp: boolean;
@@ -217,10 +219,27 @@ interface ChartChange {
   runFromLowPct: number | null;
   /** Up-day volume ÷ down-day volume over the last 10 bars. */
   upDownVolumeRatio: number | null;
+  /** RSI dipped below 40 in the last 10 bars and has since recovered ≥ 8 points. */
+  rsiWeakRecovery: boolean;
+  /** EMA20 higher than 5 bars ago. */
+  ema20Rising: boolean;
+  /** Last 10 bars vs the 10 before: higher low / lower high + lower low. */
+  higherLowStructure: boolean;
+  lowerHighLowerLow: boolean;
+  /** No new lower low in the last 10 bars (lowest low ≥ prior 10-bar low). */
+  stoppedFalling: boolean;
+  /** Today: long upper wick at the 20-bar high, closing in the lower half of the range. */
+  rejection: boolean;
+  /** Breakout bar volume ÷ its prior 20-bar average (retest case). */
+  retestBreakoutVolRatio: number | null;
+  /** Lowest low of the last 5 bars. */
+  low5: number | null;
 }
 
-function detectChartChange(bars: OHLCVBar[]): ChartChange {
+export function detectChartChange(bars: OHLCVBar[]): ChartChange {
   const empty: ChartChange = {
+    available: false, rsiWeakRecovery: false, ema20Rising: false, higherLowStructure: false, lowerHighLowerLow: false,
+    stoppedFalling: false, rejection: false, retestBreakoutVolRatio: null, low5: null,
     reclaimedEma20: false, reclaimedEma50: false, emaCrossUp: false, macdTurnedUp: false, rsiCrossed50: false,
     breakoutLevel: null, retestLevel: null, breakdown: false, runFromLowPct: null, upDownVolumeRatio: null,
   };
@@ -256,12 +275,17 @@ function detectChartChange(bars: OHLCVBar[]): ChartChange {
   // Breakout-retest: a close above its prior 20-bar high within the lookback (not today), and price
   // has come back near that level without closing under it.
   let retestLevel: number | null = null;
+  let retestBreakoutVolRatio: number | null = null;
   for (let j = last - 1; j >= last - TRANSITION_LOOKBACK && j - BREAKOUT_BASE_BARS >= 0; j--) {
     const level = highestHigh(j - BREAKOUT_BASE_BARS, j);
     if (closes[j] > level) {
       const heldSince = closes.slice(j, last + 1).every((c) => c >= level * 0.99);
       const nearNow = bars[last].low <= level * (1 + RETEST_TOLERANCE_PCT / 100) && close >= level;
-      if (heldSince && nearNow) retestLevel = level;
+      if (heldSince && nearNow) {
+        retestLevel = level;
+        const base = bars.slice(j - BREAKOUT_BASE_BARS, j).reduce((a, b) => a + b.volume, 0) / BREAKOUT_BASE_BARS;
+        retestBreakoutVolRatio = base > 0 ? bars[j].volume / base : null;
+      }
       break;
     }
   }
@@ -278,7 +302,29 @@ function detectChartChange(bars: OHLCVBar[]): ChartChange {
   }
   const upDownVolumeRatio = downVol > 0 ? upVol / downVol : upVol > 0 ? Infinity : null;
 
-  return { reclaimedEma20, reclaimedEma50, emaCrossUp, macdTurnedUp, rsiCrossed50, breakoutLevel, retestLevel, breakdown, runFromLowPct, upDownVolumeRatio };
+  const rsiMin10 = Math.min(...rsi.slice(last - 9, last + 1));
+  const rsiWeakRecovery = rsiMin10 < 40 && rsi[last] - rsiMin10 >= 8;
+  const ema20Rising = ema20[last] > ema20[last - 5];
+  const recentHigh = highestHigh(last - 9, last + 1);
+  const recentLow = lowestLow(last - 9, last + 1);
+  const priorHigh = highestHigh(last - 19, last - 9);
+  const priorLow = lowestLow(last - 19, last - 9);
+  const higherLowStructure = recentLow > priorLow;
+  const lowerHighLowerLow = recentHigh < priorHigh && recentLow < priorLow;
+  const stoppedFalling = recentLow >= priorLow * 0.99;
+  const b = bars[last];
+  const range = b.high - b.low;
+  const upperWick = b.high - Math.max(b.open, b.close);
+  const body = Math.abs(b.close - b.open);
+  const rejection = range > 0 && upperWick >= 2 * body && upperWick >= range * 0.5 &&
+    b.high >= highestHigh(last - BREAKOUT_BASE_BARS, last) * 0.99 && b.close <= b.low + range * 0.5;
+  const low5 = lowestLow(last - 4, last + 1);
+
+  return {
+    available: true, reclaimedEma20, reclaimedEma50, emaCrossUp, macdTurnedUp, rsiCrossed50, breakoutLevel, retestLevel, breakdown,
+    runFromLowPct, upDownVolumeRatio, rsiWeakRecovery, ema20Rising, higherLowStructure, lowerHighLowerLow, stoppedFalling, rejection,
+    retestBreakoutVolRatio, low5,
+  };
 }
 
 export function buildSimpleEntryReview(i: SimpleEntryInput): SimpleEntryReview {

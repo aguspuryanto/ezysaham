@@ -15,7 +15,7 @@ import { formatRupiah } from '@/lib/format';
 import type { StockSummary } from '@/domain/models/Stock';
 import type { FundamentalDetail } from '@/domain/models/Fundamentals';
 import type { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
-import type { SimpleEntryReview } from '@/domain/analysis/simpleEntryReview';
+import type { EarlyBullishReview } from '@/domain/analysis/earlyBullishReview';
 
 export type PillarTone = 'green' | 'amber' | 'red' | 'zinc';
 export type HealthVerdict = 'SEHAT' | 'CUKUP' | 'LEMAH' | 'DATA_KURANG';
@@ -217,19 +217,18 @@ export function buildFundamentalPillars(
 }
 
 /**
- * Fundamental is the main filter: it only ever caps the technical decision, never upgrades it.
- *  - FAIL    → BUY/WAIT become NO TRADE (a SELL/TAKE PROFIT for holders is kept).
+ * Fundamental is only a quality filter — never a BUY trigger. It only ever caps the technical decision:
+ *  - FAIL    → BUY/WAIT become "NO TRADE — FUNDAMENTAL LEMAH".
  *  - CAUTION → a BUY stays a BUY but is labelled trading-only.
  */
-export function applyFundamentalFilter(r: SimpleEntryReview, p: FundamentalPillars): SimpleEntryReview {
-  if (p.filter === 'FAIL' && (r.decision === 'BUY' || r.decision === 'WAIT')) {
+export function applyFundamentalFilter(r: EarlyBullishReview, p: FundamentalPillars): EarlyBullishReview {
+  if (p.filter === 'FAIL' && r.decision !== 'NO_TRADE') {
     return {
       ...r,
       decision: 'NO_TRADE',
-      why: `${p.filterReason} ${r.why}`,
-      buyTrigger: 'Tunggu perbaikan kinerja keuangan (laba & margin kembali positif) sebelum mempertimbangkan entry.',
-      buyPermission: 'NO',
-      buyPermissionReason: `Tidak ada izin beli — ${p.filterReason.charAt(0).toLowerCase()}${p.filterReason.slice(1)}`,
+      tag: 'FUNDAMENTAL',
+      why: `${p.filterReason} (teknikal: ${r.why.charAt(0).toLowerCase()}${r.why.slice(1)})`,
+      buyTrigger: `Tunggu perbaikan kinerja keuangan (laba & margin kembali positif), baru evaluasi trigger teknikal: ${r.buyTrigger.charAt(0).toLowerCase()}${r.buyTrigger.slice(1)}`,
     };
   }
   if (p.filter === 'CAUTION' && r.decision === 'BUY') {
