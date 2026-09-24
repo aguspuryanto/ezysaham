@@ -61,6 +61,7 @@ import { classifyOversoldRisk, classifyRsiOverbought, classifyRvol, classifyFund
 import { classifyZoneStatus, DEFAULT_SL_PCT, DEFAULT_TP1_PCT, DEFAULT_TP2_PCT, DefaultTargetPlan, isEntryConfirmed, isPriceAtEntryTrigger, isSetupInvalidated, ZoneStatus } from '@/domain/analysis/tradeValidation';
 import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuitabilityResult } from '@/domain/analysis/swingSuitability';
 import { buildTenSecondReview, REVIEW_STRATEGY_LABEL } from '@/domain/analysis/tenSecondReview';
+import { buildSimpleEntryReview, FOMO_RISK_LABEL, FomoRisk, formatSimpleEntryReview, SIMPLE_ENTRY_LABEL, SIMPLE_FUNDAMENTAL_LABEL, SIMPLE_MOMENTUM_LABEL, SIMPLE_VOLUME_LABEL, SimpleEntry, SimpleFundamental, SimpleMomentum, SimpleVolume } from '@/domain/analysis/simpleEntryReview';
 import { buildTodayMoveAnalysis, CATALYST_STATUS_LABEL, describeClosePosition, EVIDENCE_KIND_LABEL, EvidenceKind, formatTodayMoveAnalysis, MOVE_TYPE_LABEL, MoveType, TODAY_TRADE_STATUS_LABEL, TodayTradeStatus } from '@/domain/analysis/todayMoveAnalysis';
 import { atr, atrPercent } from '@/domain/indicators/atr';
 import { MarketRegimeResult } from '@/domain/analysis/marketRegimeEngine';
@@ -3213,20 +3214,7 @@ function MoveDivider() {
   return <div className="h-[2px] bg-(--neo-line)" />;
 }
 
-function EquityResearchReportCardv3({
-  summary,
-  bars,
-  trendEma,
-  indicators,
-  supportResistance,
-  fundamentalScreening,
-  fundamentals,
-  tradingPlan,
-  volume,
-  priceAction,
-  newsItems,
-  brokerActivity,
-}: {
+interface EquityReportProps {
   summary: StockSummary;
   bars: OHLCVBar[];
   trendEma: TrendEmaAnalysis;
@@ -3239,7 +3227,25 @@ function EquityResearchReportCardv3({
   priceAction: PriceActionAnalysis;
   newsItems: StockNewsItem[];
   brokerActivity: BrokerActivityDetail | null;
-}) {
+}
+
+// Shared by v3 and v4 so both cards read the exact same Risk Gate / Zone / Today-Move inputs and can
+// never disagree for the same stock: 10-second review (riskGate.ts + tradeValidation.ts) first, then
+// the today-vs-previous-close read layered on top of it.
+function useEquityReportReview({
+  summary,
+  bars,
+  trendEma,
+  indicators,
+  supportResistance,
+  fundamentalScreening,
+  fundamentals,
+  tradingPlan,
+  volume,
+  priceAction,
+  newsItems,
+  brokerActivity,
+}: EquityReportProps) {
   const bandarScore = useMemo(() => computeBandarScore(summary, bars ?? []), [summary, bars]);
 
   const review = useMemo(() => {
@@ -3304,7 +3310,7 @@ function EquityResearchReportCardv3({
     });
     const hasSetupErrors = scenario.validationErrors.length > 0;
 
-    return buildTenSecondReview({
+    const tenSecond = buildTenSecondReview({
       ticker: summary.ticker,
       price,
       trend: trendEma.trend,
@@ -3332,6 +3338,7 @@ function EquityResearchReportCardv3({
       hiddenDistribution: bandarScore.hiddenDistributionWarning,
       hasSetupErrors,
     });
+    return { ...tenSecond, entryZoneLow, entryZoneHigh, setupInvalidated, fundamentalRisk, isStrongDistribution };
   }, [summary, trendEma, indicators, supportResistance, fundamentalScreening, fundamentals, tradingPlan, volume, priceAction, bandarScore]);
 
   // Today-vs-previous-close read layered on top of the 10-second review: move type + catalyst come
@@ -3349,13 +3356,20 @@ function EquityResearchReportCardv3({
     macdHistogram: indicators.macdHistogram,
     support: review.support,
     resistance: review.resistance,
-    fundamentalRisk: classifyFundamentalRisk(fundamentalScreening.score, fundamentals?.debtToEquity ?? null, summary.roe),
-    isStrongDistribution: bandarScore.classification.label === 'Strong Distribution',
+    fundamentalRisk: review.fundamentalRisk,
+    isStrongDistribution: review.isStrongDistribution,
     isDistributionRisk: bandarScore.classification.label === 'Distribution Risk',
     hiddenDistribution: bandarScore.hiddenDistributionWarning,
     baseStatus: review.status,
     baseScenario: review.scenario,
-  }), [summary, bars, newsItems, brokerActivity, trendEma, indicators, fundamentalScreening, fundamentals, bandarScore, review]);
+  }), [summary, bars, newsItems, brokerActivity, trendEma, indicators, bandarScore, review]);
+
+  return { review, move };
+}
+
+function EquityResearchReportCardv3(props: EquityReportProps) {
+  const { summary } = props;
+  const { review, move } = useEquityReportReview(props);
 
   const statusStyle = TODAY_STATUS_STYLE[move.tradeStatus];
   const riskTone = (r: 'LOW' | 'MEDIUM' | 'HIGH'): 'green' | 'amber' | 'red' => (r === 'HIGH' ? 'red' : r === 'MEDIUM' ? 'amber' : 'green');
@@ -3539,6 +3553,101 @@ function EquityResearchReportCardv3({
           Katalis hanya ditandai FAKTA jika berasal dari data harga/volume atau berita langsung ≤7 hari yang menyebut event tersebut.
           Aliran broker/asing dan berita tanpa kata kunci event hanya INDIKASI. Selalu cek keterbukaan informasi IDX sebelum mengambil keputusan.
         </p>
+      </div>
+    </SectionCard>
+  );
+}
+
+// ─── Equity Research Report V4 — simple, actionable INSIGHT ──────────────────────
+// INSIGHT → DECISION → WHY → NEXT SETUP, decided by simpleEntryReview.ts from 4 reads
+// (QUALITY → MOMENTUM → VOLUME → FOMO) on top of the same shared review as v3 (a NO TRADE there is
+// never upgraded here). No long report, no extra indicators.
+const SIMPLE_ENTRY_STYLE: Record<SimpleEntry, { emoji: string; tone: 'green' | 'red' | 'amber'; box: string }> = {
+  BUY: { emoji: '🟢', tone: 'green', box: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-400/10' },
+  WAIT: { emoji: '🟡', tone: 'amber', box: 'border-amber-400 bg-amber-50 dark:bg-amber-400/10' },
+  NO_TRADE: { emoji: '🔴', tone: 'red', box: 'border-rose-400 bg-rose-50 dark:bg-rose-400/10' },
+};
+type V4Tone = 'green' | 'red' | 'amber' | 'zinc';
+const FUNDAMENTAL_TONE: Record<SimpleFundamental, V4Tone> = { GOOD: 'green', ACCEPTABLE: 'amber', WEAK: 'red' };
+const MOMENTUM_TONE: Record<SimpleMomentum, V4Tone> = { BULLISH: 'green', NEUTRAL: 'amber', BEARISH: 'red' };
+const VOLUME_TONE: Record<SimpleVolume, V4Tone> = { SUPPORTIVE: 'green', NEUTRAL: 'zinc', SELLING: 'red' };
+const FOMO_TONE: Record<FomoRisk, V4Tone> = { LOW: 'green', MEDIUM: 'amber', HIGH: 'red' };
+
+function V4Block({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300 mb-0.5">{label}</p>
+      <div className="text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed">{children}</div>
+    </div>
+  );
+}
+
+function EquityResearchReportCardv4(props: EquityReportProps) {
+  const { summary, trendEma, indicators } = props;
+  const { review, move } = useEquityReportReview(props);
+
+  const simple = useMemo(() => buildSimpleEntryReview({
+    price: summary.lastClose,
+    changePct: move.changePct,
+    percentChange1M: summary.percentChange1M,
+    rvol: move.rvol,
+    volume: move.volume,
+    prevVolume: move.prevVolume,
+    trend: trendEma.trend,
+    rsi14: indicators.rsi14,
+    macdBullish: indicators.macdSignalType === 'bullish' || indicators.macdSignalType === 'bullish_crossover',
+    macdBearish: indicators.macdSignalType === 'bearish' || indicators.macdSignalType === 'bearish_crossover',
+    ema50: trendEma.ema50,
+    ema200: trendEma.ema200,
+    support: review.support,
+    resistance: review.resistance,
+    moveType: move.moveType,
+    catalystStatus: move.catalystStatus,
+    entryZoneLow: review.entryZoneLow,
+    entryZoneHigh: review.entryZoneHigh,
+    fundamentalRisk: review.fundamentalRisk,
+    chaseRisk: move.chaseRisk,
+    eventRisk: move.eventRisk,
+    isStrongDistribution: review.isStrongDistribution,
+    setupInvalidated: review.setupInvalidated,
+    baseTradeStatus: move.tradeStatus,
+  }), [summary, move, review, trendEma, indicators]);
+
+  const entryStyle = SIMPLE_ENTRY_STYLE[simple.decision];
+  const factors: { label: string; value: string; tone: V4Tone }[] = [
+    { label: 'Fundamental', value: SIMPLE_FUNDAMENTAL_LABEL[simple.fundamental], tone: FUNDAMENTAL_TONE[simple.fundamental] },
+    { label: 'Momentum', value: SIMPLE_MOMENTUM_LABEL[simple.momentum], tone: MOMENTUM_TONE[simple.momentum] },
+    { label: 'Volume', value: SIMPLE_VOLUME_LABEL[simple.volume], tone: VOLUME_TONE[simple.volume] },
+    { label: 'FOMO', value: FOMO_RISK_LABEL[simple.fomoRisk], tone: FOMO_TONE[simple.fomoRisk] },
+  ];
+
+  return (
+    <SectionCard
+      title="Equity Research Report"
+      icon={<Sparkles className="size-4" />}
+      accentClass="bg-violet-600"
+      headerAction={<CopyShareButton getText={() => formatSimpleEntryReview(summary.ticker, simple)} />}
+    >
+      <div className="space-y-4">
+        <V4Block label="🧠 Insight">{simple.insight}</V4Block>
+
+        <div className={cn('neo-border px-4 py-3 space-y-2', entryStyle.box)}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">🎯 Decision</span>
+            <Pill tone={entryStyle.tone}>{entryStyle.emoji} {SIMPLE_ENTRY_LABEL[simple.decision]}</Pill>
+          </div>
+          <V4Block label="💡 Why">{simple.why}</V4Block>
+          {simple.nextSetup && <V4Block label="⏳ Next Setup">{simple.nextSetup}</V4Block>}
+        </div>
+
+        <ul className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+          {factors.map((f) => (
+            <li key={f.label} className="flex items-center gap-1.5">
+              <span className="text-zinc-500 dark:text-zinc-400">{f.label}</span>
+              <Pill tone={f.tone}>{f.value}</Pill>
+            </li>
+          ))}
+        </ul>
       </div>
     </SectionCard>
   );
@@ -4383,7 +4492,22 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   marketRegime={marketRegime}
                 /> */}
 
-                <EquityResearchReportCardv3
+                {/* <EquityResearchReportCardv3
+                  summary={summary}
+                  bars={bars}
+                  trendEma={trendEma}
+                  indicators={indicators}
+                  supportResistance={supportResistance}
+                  fundamentalScreening={fundamentalScreening}
+                  fundamentals={fundamentals}
+                  tradingPlan={tradingPlan}
+                  volume={volume}
+                  priceAction={priceAction}
+                  newsItems={newsItems}
+                  brokerActivity={brokerActivity}
+                /> */}
+
+                <EquityResearchReportCardv4
                   summary={summary}
                   bars={bars}
                   trendEma={trendEma}
