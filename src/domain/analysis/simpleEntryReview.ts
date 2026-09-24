@@ -12,6 +12,9 @@
  *  - WAIT    = Quality OK, but momentum not strong enough, volume not supportive, or price ran too far.
  *  - NO TRADE = Fundamental WEAK, momentum BEARISH, or risk too high.
  *  - Rising price, big volume or good fundamentals are never BUY on their own.
+ *  - PRIMARY REASON is picked before the decision: every problem is ranked
+ *    FOMO → Momentum → Volume → Fundamental → Technical trend (hard risks first), max 2 are
+ *    combined, and WHY states cause → consequence for the entry instead of repeating indicators.
  *
  * Never recomputes Entry/SL/TP, Risk Gate or catalysts — the caller passes the already-derived
  * reads from tenSecondReview.ts / todayMoveAnalysis.ts, and a NO TRADE there is never upgraded here.
@@ -86,6 +89,22 @@ const FOMO_MEDIUM_MAX_PCT = 8;
 /** |changePct| below this counts as a flat day. */
 const FLAT_PCT = 0.5;
 
+/** Primary-reason priority: FOMO → Momentum → Volume → Fundamental → Technical trend (hard risks first). */
+type IssueKey = 'RISK' | 'FOMO' | 'MOMENTUM' | 'VOLUME' | 'FUNDAMENTAL' | 'TREND';
+const ISSUE_PRIORITY: IssueKey[] = ['RISK', 'FOMO', 'MOMENTUM', 'VOLUME', 'FUNDAMENTAL', 'TREND'];
+interface Issue {
+  key: IssueKey;
+  /** true = disqualifies the stock outright (NO TRADE), false = only blocks timing (WAIT). */
+  noTrade: boolean;
+  /** The condition, e.g. "harga sudah naik terlalu jauh dari area beli". */
+  cause: string;
+  /** What it means for the entry, e.g. "masuk sekarang sama dengan mengejar harga". */
+  effect: string;
+  /** What has to happen before entry is reconsidered. */
+  waitFor: string;
+}
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 function rp(n: number | null | undefined): string | null {
   return n != null && n > 0 ? formatRupiah(Math.round(n)) : null;
 }
@@ -127,26 +146,59 @@ export function buildSimpleEntryReview(i: SimpleEntryInput): SimpleEntryReview {
   if (i.changePct >= 10 || i.rsi14 >= 80 || i.chaseRisk === 'HIGH') fomoRisk = 'HIGH';
   else if (fomoRisk === 'LOW' && (i.changePct >= 5 || i.rsi14 >= 70)) fomoRisk = 'MEDIUM';
 
-  // ── DECISION
-  const noTradeReason =
-    fundamental === 'WEAK' ? 'kualitas bisnisnya lemah'
-      : momentum === 'BEARISH' ? 'harga masih dalam tren turun'
-        : i.isStrongDistribution ? 'ada tanda aksi jual besar'
-          : i.setupInvalidated ? 'harga sudah jatuh di bawah batas setup'
-            : i.eventRisk === 'HIGH' ? 'ada risiko event yang tinggi'
-              : i.baseTradeStatus === 'NO_TRADE' ? 'risikonya saat ini terlalu tinggi'
-                : null;
-  const belowEma200 = i.ema200 > 0 && i.price < i.ema200;
-
-  const decision: SimpleEntry =
-    noTradeReason ? 'NO_TRADE'
-      : momentum === 'BULLISH' && volume === 'SUPPORTIVE' && fomoRisk === 'LOW' && !belowEma200 ? 'BUY'
-        : 'WAIT';
-
   const zoneTxt = rp(i.entryZoneLow) && i.entryZoneLow !== i.entryZoneHigh
     ? `${rp(i.entryZoneLow)}–${rp(i.entryZoneHigh)}`
     : rp(i.entryZoneHigh);
-  const qualityTxt = fundamental === 'GOOD' ? 'bagus' : 'cukup';
+
+  // ── PRIMARY REASON: collect every problem, ranked by ISSUE_PRIORITY, before deciding.
+  const issues: Issue[] = [];
+  const add = (key: IssueKey, noTrade: boolean, cause: string, effect: string, waitFor: string) =>
+    issues.push({ key, noTrade, cause, effect, waitFor });
+
+  const support = rp(i.support);
+  if (i.isStrongDistribution) {
+    add('RISK', true, 'ada tanda aksi jual besar', 'harga rawan turun lebih dalam', `aksi jual mereda dan harga stabil${support ? ` di atas ${support}` : ''}`);
+  } else if (i.setupInvalidated) {
+    add('RISK', true, 'harga sudah jatuh di bawah batas setup', 'rencana entry sebelumnya tidak berlaku lagi', 'harga membentuk dasar baru');
+  } else if (i.eventRisk === 'HIGH') {
+    add('RISK', true, 'ada risiko event yang tinggi', 'harga bisa bergerak liar', 'event selesai dan harga kembali stabil');
+  } else if (i.baseTradeStatus === 'NO_TRADE') {
+    add('RISK', true, 'risikonya saat ini terlalu tinggi', 'belum layak mengambil posisi', 'risiko mereda dan setup baru muncul');
+  }
+  if (fomoRisk !== 'LOW') {
+    const backToZone = zoneTxt ? `harga turun kembali ke area beli ${zoneTxt}` : 'harga turun kembali ke area beli';
+    if (fomoRisk === 'HIGH') add('FOMO', false, 'harga sudah naik terlalu jauh dari area beli', 'masuk sekarang sama dengan mengejar harga', backToZone);
+    else add('FOMO', false, 'harga mulai menjauh dari area beli', 'risiko masuk sekarang sudah kurang sepadan', backToZone);
+  }
+  if (momentum === 'BEARISH') {
+    const level = rp(i.resistance) ?? rp(i.ema50);
+    add('MOMENTUM', true, 'harga masih dalam tren turun', 'belum ada tanda harga berbalik naik',
+      level ? `harga kembali di atas ${level} dan berhenti membuat titik terendah baru` : 'harga berhenti membuat titik terendah baru');
+  } else if (momentum === 'NEUTRAL') {
+    const level = rp(i.resistance);
+    add('MOMENTUM', false, 'arah harga belum jelas', 'timing masuk belum siap', level ? `harga bertahan di atas ${level}` : 'harga mulai naik secara konsisten');
+  }
+  if (volume === 'SELLING') {
+    add('VOLUME', false, 'penjual masih menekan', 'kenaikan mudah gagal', 'tekanan jual mereda');
+  } else if (volume === 'NEUTRAL') {
+    add('VOLUME', false, 'pembeli belum ramai', 'kenaikannya belum terkonfirmasi', 'volume beli naik jelas (±1,5× rata-rata)');
+  }
+  if (fundamental === 'WEAK') {
+    add('FUNDAMENTAL', true, 'bisnisnya lemah', 'kenaikan harga rawan tidak bertahan', 'kinerja bisnisnya membaik');
+  }
+  if (i.ema200 > 0 && i.price < i.ema200) {
+    add('TREND', false, 'tren jangka panjang masih turun', 'kenaikan bisa hanya pantulan sementara', `harga kembali di atas ${rp(i.ema200)}`);
+  }
+  issues.sort((a, b) => ISSUE_PRIORITY.indexOf(a.key) - ISSUE_PRIORITY.indexOf(b.key));
+
+  // ── DECISION: no issue → BUY; any disqualifying issue → NO TRADE; otherwise WAIT.
+  const decision: SimpleEntry = issues.length === 0 ? 'BUY' : issues.some((x) => x.noTrade) ? 'NO_TRADE' : 'WAIT';
+
+  // Max 2 reasons: the primary one, plus — for a NO TRADE — the next disqualifying issue first
+  // (so weak quality is never hidden behind a timing issue), otherwise the next issue in priority.
+  const [primary, ...rest] = issues;
+  const second = decision === 'NO_TRADE' ? rest.find((x) => x.noTrade) ?? rest[0] : rest[0];
+  const top = second ? [primary, second] : primary ? [primary] : [];
 
   // ── INSIGHT (1–2 kalimat): apa yang terjadi pada harga + arahnya.
   const move = describeMove(i, volume);
@@ -160,39 +212,21 @@ export function buildSimpleEntryReview(i: SimpleEntryInput): SimpleEntryReview {
       : momentum === 'BEARISH' ? 'Arah besarnya masih turun.' : 'Arah harga belum jelas.';
   const insight = `${move} ${context}`;
 
-  // ── WHY (1 kalimat) + NEXT SETUP
+  // ── WHY (1 kalimat): hubungan kondisi → keputusan. NEXT SETUP: kebalikan dari alasan utama.
+  const qualityTxt = fundamental === 'GOOD' ? 'bagus' : 'cukup';
   let why: string;
   let nextSetup: string | null = null;
   if (decision === 'BUY') {
-    why = `Bisnis ${qualityTxt}, harga sedang naik dengan dukungan pembeli, dan masih dekat area beli${zoneTxt ? ` ${zoneTxt}` : ''}.`;
-  } else if (decision === 'NO_TRADE') {
-    why = `Jangan masuk dulu karena ${noTradeReason}.`;
-    nextSetup = noTradeNextSetup(i, fundamental, momentum);
+    why = `Bisnisnya ${qualityTxt}, harga naik dengan dukungan pembeli, dan masih dekat area beli${zoneTxt ? ` ${zoneTxt}` : ''}, jadi risiko masuk masih terkontrol.`;
   } else {
-    // Blockers in decision order: MOMENTUM → VOLUME → FOMO (+ long-term trend).
-    const blockers: string[] = [];
-    const waitFor: string[] = [];
-    if (fomoRisk !== 'LOW') {
-      waitFor.push(zoneTxt ? `harga turun kembali ke area beli ${zoneTxt}` : 'harga turun kembali ke area beli');
-    }
-    if (momentum !== 'BULLISH') {
-      blockers.push('arah naiknya belum jelas');
-      const level = rp(i.resistance);
-      waitFor.push(level ? `harga bertahan di atas ${level}` : 'harga mulai naik secara konsisten');
-    }
-    if (volume !== 'SUPPORTIVE') {
-      blockers.push(volume === 'SELLING' ? 'penjual masih menekan' : 'pembeli belum cukup ramai');
-      waitFor.push('volume beli naik jelas (±1,5× rata-rata)');
-    }
-    if (fomoRisk !== 'LOW') {
-      blockers.push(fomoRisk === 'HIGH' ? 'harga sudah naik terlalu jauh' : 'harga mulai menjauh dari area beli');
-    }
-    if (belowEma200) {
-      blockers.push('tren jangka panjang masih turun');
-      waitFor.push(`harga kembali di atas ${rp(i.ema200)}`);
-    }
-    why = `Bisnisnya ${qualityTxt}, tapi ${blockers.slice(0, 2).join(' dan ')}.`;
-    nextSetup = `Tunggu ${waitFor.slice(0, 2).join(' dan ')}.`;
+    const causes = top.map((x) => x.cause).join(' dan ');
+    const reason = `${causes}, jadi ${top[0].effect}`;
+    why = fundamental !== 'WEAK'
+      ? `Bisnisnya ${qualityTxt}, tapi ${reason}.`
+      : primary.key === 'FUNDAMENTAL' && momentum === 'BULLISH'
+        ? `Harga memang sedang naik, tapi ${reason}.`
+        : `${capitalize(reason)}.`;
+    nextSetup = `Tunggu ${top.map((x) => x.waitFor).join(', serta ')}.`;
   }
 
   return {
@@ -212,11 +246,11 @@ export function buildSimpleEntryReview(i: SimpleEntryInput): SimpleEntryReview {
 
 /** First insight sentence: today's price move and its most likely driver. */
 function describeMove(i: SimpleEntryInput, volume: SimpleVolume): string {
-  const chg = pct(i.changePct);
+  const chg = `${Math.abs(i.changePct).toFixed(1)}%`;
   if (i.changePct <= -FLAT_PCT) {
     return volume === 'SELLING' ? `Harga turun ${chg} dengan tekanan jual yang besar.` : `Harga turun ${chg} hari ini.`;
   }
-  if (i.changePct < FLAT_PCT) return `Harga cenderung datar hari ini (${chg}).`;
+  if (i.changePct < FLAT_PCT) return `Harga cenderung datar hari ini (${pct(i.changePct)}).`;
 
   const resistance = rp(i.resistance);
   if (i.catalystStatus === 'VERIFIED' && (i.moveType === 'EVENT' || i.moveType === 'REOPENING')) {
@@ -232,21 +266,6 @@ function describeMove(i: SimpleEntryInput, volume: SimpleVolume): string {
     return `Harga memantul ${chg} setelah sempat turun — belum tentu berbalik naik.`;
   }
   return `Harga naik ${chg} tanpa pemicu yang jelas.`;
-}
-
-function noTradeNextSetup(i: SimpleEntryInput, fundamental: SimpleFundamental, momentum: SimpleMomentum): string {
-  if (fundamental === 'WEAK') return 'Lewati dulu sampai kinerja bisnisnya membaik.';
-  if (momentum === 'BEARISH') {
-    const level = rp(i.resistance) ?? rp(i.ema50);
-    return level
-      ? `Tunggu harga kembali di atas ${level} dan berhenti membuat titik terendah baru.`
-      : 'Tunggu harga berhenti membuat titik terendah baru dan mulai naik.';
-  }
-  const support = rp(i.support);
-  if (i.isStrongDistribution) return `Tunggu aksi jual mereda dan harga stabil${support ? ` di atas ${support}` : ''}.`;
-  if (i.setupInvalidated) return 'Tunggu harga membentuk dasar baru sebelum mencari setup berikutnya.';
-  if (i.eventRisk === 'HIGH') return 'Tunggu event selesai dan harga kembali stabil.';
-  return 'Tunggu risiko mereda dan setup baru muncul.';
 }
 
 /** Plain-text version in the exact output format, for copy/share. */

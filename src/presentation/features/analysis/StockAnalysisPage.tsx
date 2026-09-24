@@ -3380,7 +3380,7 @@ function EquityResearchReportCardv3(props: EquityReportProps) {
 
   return (
     <SectionCard
-      title={`🚨 ${summary.ticker} — Today Move Analysis`}
+      title={`Equity Research Analysis`}
       icon={<Sparkles className="size-4" />}
       accentClass="bg-violet-600"
       headerAction={<CopyShareButton getText={() => formatTodayMoveAnalysis(summary.ticker, move)} />}
@@ -4492,21 +4492,6 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   marketRegime={marketRegime}
                 /> */}
 
-                {/* <EquityResearchReportCardv3
-                  summary={summary}
-                  bars={bars}
-                  trendEma={trendEma}
-                  indicators={indicators}
-                  supportResistance={supportResistance}
-                  fundamentalScreening={fundamentalScreening}
-                  fundamentals={fundamentals}
-                  tradingPlan={tradingPlan}
-                  volume={volume}
-                  priceAction={priceAction}
-                  newsItems={newsItems}
-                  brokerActivity={brokerActivity}
-                /> */}
-
                 <EquityResearchReportCardv4
                   summary={summary}
                   bars={bars}
@@ -4521,6 +4506,21 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   newsItems={newsItems}
                   brokerActivity={brokerActivity}
                 />
+
+                {/* <EquityResearchReportCardv3
+                  summary={summary}
+                  bars={bars}
+                  trendEma={trendEma}
+                  indicators={indicators}
+                  supportResistance={supportResistance}
+                  fundamentalScreening={fundamentalScreening}
+                  fundamentals={fundamentals}
+                  tradingPlan={tradingPlan}
+                  volume={volume}
+                  priceAction={priceAction}
+                  newsItems={newsItems}
+                  brokerActivity={brokerActivity}
+                /> */}
 
                 <div className={cn(
                   'neo-border neo-shadow-sm p-3 sm:p-4 flex items-center justify-between gap-3 rounded-xl sm:rounded-none',
