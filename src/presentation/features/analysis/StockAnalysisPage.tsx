@@ -62,7 +62,7 @@ import { classifyZoneStatus, DEFAULT_SL_PCT, DEFAULT_TP1_PCT, DEFAULT_TP2_PCT, D
 import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuitabilityResult } from '@/domain/analysis/swingSuitability';
 import { buildTenSecondReview, REVIEW_STRATEGY_LABEL } from '@/domain/analysis/tenSecondReview';
 import { BULLISH_PHASE_LABEL, BullishPhase, buildSimpleEntryReview, BuyPermission as SimpleBuyPermission, FOMO_RISK_LABEL, formatSimpleEntryReview, MOMENTUM_STATE_LABEL, MomentumState, PRICE_ACTION_LABEL, PriceActionSignal, SIMPLE_ENTRY_LABEL, SIMPLE_FUNDAMENTAL_LABEL, SIMPLE_VOLUME_LABEL, SimpleEntry, SimpleEntryReview, SimpleFundamental, SimpleVolume, TREND_STATE_LABEL, TrendState } from '@/domain/analysis/simpleEntryReview';
-import { buildEarlyBullishReview, BUYER_CLASS_LABEL, BuyerClass, EbDecision, ebDecisionLine, ENTRY_CLASS_LABEL, EntryClass, formatEarlyBullishReview, MOMENTUM_CLASS_LABEL, MomentumClass, PRICE_ACTION_CLASS_LABEL, PriceActionClass, TREND_CLASS_LABEL, TrendClass } from '@/domain/analysis/earlyBullishReview';
+import { buildEarlyBullishReview, BUYER_CLASS_LABEL, BuyerClass, EbDecision, ebDecisionLine, ENTRY_CLASS_LABEL, EntryClass, formatEarlyBullishReview, HierarchyScore, MOMENTUM_CLASS_LABEL, MomentumClass, PRICE_ACTION_CLASS_LABEL, PriceActionClass, RiskGateStatus as EbRiskGateStatus, TECHNICAL_STAGE_LABEL, TechnicalStage, TREND_CLASS_LABEL, TrendClass } from '@/domain/analysis/earlyBullishReview';
 import { applyFundamentalFilter, buildFundamentalPillars, FUNDAMENTAL_FILTER_LABEL, FundamentalFilter, FundamentalPillars, HEALTH_VERDICT_LABEL, HealthVerdict, VALUATION_VERDICT_LABEL, ValuationVerdict } from '@/domain/analysis/fundamentalPillars';
 import { buildTodayMoveAnalysis, CATALYST_STATUS_LABEL, describeClosePosition, EVIDENCE_KIND_LABEL, EvidenceKind, formatTodayMoveAnalysis, MOVE_TYPE_LABEL, MoveType, TODAY_TRADE_STATUS_LABEL, TodayMoveAnalysis, TodayTradeStatus } from '@/domain/analysis/todayMoveAnalysis';
 import { atr, atrPercent } from '@/domain/indicators/atr';
@@ -3853,8 +3853,8 @@ function EquityResearchReportCardv4(props: EquityReportProps) {
 
 // ─── Equity Research Report V5 — Analisis Teknikal Konsisten (6 komponen) ──────────
 // Trend → Momentum → Buyer/Volume → Price Action → Entry → Risk from earlyBullishReview.ts, on top of the
-// same shared review as v3/v4 (a NO TRADE there is never upgraded). BUY only on a confirmed bullish
-// transition with an active REVERSAL/BREAKOUT trigger, valid entry, FOMO not HIGH and acceptable risk.
+// same shared review as v3/v4 (a NO TRADE there is never upgraded). Decision follows the confirmation
+// hierarchy SETUP → CONFIRMATION (≥3) → RISK GATE → BUY PERMISSION; bullish signal ≠ buy permission.
 // The 3 Pilar Fundamental (fundamentalPillars.ts) are only a quality filter that can cap the decision.
 const EB_DECISION_STYLE: Record<EbDecision, { emoji: string; tone: 'green' | 'red' | 'amber'; box: string }> = {
   BUY: { emoji: '🟢', tone: 'green', box: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-400/10' },
@@ -3868,6 +3868,38 @@ const PRICE_ACTION_CLASS_TONE: Record<PriceActionClass, V4Tone> = {
   BREAKOUT_RETEST: 'green', BREAKOUT: 'green', REVERSAL: 'green', HIGHER_LOW: 'green', REJECTION: 'red', LOWER_HIGH_LOW: 'red', BREAKDOWN: 'red', NONE: 'zinc', UNKNOWN: 'zinc',
 };
 const ENTRY_CLASS_TONE: Record<EntryClass, V4Tone> = { VALID: 'green', CAUTION: 'amber', EXTENDED: 'red', UNKNOWN: 'zinc' };
+const STAGE_TONE: Record<TechnicalStage, V4Tone> = { CONFIRMED_BULLISH: 'green', EARLY_BULLISH: 'amber', WAIT: 'zinc', INVALIDATED: 'red' };
+const RISK_GATE_TONE: Record<EbRiskGateStatus, V4Tone> = { PASS: 'green', CAUTION: 'amber', BLOCK: 'red' };
+
+function HierarchyScoreList({ title, score }: { title: string; score: HierarchyScore }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">{title}</span>
+        <Pill tone={score.valid ? 'green' : score.score >= score.required ? 'amber' : 'zinc'}>{score.score}/{score.max}</Pill>
+        <span className="text-[11px] text-zinc-500 dark:text-zinc-400">min {score.required}</span>
+      </div>
+      {[true, false].map((ok) => {
+        const items = score.checks.filter((c) => c.ok === ok);
+        if (items.length === 0) return null;
+        return (
+          <div key={String(ok)} className="mt-1">
+            <p className={cn('text-[11px] font-bold uppercase', ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+              {ok ? '✓ Terpenuhi' : '✗ Masih kurang'}
+            </p>
+            <ul className="space-y-0.5">
+              {items.map((c) => (
+                <li key={c.label} className={cn('text-sm', ok ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-500 dark:text-zinc-400')}>
+                  {c.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function PillarHeading({ n, title, verdict, tone }: { n: string; title: string; verdict?: string; tone?: V4Tone }) {
   return (
@@ -3962,6 +3994,12 @@ function EquityResearchReportCardv5(props: EquityReportProps) {
   const { summary, bars, trendEma, indicators, priceAction, volume, fundamentals, fundamentalScreening, tradingPlan } = props;
   const { review, move } = useEquityReportReview(props);
 
+  // Action plan comes from the LONG scenario of the shared trading plan — never recomputed here.
+  const price = summary.lastClose;
+  const longPlan = tradingPlan.bullish.direction === 'LONG' ? tradingPlan.bullish : null;
+  const stopLoss = longPlan && longPlan.sl > 0 ? longPlan.sl : null;
+  const target = longPlan && longPlan.tp1 > price ? longPlan.tp1 : null;
+
   const technical = useMemo(() => buildEarlyBullishReview({
     bars: bars ?? [],
     price: summary.lastClose,
@@ -3989,7 +4027,9 @@ function EquityResearchReportCardv5(props: EquityReportProps) {
     isStrongDistribution: review.isStrongDistribution,
     setupInvalidated: review.setupInvalidated,
     baseTradeStatus: move.tradeStatus,
-  }), [summary, bars, move, review, trendEma, indicators, priceAction, volume]);
+    stopLoss,
+    target,
+  }), [summary, bars, move, review, trendEma, indicators, priceAction, volume, stopLoss, target]);
 
   const pillars = useMemo(
     () => buildFundamentalPillars(summary, fundamentals, fundamentalScreening),
@@ -3997,17 +4037,12 @@ function EquityResearchReportCardv5(props: EquityReportProps) {
   );
   const eb = useMemo(() => applyFundamentalFilter(technical, pillars), [technical, pillars]);
 
-  const price = summary.lastClose;
   const style = EB_DECISION_STYLE[eb.decision];
   const positive = move.changePct >= 0;
   const zoneTxt = review.entryZoneLow > 0 && review.entryZoneLow !== review.entryZoneHigh
     ? `${fmtRp(review.entryZoneLow)} – ${fmtRp(review.entryZoneHigh)}`
     : review.entryZoneHigh > 0 ? fmtRp(review.entryZoneHigh) : '–';
 
-  // Action plan comes from the LONG scenario of the shared trading plan — never recomputed here.
-  const longPlan = tradingPlan.bullish.direction === 'LONG' ? tradingPlan.bullish : null;
-  const stopLoss = longPlan && longPlan.sl > 0 ? longPlan.sl : null;
-  const target = longPlan && longPlan.tp1 > price ? longPlan.tp1 : null;
   const riskPct = stopLoss != null && price > 0 ? ((price - stopLoss) / price) * 100 : null;
   const planShown = eb.decision !== 'NO_TRADE';
   const planLines = planShown ? [
@@ -4071,6 +4106,46 @@ function EquityResearchReportCardv5(props: EquityReportProps) {
               EXPLOSIVE MOVE — kenaikan besar hari ini tidak otomatis berarti entry masih layak.
             </p>
           )}
+        </div>
+
+        {/* Confirmation hierarchy: Setup → Confirmation → Risk Gate → Buy Permission */}
+        <div className="neo-border px-4 py-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">🪜 Confirmation Hierarchy</span>
+            <Pill tone={STAGE_TONE[eb.stage]}>Stage: {TECHNICAL_STAGE_LABEL[eb.stage]}</Pill>
+            <Pill tone={eb.buyPermission ? 'green' : 'red'}>Buy Permission: {eb.buyPermission ? 'YES' : 'NO'}</Pill>
+            <Pill tone={RISK_GATE_TONE[eb.riskGate.status]}>Risk Gate: {eb.riskGate.status}</Pill>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <HierarchyScoreList title="Setup Score" score={eb.setup} />
+            <HierarchyScoreList title="Confirmation Score" score={eb.confirmation} />
+          </div>
+          {(eb.riskGate.block.length > 0 || eb.riskGate.caution.length > 0) && (
+            <p className="text-sm text-zinc-700 dark:text-zinc-300">
+              <span className="font-bold">Risk Gate:</span>{' '}
+              {[...eb.riskGate.block.map((r) => `⛔ ${r}`), ...eb.riskGate.caution.map((r) => `⚠️ ${r}`)].join(' · ')}
+            </p>
+          )}
+          <ul className="space-y-1.5 text-sm">
+            <MoveRow label="Invalidation">
+              <span className="font-mono font-semibold text-rose-600 dark:text-rose-400">{eb.invalidationLevel != null ? fmtRp(eb.invalidationLevel) : '–'}</span>
+              {eb.riskRewardRatio != null && <span className="text-xs text-zinc-500 dark:text-zinc-400">R/R 1:{eb.riskRewardRatio.toFixed(1)}</span>}
+            </MoveRow>
+          </ul>
+          {eb.missingTriggers.length > 0 && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300 mb-1">Trigger yang masih kurang</p>
+              <ul className="space-y-1">
+                {eb.missingTriggers.map((t) => (
+                  <li key={t} className="flex items-start gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+                    <span className="mt-1.5 size-1 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">Bullish signal ≠ Buy Permission.</p>
         </div>
 
         {/* 6 komponen */}
@@ -4988,7 +5063,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   marketRegime={marketRegime}
                 /> */}
 
-                <EquityResearchReportCardv5
+                {/* <EquityResearchReportCardv3
                   summary={summary}
                   bars={bars}
                   trendEma={trendEma}
@@ -5001,7 +5076,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   priceAction={priceAction}
                   newsItems={newsItems}
                   brokerActivity={brokerActivity}
-                />
+                /> */}
 
                 {/* <EquityResearchReportCardv4
                   summary={summary}
@@ -5018,7 +5093,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   brokerActivity={brokerActivity}
                 /> */}
 
-                {/* <EquityResearchReportCardv3
+                <EquityResearchReportCardv5
                   summary={summary}
                   bars={bars}
                   trendEma={trendEma}
@@ -5031,7 +5106,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   priceAction={priceAction}
                   newsItems={newsItems}
                   brokerActivity={brokerActivity}
-                /> */}
+                />
 
                 <div className={cn(
                   'neo-border neo-shadow-sm p-3 sm:p-4 flex items-center justify-between gap-3 rounded-xl sm:rounded-none',

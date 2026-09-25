@@ -227,6 +227,8 @@ export function applyFundamentalFilter(r: EarlyBullishReview, p: FundamentalPill
       ...r,
       decision: 'NO_TRADE',
       tag: 'FUNDAMENTAL',
+      buyPermission: false,
+      missingTriggers: [...r.missingTriggers, 'Fundamental: kinerja keuangan membaik (filter fundamental FAIL)'],
       why: `${p.filterReason} (teknikal: ${r.why.charAt(0).toLowerCase()}${r.why.slice(1)})`,
       buyTrigger: `Tunggu perbaikan kinerja keuangan (laba & margin kembali positif), baru evaluasi trigger teknikal: ${r.buyTrigger.charAt(0).toLowerCase()}${r.buyTrigger.slice(1)}`,
     };

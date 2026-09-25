@@ -14,10 +14,17 @@
  * Rules: missing data → UNKNOWN (EMA200 is never mentioned without ≥ 200 bars), oversold is not a BUY
  * signal, fundamental is only a quality filter (applied by the caller), and no single indicator is a BUY.
  *
- * BULLISH TRANSITION = trend improving + momentum improving + buyers supportive + price action improving.
- * BUY only if: transition AND a BUY trigger is active AND entry VALID AND FOMO not HIGH AND risk ≠ HIGH.
- * BUY triggers: REVERSAL (support holds + higher low/reversal + buyers in) or BREAKOUT (resistance
- * broken + volume + price holds/retests). Every WAIT states the concrete trigger that turns it into BUY.
+ * DECISION = CONFIRMATION HIERARCHY — "Bullish signal ≠ Buy Permission":
+ *   1. SETUP         price > EMA20 + higher low/reversal + RSI > 50 or momentum improving; all 3 →
+ *                    EARLY BULLISH (never BUY by itself).
+ *   2. CONFIRMATION  ≥ 3/6 of: held above EMA20 · valid higher low · MACD cross/histogram improving ·
+ *                    RSI > 50 · volume ≥ 1.5× avg · breakout with a strong close → CONFIRMED BULLISH.
+ *   3. RISK GATE     PASS / CAUTION / BLOCK. BLOCK (below EMA200, MACD bearish, high event risk, weak
+ *                    volume, too far from EMA20, …) downgrades CONFIRMED to EARLY BULLISH.
+ *   4. BUY PERMISSION only when confirmed + gate PASS + entry VALID (no chasing) + a clear
+ *                    invalidation level + valid stop loss and risk/reward.
+ *   5. INVALIDATION  close under stop loss/support → INVALIDATED, BUY cancelled, status WAIT.
+ * Trigger types (REVERSAL / BREAKOUT) are still reported but no longer grant BUY on their own.
  *
  * Reuses the bar-based change detection from simpleEntryReview.ts and never recomputes Entry/SL/TP,
  * Risk Gate or catalysts — a NO TRADE from the shared review is never upgraded here.
@@ -37,8 +44,30 @@ export type PriceActionClass =
 export type EntryClass = 'VALID' | 'CAUTION' | 'EXTENDED' | 'UNKNOWN';
 export type EbDecision = 'BUY' | 'WAIT' | 'NO_TRADE';
 /** Second half of the decision line, e.g. "WAIT — EXTENDED". */
-export type EbDecisionTag = 'EARLY_BULLISH' | 'BULLISH' | 'STABILIZING' | 'EXTENDED' | 'BEARISH' | 'EVENT_RISK' | 'HIGH_RISK' | 'FUNDAMENTAL' | 'DATA_KURANG';
+export type EbDecisionTag =
+  | 'CONFIRMED_BULLISH' | 'EARLY_BULLISH' | 'BULLISH' | 'STABILIZING' | 'EXTENDED' | 'BEARISH' | 'INVALIDATED'
+  | 'EVENT_RISK' | 'HIGH_RISK' | 'FUNDAMENTAL' | 'DATA_KURANG';
 export type BuyTriggerType = 'REVERSAL' | 'BREAKOUT';
+export type TechnicalStage = 'EARLY_BULLISH' | 'CONFIRMED_BULLISH' | 'WAIT' | 'INVALIDATED';
+export type RiskGateStatus = 'PASS' | 'CAUTION' | 'BLOCK';
+
+export const TECHNICAL_STAGE_LABEL: Record<TechnicalStage, string> = {
+  EARLY_BULLISH: 'EARLY BULLISH', CONFIRMED_BULLISH: 'CONFIRMED BULLISH', WAIT: 'WAIT', INVALIDATED: 'INVALIDATED',
+};
+
+export interface HierarchyCheck {
+  label: string;
+  ok: boolean;
+}
+
+export interface HierarchyScore {
+  score: number;
+  max: number;
+  /** Minimum score needed for this level to count as valid. */
+  required: number;
+  valid: boolean;
+  checks: HierarchyCheck[];
+}
 
 export const TREND_CLASS_LABEL: Record<TrendClass, string> = {
   BEARISH: 'BEARISH', STABILIZING: 'STABILIZING', EARLY_BULLISH: 'EARLY BULLISH', BULLISH: 'BULLISH', EXTENDED: 'EXTENDED', UNKNOWN: 'UNKNOWN',
@@ -56,7 +85,7 @@ export const PRICE_ACTION_CLASS_LABEL: Record<PriceActionClass, string> = {
 export const ENTRY_CLASS_LABEL: Record<EntryClass, string> = { VALID: 'VALID', CAUTION: 'CAUTION', EXTENDED: 'EXTENDED', UNKNOWN: 'UNKNOWN' };
 export const EB_DECISION_LABEL: Record<EbDecision, string> = { BUY: 'BUY', WAIT: 'WAIT', NO_TRADE: 'NO TRADE' };
 export const EB_DECISION_TAG_LABEL: Record<EbDecisionTag, string> = {
-  EARLY_BULLISH: 'EARLY BULLISH', BULLISH: 'BULLISH', STABILIZING: 'STABILIZING', EXTENDED: 'EXTENDED', BEARISH: 'BEARISH',
+  CONFIRMED_BULLISH: 'CONFIRMED BULLISH', INVALIDATED: 'INVALIDATED', EARLY_BULLISH: 'EARLY BULLISH', BULLISH: 'BULLISH', STABILIZING: 'STABILIZING', EXTENDED: 'EXTENDED', BEARISH: 'BEARISH',
   EVENT_RISK: 'EVENT RISK', HIGH_RISK: 'RISIKO TINGGI', FUNDAMENTAL: 'FUNDAMENTAL LEMAH', DATA_KURANG: 'DATA KURANG',
 };
 
@@ -89,6 +118,10 @@ export interface EarlyBullishInput {
   setupInvalidated: boolean;
   /** Trade status from todayMoveAnalysis.ts — a NO_TRADE there is never upgraded. */
   baseTradeStatus: TodayTradeStatus;
+  /** LONG stop loss from the shared trading plan (null when unavailable). */
+  stopLoss: number | null;
+  /** LONG target 1 from the shared trading plan (null when unavailable). */
+  target: number | null;
 }
 
 export interface Component<T extends string> {
@@ -119,6 +152,17 @@ export interface EarlyBullishReview {
   entryDistancePct: number | null;
   /** EMA200 is only used/mentioned with ≥ 200 bars. */
   hasEma200: boolean;
+  // ── Confirmation hierarchy
+  stage: TechnicalStage;
+  buyPermission: boolean;
+  setup: HierarchyScore;
+  confirmation: HierarchyScore;
+  riskGate: { status: RiskGateStatus; block: string[]; caution: string[] };
+  /** Conditions still missing before BUY permission can be given. */
+  missingTriggers: string[];
+  /** Close below this level cancels the setup (stop loss, else support). */
+  invalidationLevel: number | null;
+  riskRewardRatio: number | null;
 }
 
 /** Entry distance thresholds above the entry reference. */
@@ -133,6 +177,15 @@ const BUYER_RVOL = 1.5;
 const SUPPORT_HOLD_TOLERANCE_PCT = 2;
 /** Price within this % of a level counts as "near" for choosing the trigger path. */
 const NEAR_LEVEL_PCT = 5;
+/** Confirmation hierarchy thresholds. */
+const CONFIRMATION_REQUIRED = 3;
+const HELD_ABOVE_EMA20_BARS = 3;
+const WEAK_VOLUME_RVOL = 0.7;
+const EMA20_CAUTION_PCT = 5;
+const EMA20_BLOCK_PCT = 8;
+const STRONG_CLOSE_POSITION = 0.6;
+const MIN_RISK_REWARD = 1.5;
+const MAX_STOP_LOSS_PCT = 8;
 
 const rp = (n: number | null | undefined) => (n != null && n > 0 ? formatRupiah(Math.round(n)) : null);
 const x2 = (n: number) => `${n.toFixed(2)}×`;
@@ -302,29 +355,140 @@ export function buildEarlyBullishReview(i: EarlyBullishInput): EarlyBullishRevie
   const paImproving = ['REVERSAL', 'HIGHER_LOW', 'BREAKOUT', 'BREAKOUT_RETEST'].includes(priceAction.status);
   const bullishTransition = trendImproving && momentumImproving && buyerIn && paImproving;
 
-  // ── DECISION
+  const volTarget = i.volumeMa20 > 0 ? ` (≥ ${formatCompact(Math.round(i.volumeMa20 * BUYER_RVOL))} lbr)` : '';
+
+  // ── CONFIRMATION HIERARCHY ────────────────────────────────────────────────
+  // 1. SETUP / EARLY BULLISH — all 3 conditions required; a valid setup is never a BUY by itself.
+  const rsiAbove50 = hasRsi && i.rsi14 > 50;
+  const higherLowOrReversal = ch.higherLowStructure || i.higherLows || (bullishCandle && nearSupport) ||
+    priceAction.status === 'REVERSAL' || priceAction.status === 'HIGHER_LOW' || priceAction.status === 'BREAKOUT_RETEST';
+  const setupChecks: HierarchyCheck[] = [
+    { label: `Harga > EMA20${ema20Txt ? ` ${ema20Txt}` : ''}`, ok: aboveEma20 },
+    { label: 'Higher low / bullish reversal', ok: higherLowOrReversal },
+    { label: `RSI > 50 atau momentum membaik${hasRsi ? ` (RSI ${i.rsi14.toFixed(0)})` : ''}`, ok: rsiAbove50 || momentum.status === 'MEMBAIK' },
+  ];
+  const setupScore = setupChecks.filter((c) => c.ok).length;
+  const setup: HierarchyScore = {
+    score: setupScore, max: setupChecks.length, required: setupChecks.length,
+    valid: setupScore === setupChecks.length, checks: setupChecks,
+  };
+
+  // 2. CONFIRMATION — at least 3 independent confirmations on top of a valid setup.
+  const recentCloses = i.bars.slice(-HELD_ABOVE_EMA20_BARS).map((b) => b.close);
+  const heldAboveEma20 = hasEmas && recentCloses.length === HELD_ABOVE_EMA20_BARS && recentCloses.every((c) => c > i.ema20);
+  const validHigherLow = ch.available && (ch.higherLowStructure || i.higherLows) && ch.stoppedFalling && !ch.lowerHighLowerLow;
+  const macdImproving = hasMacd && (i.macdSignalType === 'bullish_crossover' || ch.macdTurnedUp);
+  const volumeConfirmed = (i.rvol ?? 0) >= BUYER_RVOL;
+  const strongBreakout = priceAction.status === 'BREAKOUT_RETEST' ||
+    (priceAction.status === 'BREAKOUT' && (i.closePosition ?? 0) >= STRONG_CLOSE_POSITION);
+  const confirmationChecks: HierarchyCheck[] = [
+    { label: `Bertahan di atas EMA20 (${HELD_ABOVE_EMA20_BARS} close terakhir)`, ok: heldAboveEma20 },
+    { label: 'Higher low valid', ok: validHigherLow },
+    { label: 'MACD bullish cross / histogram membaik', ok: macdImproving },
+    { label: `RSI > 50${hasRsi ? ` (${i.rsi14.toFixed(0)})` : ''}`, ok: rsiAbove50 },
+    { label: `Volume ≥ ${BUYER_RVOL}× rata-rata${i.rvol != null ? ` (${x2(i.rvol)})` : ''}${volTarget}`, ok: volumeConfirmed },
+    { label: `Breakout resistance${resistanceTxt ? ` ${resistanceTxt}` : ''} dengan close kuat`, ok: strongBreakout },
+  ];
+  const confirmationScore = confirmationChecks.filter((c) => c.ok).length;
+  const confirmation: HierarchyScore = {
+    score: confirmationScore, max: confirmationChecks.length, required: CONFIRMATION_REQUIRED,
+    valid: setup.valid && confirmationScore >= CONFIRMATION_REQUIRED, checks: confirmationChecks,
+  };
+
+  // 4. INVALIDATION — close under the stop loss / nearest support cancels any earlier bullish setup.
+  const stopLoss = i.stopLoss != null && i.stopLoss > 0 ? i.stopLoss : null;
+  const stopBroken = i.setupInvalidated || (stopLoss != null && i.price <= stopLoss);
+  const supportBroken = i.support != null && i.support > 0 && i.price < i.support;
+  const invalidated = stopBroken || supportBroken;
+  const brokenLevel = stopBroken ? stopLoss : supportBroken ? i.support : null;
+  const slValid = stopLoss != null && stopLoss < i.price;
+  const invalidationLevel = invalidated ? brokenLevel
+    : slValid ? stopLoss : supportLevel != null && supportLevel < i.price ? supportLevel : null;
+  const stopPct = slValid ? ((i.price - stopLoss) / i.price) * 100 : null;
+  const riskRewardRatio = slValid && i.target != null && i.target > i.price ? (i.target - i.price) / (i.price - stopLoss) : null;
+
+  // 5. RISK GATE — only PASS allows BUY; CAUTION and BLOCK both withhold permission.
+  // Unknown EMA200 (history < 200 bars) is reported in missingData, not as a gate reason — otherwise
+  // the default 6-month history would make BUY impossible.
+  const block: string[] = [];
+  const caution: string[] = [];
+  if (hasEma200 && i.price < i.ema200) block.push(`harga di bawah EMA200 ${ema200Txt}`);
+  if (hasMacd && i.macdValue < i.macdSignal) block.push('MACD masih bearish (di bawah signal)');
+  if (i.eventRisk === 'HIGH') block.push('event risk tinggi'); else if (i.eventRisk === 'MEDIUM') caution.push('ada event risk');
+  if (i.rvol != null && i.rvol < WEAK_VOLUME_RVOL) block.push(`volume lemah (${x2(i.rvol)} rata-rata)`);
+  if (distEma20 != null && distEma20 > EMA20_BLOCK_PCT) block.push(`harga terlalu jauh dari EMA20 (+${distEma20.toFixed(1)}%)`);
+  else if (stretched || fomo === 'HIGH') block.push('harga sudah extended / rawan chasing');
+  else if (distEma20 != null && distEma20 > EMA20_CAUTION_PCT) caution.push(`harga mulai menjauh dari EMA20 (+${distEma20.toFixed(1)}%)`);
+  if (i.isStrongDistribution) block.push('distribusi kuat');
+  if (buyer.status === 'SELLER_DOMINAN') block.push('seller dominan');
+  if (priceAction.status === 'REJECTION') block.push('rejection di area resistance');
+  if (i.baseTradeStatus === 'NO_TRADE') block.push('Risk Gate utama menolak (NO TRADE)');
+  if (i.trendRisk === 'HIGH') block.push('risiko tren utama tinggi'); else if (i.trendRisk === 'MEDIUM') caution.push('tren utama belum mendukung');
+  if (fomo === 'MEDIUM') caution.push('FOMO sedang');
+  if (coreMissing.length > 0) caution.push(`data tidak lengkap: ${coreMissing.join(', ')}`);
+  const riskGate = { status: (block.length > 0 ? 'BLOCK' : caution.length > 0 ? 'CAUTION' : 'PASS') as RiskGateStatus, block, caution };
+
+  // Technical stage — a BLOCK gate downgrades CONFIRMED to EARLY BULLISH; a broken structure to WAIT.
   const structureBroken = priceAction.status === 'BREAKDOWN' || priceAction.status === 'LOWER_HIGH_LOW' ||
     i.isStrongDistribution || i.setupInvalidated || (trend.status === 'BEARISH' && !bullishTransition);
+  let stage: TechnicalStage = invalidated ? 'INVALIDATED'
+    : structureBroken ? 'WAIT'
+      : confirmation.valid ? 'CONFIRMED_BULLISH'
+        : setup.valid ? 'EARLY_BULLISH' : 'WAIT';
+  if (stage === 'CONFIRMED_BULLISH' && riskGate.status === 'BLOCK') stage = 'EARLY_BULLISH';
+
+  // 3. BUY PERMISSION — confirmed + gate PASS + no chasing + clear invalidation + valid SL & R/R.
+  const permissionGaps: string[] = [];
+  if (entry.status !== 'VALID') {
+    permissionGaps.push(entry.status === 'UNKNOWN' ? 'area entry belum jelas'
+      : `harga kembali dekat ${refTxt} (entry ${ENTRY_CLASS_LABEL[entry.status]} — jangan kejar)`);
+  }
+  if (!slValid) permissionGaps.push('stop loss / invalidasi belum jelas');
+  else if (stopPct != null && stopPct > MAX_STOP_LOSS_PCT) permissionGaps.push(`stop loss terlalu lebar (${stopPct.toFixed(1)}% > ${MAX_STOP_LOSS_PCT}%)`);
+  if (riskRewardRatio == null) permissionGaps.push('target / risk-reward belum tersedia');
+  else if (riskRewardRatio < MIN_RISK_REWARD) permissionGaps.push(`risk/reward 1:${riskRewardRatio.toFixed(1)} < 1:${MIN_RISK_REWARD}`);
+  const buyPermission = stage === 'CONFIRMED_BULLISH' && riskGate.status === 'PASS' && permissionGaps.length === 0;
+
+  // Triggers still missing before BUY permission.
+  const missingTriggers: string[] = [];
+  if (invalidated) {
+    missingTriggers.push(`Close kembali di atas ${rp(brokenLevel) ?? 'level invalidasi'} dan bentuk setup baru`);
+  } else if (!buyPermission) {
+    if (!setup.valid) setup.checks.filter((c) => !c.ok).forEach((c) => missingTriggers.push(`Setup: ${c.label}`));
+    const need = Math.max(0, CONFIRMATION_REQUIRED - confirmation.score);
+    if (need > 0) {
+      const unmet = confirmation.checks.filter((c) => !c.ok).map((c) => c.label);
+      missingTriggers.push(`Konfirmasi: butuh ${need} lagi dari — ${unmet.join(' · ')}`);
+    }
+    block.forEach((r) => missingTriggers.push(`Risk Gate (BLOCK): ${r}`));
+    caution.forEach((r) => missingTriggers.push(`Risk Gate (CAUTION): ${r}`));
+    permissionGaps.forEach((g) => missingTriggers.push(`Buy permission: ${g}`));
+  }
+
+  // ── DECISION (legacy BUY / WAIT / NO TRADE line, driven by the hierarchy above)
   let decision: EbDecision;
   let tag: EbDecisionTag;
+  const isExtended = trend.status === 'EXTENDED' || entry.status === 'EXTENDED' || fomo === 'HIGH';
   if (i.eventRisk === 'HIGH') {
     decision = 'NO_TRADE'; tag = 'EVENT_RISK';
+  } else if (invalidated) {
+    // Previous BUY is cancelled → WAIT (a NO TRADE from the shared review is never upgraded).
+    decision = i.baseTradeStatus === 'NO_TRADE' ? 'NO_TRADE' : 'WAIT'; tag = 'INVALIDATED';
   } else if (structureBroken) {
     decision = 'NO_TRADE'; tag = 'BEARISH';
   } else if (i.baseTradeStatus === 'NO_TRADE') {
     decision = 'NO_TRADE'; tag = 'HIGH_RISK';
-  } else if (trend.status === 'EXTENDED' || entry.status === 'EXTENDED' || fomo === 'HIGH') {
-    decision = 'WAIT'; tag = 'EXTENDED';
-  } else if (bullishTransition) {
-    tag = 'EARLY_BULLISH';
-    decision = triggerType != null && entry.status === 'VALID' && risk.level !== 'HIGH' ? 'BUY' : 'WAIT';
+  } else if (buyPermission) {
+    decision = 'BUY'; tag = 'CONFIRMED_BULLISH';
   } else {
     decision = 'WAIT';
-    tag = trend.status === 'UNKNOWN' ? 'DATA_KURANG' : trend.status === 'BULLISH' ? 'BULLISH' : trend.status === 'EARLY_BULLISH' ? 'EARLY_BULLISH' : 'STABILIZING';
+    tag = isExtended ? 'EXTENDED'
+      : stage === 'CONFIRMED_BULLISH' ? 'CONFIRMED_BULLISH'
+        : stage === 'EARLY_BULLISH' ? 'EARLY_BULLISH'
+          : trend.status === 'UNKNOWN' ? 'DATA_KURANG' : trend.status === 'BULLISH' ? 'BULLISH' : 'STABILIZING';
   }
 
-  // ── WHY + BUY TRIGGER text
-  const volTarget = i.volumeMa20 > 0 ? ` (≥ ${formatCompact(Math.round(i.volumeMa20 * BUYER_RVOL))} lbr)` : '';
+  // ── WHY (max 2–3 sentences) + BUY TRIGGER text
   const reversalPath = `REVERSAL — support ${supportTxt ?? 'terdekat'} bertahan, muncul higher low/candle reversal, dan volume beli ≥${BUYER_RVOL}× rata-rata${volTarget}`;
   const breakoutPath = `BREAKOUT — close di atas resistance ${resistanceTxt ?? 'terdekat'} dengan volume ≥${BUYER_RVOL}× rata-rata${volTarget}, lalu bertahan/retest di atasnya`;
   const nearResistance = i.resistance != null && i.price >= i.resistance * (1 - NEAR_LEVEL_PCT / 100) && i.price < i.resistance;
@@ -334,42 +498,48 @@ export function buildEarlyBullishReview(i: EarlyBullishInput): EarlyBullishRevie
   if (momentum.status === 'NETRAL' || momentum.status === 'MELEMAH') prereq.push('MACD cross-up di atas signal atau RSI naik menembus 50');
   if (entry.status === 'CAUTION') prereq.push(`harga kembali dekat area entry ${rp(entryRef) ?? ''}`.trim());
   const pathTxt = paths.length > 1 ? `salah satu trigger: (1) ${paths[0]}; (2) ${paths[1]}` : `trigger ${paths[0]}`;
+  const scores = `setup ${setup.score}/${setup.max}, konfirmasi ${confirmation.score}/${confirmation.max}`;
+  const gateTxt = riskGate.status === 'PASS' ? 'Risk Gate PASS'
+    : `Risk Gate ${riskGate.status} (${(riskGate.status === 'BLOCK' ? block : caution).slice(0, 2).join(', ')})`;
 
   let why: string;
   let buyTrigger: string;
   if (decision === 'BUY') {
-    why = `Transisi bullish terkonfirmasi (tren ${TREND_CLASS_LABEL[trend.status].toLowerCase()}, momentum ${MOMENTUM_CLASS_LABEL[momentum.status].toLowerCase()}, buyer dominan, ${PRICE_ACTION_CLASS_LABEL[priceAction.status].toLowerCase()}), entry masih valid dan risiko ${risk.level.toLowerCase()}.`;
+    why = `Setup valid dan terkonfirmasi (${scores}). ${gateTxt}, entry masih dekat area entry, invalidasi ${rp(invalidationLevel) ?? '–'} dengan R/R 1:${(riskRewardRatio ?? 0).toFixed(1)}.`;
     buyTrigger = triggerType === 'BREAKOUT'
-      ? `Trigger aktif: BREAKOUT — ${rp(breakoutRef) ?? 'resistance'} ditembus dengan volume dan bertahan. Batal jika close kembali di bawah ${rp(breakoutRef) ?? 'level breakout'}.`
-      : `Trigger aktif: REVERSAL — support ${supportTxt ?? ''} bertahan + ${priceAction.status === 'REVERSAL' ? 'candle reversal' : 'higher low'} + buyer masuk. Batal jika close di bawah ${supportTxt ?? 'support'}.`;
+      ? `Trigger aktif: BREAKOUT — ${rp(breakoutRef) ?? 'resistance'} ditembus dengan volume dan bertahan. Batal jika close di bawah ${rp(invalidationLevel) ?? 'level invalidasi'}.`
+      : `Konfirmasi aktif: ${confirmation.checks.filter((c) => c.ok).map((c) => c.label).join(', ')}. Batal jika close di bawah ${rp(invalidationLevel) ?? 'level invalidasi'}.`;
   } else if (tag === 'EVENT_RISK') {
-    why = 'Ada event berisiko tinggi — harga bisa bergerak liar tanpa pola teknikal.';
+    why = 'Ada event berisiko tinggi — harga bisa bergerak liar tanpa pola teknikal. Tidak ada buy permission sampai event selesai.';
     buyTrigger = `Tunggu event selesai dan harga stabil, lalu ${pathTxt}.`;
+  } else if (tag === 'INVALIDATED') {
+    const levelTxt = [stopBroken ? 'stop loss' : 'support', rp(brokenLevel)].filter(Boolean).join(' ');
+    why = `Previous bullish setup invalidated. Harga close di bawah ${levelTxt} — sinyal BUY sebelumnya dibatalkan, status kembali WAIT.`;
+    buyTrigger = `Tunggu harga close kembali di atas ${rp(brokenLevel) ?? 'level invalidasi'}${ema20Txt ? ` / EMA20 ${ema20Txt}` : ''}, bentuk higher low baru, lalu kumpulkan ≥${CONFIRMATION_REQUIRED} konfirmasi.`;
   } else if (tag === 'BEARISH') {
     why = priceAction.status === 'BREAKDOWN' || priceAction.status === 'LOWER_HIGH_LOW'
       ? `Struktur harga rusak (${PRICE_ACTION_CLASS_LABEL[priceAction.status].toLowerCase()}).`
-      : i.isStrongDistribution ? 'Distribusi kuat — penjual masih menguasai.'
-        : i.setupInvalidated ? 'Harga sudah menembus batas setup.' : 'Tren masih bearish tanpa tanda transisi.';
+      : i.isStrongDistribution ? 'Distribusi kuat — penjual masih menguasai.' : 'Tren masih bearish tanpa tanda transisi.';
     buyTrigger = `Tunggu harga berhenti membuat lower low dan close di atas EMA20${ema20Txt ? ` ${ema20Txt}` : ''}, lalu ${pathTxt}.`;
   } else if (tag === 'HIGH_RISK') {
     why = 'Risk Gate menolak setup ini — risiko terlalu tinggi untuk entry.';
     buyTrigger = `Tunggu risiko mereda, lalu ${pathTxt}.`;
   } else if (tag === 'EXTENDED') {
-    why = `Harga sudah naik terlalu jauh${entryDistancePct != null && entryDistancePct > 0 ? ` (${entryDistancePct.toFixed(0)}% dari ${refTxt})` : ''} — entry sekarang sama dengan mengejar harga.`;
+    why = `Harga sudah naik terlalu jauh${entryDistancePct != null && entryDistancePct > 0 ? ` (${entryDistancePct.toFixed(0)}% dari ${refTxt})` : ''} — entry sekarang sama dengan mengejar harga. Stage ${TECHNICAL_STAGE_LABEL[stage]} (${scores}), buy permission belum diberikan.`;
     buyTrigger = `Tunggu pullback ke area ${rp(i.entryZoneHigh) ?? supportTxt ?? 'entry'}${ema20Txt ? ` / EMA20 ${ema20Txt}` : ''} yang bertahan, lalu ${reversalPath}.`;
   } else {
-    const missing: string[] = [];
-    if (!trendImproving) missing.push(`tren ${TREND_CLASS_LABEL[trend.status].toLowerCase()}`);
-    if (!momentumImproving) missing.push(`momentum ${MOMENTUM_CLASS_LABEL[momentum.status].toLowerCase()}`);
-    if (!buyerIn) missing.push('buyer belum dominan');
-    if (!paImproving) missing.push('price action belum membaik');
-    if (bullishTransition && triggerType == null) missing.push('trigger belum aktif');
-    if (bullishTransition && entry.status !== 'VALID') missing.push(`entry ${ENTRY_CLASS_LABEL[entry.status].toLowerCase()}`);
-    if (bullishTransition && risk.level === 'HIGH') missing.push('risiko tinggi');
-    why = bullishTransition
-      ? `Transisi bullish terbentuk, tapi ${missing.join(', ')}.`
-      : `Belum ada transisi bullish: ${missing.join(', ')}.`;
-    buyTrigger = `${prereq.length > 0 ? `${cap(prereq.join(', '))}, lalu ` : ''}${prereq.length > 0 ? pathTxt : cap(pathTxt)}.`;
+    if (stage === 'CONFIRMED_BULLISH') {
+      const gaps = [...(riskGate.status !== 'PASS' ? [gateTxt] : []), ...permissionGaps].slice(0, 2);
+      why = `Setup terkonfirmasi (${scores}), tapi buy permission belum diberikan: ${gaps.join(', ')}. Bullish signal ≠ buy permission.`;
+    } else if (stage === 'EARLY_BULLISH') {
+      why = confirmation.score >= CONFIRMATION_REQUIRED
+        ? `Setup early bullish dengan konfirmasi cukup (${scores}), tapi ${gateTxt}. Bullish signal ≠ buy permission.`
+        : `Setup early bullish terbentuk (${scores}), tapi konfirmasi belum cukup (butuh ≥${CONFIRMATION_REQUIRED}). Bullish signal ≠ buy permission.`;
+    } else {
+      const unmet = setup.checks.filter((c) => !c.ok).map((c) => c.label.toLowerCase());
+      why = `Setup belum valid (${scores})${unmet.length ? `: kurang ${unmet.slice(0, 3).join(', ')}` : ''}.`;
+    }
+    buyTrigger = `${prereq.length > 0 ? `${cap(prereq.join(', '))}, lalu ` : ''}${prereq.length > 0 ? pathTxt : cap(pathTxt)}; BUY baru diizinkan setelah ≥${CONFIRMATION_REQUIRED} konfirmasi dan Risk Gate tidak BLOCK.`;
   }
 
   return {
@@ -390,6 +560,14 @@ export function buildEarlyBullishReview(i: EarlyBullishInput): EarlyBullishRevie
     missingData,
     entryDistancePct,
     hasEma200,
+    stage,
+    buyPermission: decision === 'BUY',
+    setup,
+    confirmation,
+    riskGate,
+    missingTriggers,
+    invalidationLevel,
+    riskRewardRatio,
   };
 }
 
@@ -419,6 +597,17 @@ export function formatEarlyBullishReview(ticker: string, r: EarlyBullishReview, 
     '',
     '⚠️ RISK',
     `${r.risk.level}${r.risk.reasons.length ? ` — ${r.risk.reasons.join(', ')}` : ''}`,
+    '',
+    '🪜 CONFIRMATION HIERARCHY',
+    `Technical Stage: ${TECHNICAL_STAGE_LABEL[r.stage]}`,
+    `Buy Permission: ${r.buyPermission ? 'YES' : 'NO'}`,
+    `Setup Score: ${r.setup.score}/${r.setup.max} (min ${r.setup.required})`,
+    `Confirmation Score: ${r.confirmation.score}/${r.confirmation.max} (min ${r.confirmation.required})`,
+    `✓ Terpenuhi: ${r.confirmation.checks.filter((c) => c.ok).map((c) => c.label).join(' · ') || '–'}`,
+    `✗ Kurang: ${r.confirmation.checks.filter((c) => !c.ok).map((c) => c.label).join(' · ') || '–'}`,
+    `Risk Gate: ${r.riskGate.status}${r.riskGate.block.length ? ` — ${r.riskGate.block.join(', ')}` : r.riskGate.caution.length ? ` — ${r.riskGate.caution.join(', ')}` : ''}`,
+    `Invalidation: ${rp(r.invalidationLevel) ?? '–'}`,
+    ...(r.missingTriggers.length ? ['Trigger yang masih kurang:', ...r.missingTriggers.map((t) => `- ${t}`)] : []),
     '',
     '🎯 DECISION',
     ebDecisionLine(r),
