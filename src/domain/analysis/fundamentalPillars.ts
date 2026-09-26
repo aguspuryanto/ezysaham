@@ -78,7 +78,7 @@ const MOS_MAX_PCT = 20;
 const rp = (n: number | null) => (n != null && n > 0 ? formatRupiah(Math.round(n)) : '–');
 const pctTxt = (n: number | null, dec = 1) => (n == null || Number.isNaN(n) ? '–' : `${n >= 0 ? '+' : ''}${n.toFixed(dec)}%`);
 
-function isFinancial(s: StockSummary): boolean {
+export function isFinancial(s: StockSummary): boolean {
   return /financ|keuangan|bank|asuransi|insurance/i.test(`${s.sector} ${s.subSector}`);
 }
 

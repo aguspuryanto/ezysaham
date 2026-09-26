@@ -63,7 +63,8 @@ import { computeSwingSuitability, detectSwingSetup, SWING_SETUP_LABEL, SwingSuit
 import { buildTenSecondReview, REVIEW_STRATEGY_LABEL } from '@/domain/analysis/tenSecondReview';
 import { BULLISH_PHASE_LABEL, BullishPhase, buildSimpleEntryReview, BuyPermission as SimpleBuyPermission, FOMO_RISK_LABEL, formatSimpleEntryReview, MOMENTUM_STATE_LABEL, MomentumState, PRICE_ACTION_LABEL, PriceActionSignal, SIMPLE_ENTRY_LABEL, SIMPLE_FUNDAMENTAL_LABEL, SIMPLE_VOLUME_LABEL, SimpleEntry, SimpleEntryReview, SimpleFundamental, SimpleVolume, TREND_STATE_LABEL, TrendState } from '@/domain/analysis/simpleEntryReview';
 import { buildEarlyBullishReview, BUYER_CLASS_LABEL, BuyerClass, EbDecision, ebDecisionLine, ENTRY_CLASS_LABEL, EntryClass, formatEarlyBullishReview, HierarchyScore, MOMENTUM_CLASS_LABEL, MomentumClass, PRICE_ACTION_CLASS_LABEL, PriceActionClass, RiskGateStatus as EbRiskGateStatus, TECHNICAL_STAGE_LABEL, TechnicalStage, TREND_CLASS_LABEL, TrendClass } from '@/domain/analysis/earlyBullishReview';
-import { applyFundamentalFilter, buildFundamentalPillars, FUNDAMENTAL_FILTER_LABEL, FundamentalFilter, FundamentalPillars, HEALTH_VERDICT_LABEL, HealthVerdict, VALUATION_VERDICT_LABEL, ValuationVerdict } from '@/domain/analysis/fundamentalPillars';
+import { applyFundamentalFilter, buildFundamentalPillars, FUNDAMENTAL_FILTER_LABEL, FundamentalFilter, FundamentalPillars, HEALTH_VERDICT_LABEL, HealthVerdict, isFinancial, VALUATION_VERDICT_LABEL, ValuationVerdict } from '@/domain/analysis/fundamentalPillars';
+import { buildIntradayModeReview, buildInvestingModeReview, buildSwingModeReview, formatTradingModesReview, MODE_DECISION_LABEL, ModeDecision, ModeReview, NA, TRADING_MODE_LABEL } from '@/domain/analysis/tradingModesReview';
 import { buildTodayMoveAnalysis, CATALYST_STATUS_LABEL, describeClosePosition, EVIDENCE_KIND_LABEL, EvidenceKind, formatTodayMoveAnalysis, MOVE_TYPE_LABEL, MoveType, TODAY_TRADE_STATUS_LABEL, TodayMoveAnalysis, TodayTradeStatus } from '@/domain/analysis/todayMoveAnalysis';
 import { atr, atrPercent } from '@/domain/indicators/atr';
 import { MarketRegimeResult } from '@/domain/analysis/marketRegimeEngine';
@@ -4224,6 +4225,132 @@ function EquityResearchReportCardv5(props: EquityReportProps) {
   );
 }
 
+// ─── Equity Research Report V6 — 3 Sistem Trading (Intraday · Swing · Investing) ───
+// Each mode reads only its own indicators (tradingModesReview.ts) and is never mixed with the others:
+// INTRADAY = VWAP + Volume + Price Action, SWING = EMA20 + EMA50 + Volume + S/R, INVESTING = laba + ROE +
+// debt + cash flow + PER/PBV. DATA and INTERPRETATION are shown apart; missing data is "N/A".
+const MODE_DECISION_STYLE: Record<ModeDecision, { emoji: string; tone: 'green' | 'red' | 'amber'; box: string }> = {
+  BUY: { emoji: '🟢', tone: 'green', box: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-400/10' },
+  WAIT: { emoji: '🟡', tone: 'amber', box: 'border-amber-400 bg-amber-50 dark:bg-amber-400/10' },
+  SELL: { emoji: '🔴', tone: 'red', box: 'border-rose-400 bg-rose-50 dark:bg-rose-400/10' },
+};
+
+function TradingModeSection({ ticker, review }: { ticker: string; review: ModeReview }) {
+  const style = MODE_DECISION_STYLE[review.decision];
+  return (
+    <div className={cn('neo-border px-4 py-3 space-y-3', style.box)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">📊 {ticker} — {TRADING_MODE_LABEL[review.mode]}</h4>
+        <Pill tone={style.tone}>{style.emoji} {MODE_DECISION_LABEL[review.decision]}</Pill>
+      </div>
+      <V4Block label="Market / Trend">{review.trend}</V4Block>
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300 mb-0.5">Indikator (Data)</p>
+        <ul className="space-y-1 text-sm">
+          {review.data.map((d) => (
+            <MoveRow key={d.label} label={d.label}>
+              <span className={cn('font-mono', d.value.startsWith(NA) ? 'text-zinc-400' : 'text-zinc-800 dark:text-zinc-200')}>{d.value}</span>
+            </MoveRow>
+          ))}
+        </ul>
+      </div>
+      <V4Block label="Sinyal (Interpretasi)">
+        <ul className="space-y-0.5">
+          {review.signals.map((s) => (
+            <li key={s} className="flex items-start gap-1.5">
+              <span className="mt-2 size-1 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+              {s}
+            </li>
+          ))}
+        </ul>
+      </V4Block>
+      <ul className="space-y-1.5 text-sm">
+        <MoveRow label="Entry"><span className="text-emerald-700 dark:text-emerald-400">{review.entry}</span></MoveRow>
+        <MoveRow label="Stop / Invalidation"><span className="text-rose-600 dark:text-rose-400">{review.stop}</span></MoveRow>
+        <MoveRow label="Target"><span className="text-zinc-800 dark:text-zinc-200">{review.target}</span></MoveRow>
+        <MoveRow label="Risk"><span className="text-zinc-700 dark:text-zinc-300">{review.risk}</span></MoveRow>
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">🎯 Keputusan</span>
+        <Pill tone={style.tone}>{style.emoji} {MODE_DECISION_LABEL[review.decision]}</Pill>
+        <span className="text-sm text-zinc-700 dark:text-zinc-300">{review.reason}</span>
+      </div>
+    </div>
+  );
+}
+
+function EquityResearchReportCardv6(props: EquityReportProps) {
+  const { summary, bars, trendEma, volume, priceAction, supportResistance, fundamentals, fundamentalScreening } = props;
+
+  // Session VWAP needs real 1-minute bars — same source as EquityResearchReportCard2 / IntradayChart.tsx.
+  // Keyed by ticker so a stale response is ignored while the next ticker loads.
+  const [intradayState, setIntradayState] = useState<{ ticker: string; data: IntradayResponse } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getStockIntraday(summary.ticker).then((data) => {
+      if (!cancelled) setIntradayState({ ticker: summary.ticker, data });
+    });
+    return () => { cancelled = true; };
+  }, [summary.ticker]);
+  const intraday = intradayState?.ticker === summary.ticker ? intradayState.data : null;
+
+  const pillars = useMemo(
+    () => buildFundamentalPillars(summary, fundamentals, fundamentalScreening),
+    [summary, fundamentals, fundamentalScreening],
+  );
+
+  const reviews = useMemo(() => [
+    buildIntradayModeReview({ bars: intraday?.ok ? intraday.bars : null, lastClose: summary.lastClose }),
+    buildSwingModeReview({
+      bars: bars ?? [],
+      price: summary.lastClose,
+      ema20: trendEma.ema20,
+      ema50: trendEma.ema50,
+      relativeVolume: volume.relativeVolume,
+      lastCandleColor: priceAction.lastCandleColor,
+      supports: supportResistance.supports.map((s) => s.price),
+      resistances: supportResistance.resistances.map((r) => r.price),
+    }),
+    buildInvestingModeReview({
+      price: summary.lastClose,
+      per: summary.per,
+      pbv: summary.pbv,
+      roe: summary.roe,
+      earningsGrowth: fundamentals?.earningsGrowth ?? null,
+      revenueGrowth: fundamentals?.revenueGrowth ?? null,
+      debtToEquity: fundamentals?.debtToEquity ?? null,
+      netMargin: fundamentals?.netMargin ?? null,
+      operatingCashFlow: null,
+      isFinancial: isFinancial(summary),
+      fairValue: pillars.valuation.fairValue,
+      accumulationLow: pillars.valuation.accumulationLow,
+      accumulationHigh: pillars.valuation.accumulationHigh,
+    }),
+  ], [intraday, summary, bars, trendEma, volume, priceAction, supportResistance, fundamentals, pillars]);
+
+  return (
+    <SectionCard
+      title="Equity Research Report — 3 Sistem Trading"
+      icon={<Sparkles className="size-4" />}
+      accentClass="bg-violet-600"
+      headerAction={<CopyShareButton getText={() => formatTradingModesReview(summary.ticker, reviews)} />}
+    >
+      <div className="space-y-4">
+        {intraday === null && (
+          <p className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            <Loader2 className="size-3.5 animate-spin" /> Memuat data intraday…
+          </p>
+        )}
+        {reviews.map((r) => <TradingModeSection key={r.mode} ticker={summary.ticker} review={r} />)}
+        <p className="text-xs text-zinc-400 leading-relaxed">
+          Setiap mode hanya memakai indikatornya sendiri. Satu sinyal saja bukan alasan BUY — konfirmasi tidak cukup = WAIT.
+          Data intraday adalah kuotasi tertunda. Target adalah proyeksi, bukan janji profit. Edukasi, bukan ajakan jual/beli.
+        </p>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ─── Kesimpulan Objektif (cross-check: price move + divergence + Bandar + regulator) ──
 const QUICK_VERDICT_STYLES: Record<QuickVerdict, { emoji: string; label: string; border: string; bg: string; text: string }> = {
   TRADE: { emoji: '🟢', label: 'TRADE', border: 'border-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-400/10', text: 'text-emerald-700 dark:text-emerald-400' },
@@ -5093,7 +5220,22 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   brokerActivity={brokerActivity}
                 /> */}
 
-                <EquityResearchReportCardv5
+                {/* <EquityResearchReportCardv5
+                  summary={summary}
+                  bars={bars}
+                  trendEma={trendEma}
+                  indicators={indicators}
+                  supportResistance={supportResistance}
+                  fundamentalScreening={fundamentalScreening}
+                  fundamentals={fundamentals}
+                  tradingPlan={tradingPlan}
+                  volume={volume}
+                  priceAction={priceAction}
+                  newsItems={newsItems}
+                  brokerActivity={brokerActivity}
+                /> */}
+
+                <EquityResearchReportCardv6
                   summary={summary}
                   bars={bars}
                   trendEma={trendEma}
