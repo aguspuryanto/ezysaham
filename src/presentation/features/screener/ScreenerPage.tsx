@@ -473,157 +473,157 @@ export function ScreenerPage() {
         <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-5 pb-28 sm:px-6 xl:pb-8">
           <MarketSummary market={market} summaries={summaries} />
 
-          <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_300px]">
-            <section aria-labelledby="screener-title" className="flex min-w-0 flex-col gap-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h1 id="screener-title" className="text-xl font-bold text-(--sv-text) sm:text-2xl">Screener Saham</h1>
-                  <p className="mt-0.5 text-sm text-(--sv-muted)">
-                    Temukan saham berdasarkan fundamental, teknikal, valuasi, momentum dan risiko.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {canCreateJurnal && (
-                    <button
-                      type="button"
-                      onClick={handleCreateJurnal}
-                      disabled={creatingJurnal}
-                      title={`Simpan top ${JOURNAL_TOP_N} saham (berdasarkan perubahan) ke Jurnal`}
-                      className={btnSecondary}
-                    >
-                      {creatingJurnal ? <Loader2 className="size-4 animate-spin" /> : <NotebookPen className="size-4" strokeWidth={2} />}
-                      Create Jurnal
+          <aside aria-label="Insight pasar" className="grid gap-4 md:grid-cols-2">
+            <GainerLoserPanel summaries={summaries ?? []} />
+            {/* <ValuationSummary tickers={sortedRows.map((r) => r.summary.ticker)} verdictByTicker={verdictByTicker} /> */}
+          </aside>
+
+          <section aria-labelledby="screener-title" className="flex min-w-0 flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h1 id="screener-title" className="text-xl font-bold text-(--sv-text) sm:text-2xl">Screener Saham</h1>
+                <p className="mt-0.5 text-sm text-(--sv-muted)">
+                  Temukan saham berdasarkan fundamental, teknikal, valuasi, momentum dan risiko.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {canCreateJurnal && (
+                  <button
+                    type="button"
+                    onClick={handleCreateJurnal}
+                    disabled={creatingJurnal}
+                    title={`Simpan top ${JOURNAL_TOP_N} saham (berdasarkan perubahan) ke Jurnal`}
+                    className={btnSecondary}
+                  >
+                    {creatingJurnal ? <Loader2 className="size-4 animate-spin" /> : <NotebookPen className="size-4" strokeWidth={2} />}
+                    Create Jurnal
+                  </button>
+                )}
+                <button type="button" onClick={handleSaveScreener} className={btnSecondary}>
+                  {savedFlash ? <BookmarkCheck className="size-4 text-emerald-600" strokeWidth={2} /> : <Bookmark className="size-4" strokeWidth={2} />}
+                  {savedFlash ? 'Tersimpan' : 'Simpan Screener'}
+                </button>
+                <button type="button" onClick={handleRefresh} disabled={isBusy} className={btnSecondary}>
+                  <RefreshCw className={cn('size-4', isBusy && 'animate-spin')} strokeWidth={2} />
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <ScreenerTabs
+              items={FILTER_ITEMS}
+              selected={filterId}
+              onSelect={handleSelectFilter}
+              count={status === 'done' ? results.length : null}
+            />
+
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+              <p className="text-(--sv-muted)">
+                <span className="font-medium text-(--sv-text)">{activeFilterInfo.label}:</span>{' '}
+                {activeFilterInfo.description}
+                {activeFilterInfo.criteria.length > 0 && (
+                  <span className="ml-1 inline-flex align-middle">
+                    <InfoTip term={`Kriteria ${activeFilterInfo.label}`} text={activeFilterInfo.criteria.join(' · ')} />
+                  </span>
+                )}
+              </p>
+              {status === 'done' && (
+                <p className="text-(--sv-muted)">
+                  <b className="tabular-nums text-(--sv-text)">{sortedRows.length}</b> hasil dari {summaries?.length ?? 0} saham
+                  {anyFilter && (
+                    <button type="button" onClick={() => { resetFilters(); setQuery(''); }} className="ml-2 font-medium text-(--sv-primary) hover:underline">
+                      Hapus filter
                     </button>
                   )}
-                  <button type="button" onClick={handleSaveScreener} className={btnSecondary}>
-                    {savedFlash ? <BookmarkCheck className="size-4 text-emerald-600" strokeWidth={2} /> : <Bookmark className="size-4" strokeWidth={2} />}
-                    {savedFlash ? 'Tersimpan' : 'Simpan Screener'}
-                  </button>
-                  <button type="button" onClick={handleRefresh} disabled={isBusy} className={btnSecondary}>
-                    <RefreshCw className={cn('size-4', isBusy && 'animate-spin')} strokeWidth={2} />
-                    Refresh
-                  </button>
+                </p>
+              )}
+            </div>
+
+            {status === 'scanning' && (
+              <div className="rounded-xl border border-(--sv-border) bg-(--sv-surface) p-3">
+                <div className="flex items-center justify-between text-sm text-(--sv-muted)">
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin text-(--sv-primary)" />
+                    Menganalisis kandidat {activeFilterInfo.label}…
+                  </span>
+                  <span className="tabular-nums">{progress.checked}/{progress.total}</span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                  <div className="h-full rounded-full bg-(--sv-primary) transition-[width] duration-300" style={{ width: `${progressPct}%` }} />
                 </div>
               </div>
+            )}
 
-              <ScreenerTabs
-                items={FILTER_ITEMS}
-                selected={filterId}
-                onSelect={handleSelectFilter}
-                count={status === 'done' ? results.length : null}
-              />
+            {status === 'done' && verdictProgress && verdictProgress.done < verdictProgress.total && (
+              <div className="rounded-xl border border-(--sv-border) bg-(--sv-surface) p-3">
+                <div className="flex items-center justify-between text-sm text-(--sv-muted)">
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin text-(--sv-primary)" />
+                    Menghitung fase, fundamental &amp; valuasi untuk filter/urutan…
+                  </span>
+                  <span className="tabular-nums">{verdictProgress.done}/{verdictProgress.total}</span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                  <div
+                    className="h-full rounded-full bg-(--sv-primary) transition-[width] duration-300"
+                    style={{ width: `${Math.round((verdictProgress.done / Math.max(1, verdictProgress.total)) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
-                <p className="flex items-center gap-1.5 text-(--sv-muted)">
-                  <span className="font-medium text-(--sv-text)">{activeFilterInfo.label}:</span>
-                  {activeFilterInfo.description}
-                  {activeFilterInfo.criteria.length > 0 && (
-                    <InfoTip term={`Kriteria ${activeFilterInfo.label}`} text={activeFilterInfo.criteria.join(' · ')} />
-                  )}
-                </p>
-                {status === 'done' && (
-                  <p className="text-(--sv-muted)">
-                    <b className="tabular-nums text-(--sv-text)">{sortedRows.length}</b> hasil dari {summaries?.length ?? 0} saham
-                    {anyFilter && (
-                      <button type="button" onClick={() => { resetFilters(); setQuery(''); }} className="ml-2 font-medium text-(--sv-primary) hover:underline">
-                        Hapus filter
-                      </button>
-                    )}
-                  </p>
+            {status === 'error' && errorMessage && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200">
+                <span className="flex items-center gap-2"><AlertCircle className="size-4 shrink-0" />{errorMessage}</span>
+                <button type="button" onClick={handleRefresh} className="rounded-lg bg-rose-600 px-3 py-1.5 font-medium text-white hover:bg-rose-700">
+                  Coba lagi
+                </button>
+              </div>
+            )}
+
+            {jurnalMessage && (
+              <div
+                className={cn(
+                  'flex items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm font-medium',
+                  jurnalMessage.type === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200'
+                    : 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200'
+                )}
+              >
+                <span>{jurnalMessage.text}</span>
+                {jurnalMessage.type === 'success' && (
+                  <Link href="/jurnal" className="shrink-0 underline underline-offset-2">Lihat Jurnal →</Link>
                 )}
               </div>
+            )}
 
-              {status === 'scanning' && (
-                <div className="rounded-xl border border-(--sv-border) bg-(--sv-surface) p-3">
-                  <div className="flex items-center justify-between text-sm text-(--sv-muted)">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 className="size-4 animate-spin text-(--sv-primary)" />
-                      Menganalisis kandidat {activeFilterInfo.label}…
-                    </span>
-                    <span className="tabular-nums">{progress.checked}/{progress.total}</span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                    <div className="h-full rounded-full bg-(--sv-primary) transition-[width] duration-300" style={{ width: `${progressPct}%` }} />
-                  </div>
-                </div>
-              )}
+            {status !== 'error' && (
+              <ScreenerTable
+                rows={pageRows}
+                startIndex={(currentPage - 1) * PAGE_SIZE}
+                verdictByTicker={verdictByTicker}
+                loading={isBusy}
+                sort={sort}
+                onSort={handleSort}
+                emptyHint={
+                  watchlistOnly && watchlist.tickers.length === 0
+                    ? 'Watchlist Anda masih kosong — tandai saham dengan ikon bintang.'
+                    : verdictProgress && verdictProgress.done < verdictProgress.total
+                      ? 'Masih menganalisis kandidat — hasil akan muncul saat data selesai dihitung.'
+                      : 'Coba longgarkan filter, ganti tab preset, atau ubah kata kunci pencarian.'
+                }
+                onResetFilters={anyFilter ? () => { resetFilters(); setQuery(''); } : undefined}
+                isWatchlisted={watchlist.has}
+                onToggleWatchlist={watchlist.toggle}
+                isCompareSelected={isCompareSelected}
+                onToggleCompare={toggleCompare}
+              />
+            )}
 
-              {status === 'done' && verdictProgress && verdictProgress.done < verdictProgress.total && (
-                <div className="rounded-xl border border-(--sv-border) bg-(--sv-surface) p-3">
-                  <div className="flex items-center justify-between text-sm text-(--sv-muted)">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 className="size-4 animate-spin text-(--sv-primary)" />
-                      Menghitung fase, fundamental &amp; valuasi untuk filter/urutan…
-                    </span>
-                    <span className="tabular-nums">{verdictProgress.done}/{verdictProgress.total}</span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                    <div
-                      className="h-full rounded-full bg-(--sv-primary) transition-[width] duration-300"
-                      style={{ width: `${Math.round((verdictProgress.done / Math.max(1, verdictProgress.total)) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {status === 'error' && errorMessage && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200">
-                  <span className="flex items-center gap-2"><AlertCircle className="size-4 shrink-0" />{errorMessage}</span>
-                  <button type="button" onClick={handleRefresh} className="rounded-lg bg-rose-600 px-3 py-1.5 font-medium text-white hover:bg-rose-700">
-                    Coba lagi
-                  </button>
-                </div>
-              )}
-
-              {jurnalMessage && (
-                <div
-                  className={cn(
-                    'flex items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm font-medium',
-                    jurnalMessage.type === 'success'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200'
-                      : 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200'
-                  )}
-                >
-                  <span>{jurnalMessage.text}</span>
-                  {jurnalMessage.type === 'success' && (
-                    <Link href="/jurnal" className="shrink-0 underline underline-offset-2">Lihat Jurnal →</Link>
-                  )}
-                </div>
-              )}
-
-              {status !== 'error' && (
-                <ScreenerTable
-                  rows={pageRows}
-                  startIndex={(currentPage - 1) * PAGE_SIZE}
-                  verdictByTicker={verdictByTicker}
-                  loading={isBusy}
-                  sort={sort}
-                  onSort={handleSort}
-                  emptyHint={
-                    watchlistOnly && watchlist.tickers.length === 0
-                      ? 'Watchlist Anda masih kosong — tandai saham dengan ikon bintang.'
-                      : verdictProgress && verdictProgress.done < verdictProgress.total
-                        ? 'Masih menganalisis kandidat — hasil akan muncul saat data selesai dihitung.'
-                        : 'Coba longgarkan filter, ganti tab preset, atau ubah kata kunci pencarian.'
-                  }
-                  onResetFilters={anyFilter ? () => { resetFilters(); setQuery(''); } : undefined}
-                  isWatchlisted={watchlist.has}
-                  onToggleWatchlist={watchlist.toggle}
-                  isCompareSelected={isCompareSelected}
-                  onToggleCompare={toggleCompare}
-                />
-              )}
-
-              {!isBusy && (
-                <ScreenerPagination page={currentPage} pageSize={PAGE_SIZE} total={sortedRows.length} onPage={setPage} />
-              )}
-            </section>
-
-            <aside aria-label="Insight pasar" className="grid content-start gap-4 md:grid-cols-3 2xl:sticky 2xl:top-20 2xl:grid-cols-1 2xl:self-start">
-              <GainerLoserPanel summaries={summaries ?? []} />
-              <ValuationSummary tickers={sortedRows.map((r) => r.summary.ticker)} verdictByTicker={verdictByTicker} />
-            </aside>
-          </div>
+            {!isBusy && (
+              <ScreenerPagination page={currentPage} pageSize={PAGE_SIZE} total={sortedRows.length} onPage={setPage} />
+            )}
+          </section>
         </main>
       </div>
 
