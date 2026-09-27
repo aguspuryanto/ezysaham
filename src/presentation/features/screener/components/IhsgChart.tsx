@@ -41,7 +41,7 @@ const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
  *   Sesi II : Mon–Fri 13:30 – 15:50
  * Pre-opening : 08:45 – 09:00 (included as "open" for UX purposes)
  */
-function isIdxOpen(now: Date): boolean {
+export function isIdxOpen(now: Date): boolean {
   // Convert to WIB (UTC+7)
   const wib = new Date(now.getTime() + 7 * 60 * 60 * 1000);
   const day = wib.getUTCDay(); // 0 = Sun, 6 = Sat

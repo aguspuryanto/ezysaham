@@ -260,9 +260,6 @@ function StockTableRowNew({
           </div>
         </Link>
       </td>
-
-      <td className="px-4 py-3"><MarketPhaseCell verdict={verdict} /></td>
-      <td className="px-4 py-3"><FundamentalCell evaluation={evaluation} verdict={verdict} /></td>
       {/* <td className="px-4 py-3"><SetupCell verdict={verdict} /></td> */}
       {/* <td className="px-4 py-3"><TradeStatusCell verdict={verdict} /></td> */}
 
@@ -300,6 +297,9 @@ function StockTableRowNew({
           <NoDataDash />
         )}
       </td>
+
+      <td className="px-4 py-3"><MarketPhaseCell verdict={verdict} /></td>
+      <td className="px-4 py-3"><FundamentalCell evaluation={evaluation} verdict={verdict} /></td>
     </tr>
   );
 }
@@ -380,8 +380,6 @@ export function ResultsTableNew({
             <tr>
               <th className="w-16 px-3 py-3" />
               <SortableHeader label="Simbol" colKey="ticker" sort={columnSort} onSort={handleSort} />
-              <th className="px-4 py-3">Market Phase</th>
-              <SortableHeader label="Fundamental" colKey="fundamental" sort={columnSort} onSort={handleSort} />
               {/* <th className="px-4 py-3">Setup</th> */}
               {/* <th className="px-4 py-3">Trade Status</th> */}
               <SortableHeader label="Perubahan" colKey="change" sort={columnSort} onSort={handleSort} />
@@ -389,6 +387,8 @@ export function ResultsTableNew({
               <SortableHeader label="Vol" colKey="volume" sort={columnSort} onSort={handleSort} />
               <SortableHeader label="Kap pasar" colKey="cap" sort={columnSort} onSort={handleSort} />
               <th className="px-4 py-3">Sektor</th>
+              <th className="px-4 py-3">Market Phase</th>
+              <SortableHeader label="Fundamental" colKey="fundamental" sort={columnSort} onSort={handleSort} />
             </tr>
           </thead>
           <tbody className="divide-y-2 divide-(--neo-line) bg-white dark:bg-zinc-900">

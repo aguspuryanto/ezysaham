@@ -254,3 +254,31 @@
     @apply font-sans;
   }
 }
+/* ── Screener (clean fintech theme) ───────────────────────────────────
+   Scoped to the Screener page only — the rest of the app keeps the
+   neobrutalism system above. Navy primary, thin borders, soft shadow. */
+.sv-theme {
+  --sv-bg: #f6f8fb;
+  --sv-surface: #ffffff;
+  --sv-border: #e4e8ef;
+  --sv-text: #0f172a;
+  --sv-muted: #64748b;
+  --sv-primary: #0f2a5f;
+  --sv-primary-fg: #ffffff;
+  --sv-primary-soft: #eaf0fb;
+  --sv-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  font-family: var(--font-sv-inter), ui-sans-serif, system-ui, sans-serif;
+  background: var(--sv-bg);
+  color: var(--sv-text);
+}
+.dark .sv-theme {
+  --sv-bg: #0b0f17;
+  --sv-surface: #111827;
+  --sv-border: #1f2937;
+  --sv-text: #e5e7eb;
+  --sv-muted: #94a3b8;
+  --sv-primary: #9db7f5;
+  --sv-primary-fg: #0b1220;
+  --sv-primary-soft: rgba(157, 183, 245, 0.12);
+  --sv-shadow: none;
+}

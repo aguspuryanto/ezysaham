@@ -2,11 +2,10 @@
 
 import {
   AlertCircle,
-  ArrowDownToLine,
+  Bookmark,
+  BookmarkCheck,
   Building2,
   Crosshair,
-  Eye,
-  Flame,
   GitCompare,
   LayoutGrid,
   Loader2,
@@ -14,8 +13,6 @@ import {
   RefreshCw,
   Rocket,
   ShieldCheck,
-  Table2,
-  TrendingUp,
   X,
   Zap,
 } from 'lucide-react';
@@ -29,56 +26,79 @@ import { StockSummary } from '@/domain/models/Stock';
 import { ScreenerPresetId, SCREENER_PRESETS } from '@/domain/screener/presets';
 import { mapWithConcurrency } from '@/lib/concurrency';
 import { cn } from '@/lib/format';
-import { AppHeader } from '@/presentation/components/layout/AppHeader';
+import { SITE_NAME } from '@/lib/site';
 import { useJournal } from '@/presentation/features/journal/hooks/useJournal';
-import { BottomNav } from './components/BottomNav';
-import { FilterChipItem, PresetTabs } from './components/PresetTabs';
-import { ResultsTable, ResultsView, ScreenerResult } from './components/ResultsTable';
-import { FilterInfoCard, SectorListCard, WatchlistCard } from './components/ScreenerSidebar';
-import { TickerTape } from './components/TickerTape';
-import { TopGainerCard } from './components/TopGainerCard';
-import { TopLoserCard } from './components/TopLoserCard';
+import { GainerLoserPanel } from './components/GainerLoserPanel';
+import { MarketSummary, useMarketSeries } from './components/MarketSummary';
+import { InfoTip } from './components/Popover';
+import { ScreenerResult } from './components/ResultsTable';
+import { ScreenerFilters } from './components/ScreenerFilters';
+import { ScreenerHeader } from './components/ScreenerHeader';
+import { ScreenerNav } from './components/ScreenerNav';
+import { ScreenerPagination, ScreenerSort, ScreenerSortKey, ScreenerTable, VERDICT_SORT_KEYS } from './components/ScreenerTable';
+import { ScreenerTabItem, ScreenerTabs } from './components/ScreenerTabs';
+import { ValuationSummary } from './components/ValuationSummary';
+import { screenerInter } from './fonts';
 import { useWatchlist } from './hooks/useWatchlist';
-import { PhilosophyBanner } from './components/PhilosophyBanner';
-import { IhsgChart } from './components/IhsgChart';
-import { ResultsTableNew } from './components/ResultsTableNew';
+import {
+  DEFAULT_FILTERS,
+  hasAdvancedFilters,
+  matchesAdvancedFilters,
+  matchesBasicFilters,
+  ScreenerFilterState,
+} from './screenerFilters';
 
 const JOURNAL_PRESETS: ScreenerPresetId[] = ['dayTrading', 'swingHunter'];
 const JOURNAL_TOP_N = 5;
 
 const HISTORY_CONCURRENCY = 6;
-const RESULTS_LIMIT = 50;
+const PAGE_SIZE = 25;
+/** Verdicts are committed to state in chunks so progress shows while a full-list analysis runs. */
+const VERDICT_CHUNK = 24;
+const SAVED_SCREENER_KEY = 'ezysaham.screener.saved.v1';
 
 type FilterId = 'all' | ScreenerPresetId;
 type ScanStatus = 'idle' | 'loading-summary' | 'scanning' | 'done' | 'error';
-type SortKey = 'change_desc' | 'change_asc' | 'value_desc' | 'ticker_asc';
 
-const FILTER_ITEMS: FilterChipItem[] = [
+const FILTER_ITEMS: ScreenerTabItem[] = [
   { id: 'all', label: 'Semua', icon: LayoutGrid },
   { id: 'dayTrading', label: 'Day Trading', icon: Zap },
   { id: 'swingHunter', label: 'Swing Hunter', icon: Crosshair },
-  // { id: 'araHunter', label: 'ARA Hunter', icon: Flame },
-  // { id: 'smartMoneyHunter', label: 'Early Accumulation', icon: Eye },
-  // { id: 'tradingPlan', label: 'Trading Plan', icon: Target },
   { id: 'fundamental', label: 'Fundamental', icon: Building2 },
   { id: 'highGrowth', label: 'High Growth', icon: Rocket },
   { id: 'corePortofolio', label: 'Core Portofolio', icon: ShieldCheck },
-  // { id: 'bandarDetector', label: 'Bandar Detector', icon: Eye },
-  // { id: 'breakout', label: 'Breakout Hunter', icon: Rocket },
-  // { id: 'ara', label: 'ARA', icon: Flame },
-  // { id: 'bpjs', label: 'BPJS', icon: Zap },
-  // { id: 'momentum', label: 'Momentum', icon: TrendingUp },
-  // { id: 'swingTrend', label: 'Swing Trend', icon: ArrowDownToLine },
-  // { id: 'swingMomentum', label: 'Swing Momentum', icon: Rocket },
-  // { id: 'fundamentalQuality', label: 'Fundamental Quality', icon: ShieldCheck },
 ];
 
-const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: 'change_desc', label: 'Perubahan (Tertinggi)' },
-  { value: 'change_asc', label: 'Perubahan (Terendah)' },
-  { value: 'value_desc', label: 'Nilai Transaksi (Tertinggi)' },
-  { value: 'ticker_asc', label: 'Ticker (A-Z)' },
-];
+const DEFAULT_SORT: ScreenerSort = { key: 'change', dir: 'desc' };
+
+interface SavedScreener {
+  filterId: FilterId;
+  filters: ScreenerFilterState;
+  sort: ScreenerSort;
+}
+
+function readSavedScreener(): SavedScreener | null {
+  try {
+    const raw = window.localStorage.getItem(SAVED_SCREENER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedScreener>;
+    const filterId = FILTER_ITEMS.some((f) => f.id === parsed.filterId) ? (parsed.filterId as FilterId) : 'all';
+    return { filterId, filters: { ...DEFAULT_FILTERS, ...parsed.filters }, sort: parsed.sort ?? DEFAULT_SORT };
+  } catch {
+    return null;
+  }
+}
+
+function sortValue(r: ScreenerResult, key: ScreenerSortKey, v?: ScreenerVerdict): number | string | null {
+  switch (key) {
+    case 'ticker': return r.summary.ticker;
+    case 'change': return r.summary.percentChange1D;
+    case 'price': return r.summary.lastClose;
+    case 'volume': return r.summary.volume;
+    case 'fundamental': return v ? v.fundamentalScore.composite : null;
+    case 'upside': return v?.valuation.upsidePct ?? null;
+  }
+}
 
 export function ScreenerPage() {
   const [summaries, setSummaries] = useState<StockSummary[] | null>(null);
@@ -88,18 +108,22 @@ export function ScreenerPage() {
   const [progress, setProgress] = useState({ checked: 0, total: 0 });
   const [results, setResults] = useState<ScreenerResult[]>([]);
   const [query, setQuery] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('change_desc');
-  const [view, setView] = useState<ResultsView>('table');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(RESULTS_LIMIT);
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [creatingJurnal, setCreatingJurnal] = useState(false);
   const [jurnalMessage, setJurnalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [verdictByTicker, setVerdictByTicker] = useState<Record<string, ScreenerVerdict>>({});
+  const [filters, setFilters] = useState<ScreenerFilterState>(DEFAULT_FILTERS);
+  const [draftFilters, setDraftFilters] = useState<ScreenerFilterState>(DEFAULT_FILTERS);
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
+  const [sort, setSort] = useState<ScreenerSort>(DEFAULT_SORT);
+  const [page, setPage] = useState(1);
+  const [savedFlash, setSavedFlash] = useState(false);
   const verdictAttemptedRef = useRef<Set<string>>(new Set());
   const watchlist = useWatchlist();
   const journal = useJournal();
+  const market = useMarketSeries();
 
   const toggleCompare = useCallback((ticker: string) => {
     setCompareSelection((prev) => {
@@ -110,7 +134,7 @@ export function ScreenerPage() {
   }, []);
   const isCompareSelected = useCallback((ticker: string) => compareSelection.includes(ticker), [compareSelection]);
 
-  // Mobile sidebar drawer: lock body scroll and allow Escape to close while open.
+  // Mobile/tablet sidebar drawer: lock body scroll and allow Escape to close while open.
   useEffect(() => {
     if (!drawerOpen) return;
     document.body.style.overflow = 'hidden';
@@ -124,18 +148,33 @@ export function ScreenerPage() {
     };
   }, [drawerOpen]);
 
-  useEffect(() => {
+  const loadSummaries = useCallback((restoreSaved: boolean) => {
+    setStatus('loading-summary');
+    setErrorMessage(null);
     getStockSummariesWithTimestamp()
       .then(({ summaries, lastUpdatedAt }) => {
+        if (restoreSaved) {
+          const saved = readSavedScreener();
+          if (saved) {
+            setFilterId(saved.filterId);
+            setFilters(saved.filters);
+            setDraftFilters(saved.filters);
+            setSort(saved.sort);
+          }
+        }
         setSummaries(summaries);
         setLastUpdatedAt(lastUpdatedAt);
         setStatus('idle');
       })
       .catch(() => {
-        setErrorMessage('Gagal memuat daftar saham. Coba muat ulang halaman.');
+        setErrorMessage('Gagal memuat daftar saham. Periksa koneksi lalu coba lagi.');
         setStatus('error');
       });
   }, []);
+
+  useEffect(() => {
+    Promise.resolve().then(() => loadSummaries(true));
+  }, [loadSummaries]);
 
   // Guards against a slow, superseded scan (e.g. rapid preset switching)
   // overwriting the results of a newer one.
@@ -191,86 +230,133 @@ export function ScreenerPage() {
 
   const handleSelectFilter = useCallback((id: string) => {
     setFilterId(id as FilterId);
-    setVisibleCount(RESULTS_LIMIT);
+    setPage(1);
   }, []);
 
   const handleQueryChange = useCallback((next: string) => {
     setQuery(next);
-    setVisibleCount(RESULTS_LIMIT);
+    setPage(1);
   }, []);
 
-  const displayedResults = useMemo(() => {
-    let list = results;
-    if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      list = list.filter(
-        (r) => r.summary.ticker.toLowerCase().includes(q) || r.summary.name.toLowerCase().includes(q)
-      );
+  const handleSort = useCallback((key: ScreenerSortKey) => {
+    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'ticker' ? 'asc' : 'desc' }));
+    setPage(1);
+  }, []);
+
+  const applyFilters = useCallback(() => {
+    setFilters(draftFilters);
+    setPage(1);
+    setDrawerOpen(false);
+  }, [draftFilters]);
+
+  const resetFilters = useCallback(() => {
+    setFilters(DEFAULT_FILTERS);
+    setDraftFilters(DEFAULT_FILTERS);
+    setWatchlistOnly(false);
+    setPage(1);
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    verdictAttemptedRef.current = new Set();
+    setVerdictByTicker({});
+    setPage(1);
+    loadSummaries(false);
+  }, [loadSummaries]);
+
+  const handleSaveScreener = useCallback(() => {
+    try {
+      const saved: SavedScreener = { filterId, filters, sort };
+      window.localStorage.setItem(SAVED_SCREENER_KEY, JSON.stringify(saved));
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
+    } catch {
+      setJurnalMessage({ type: 'error', text: 'Browser tidak mengizinkan penyimpanan lokal — screener tidak tersimpan.' });
     }
+  }, [filterId, filters, sort]);
 
-    const sorted = [...list];
-    switch (sortKey) {
-      case 'change_desc':
-        sorted.sort((a, b) => b.summary.percentChange1D - a.summary.percentChange1D);
-        break;
-      case 'change_asc':
-        sorted.sort((a, b) => a.summary.percentChange1D - b.summary.percentChange1D);
-        break;
-      case 'value_desc':
-        sorted.sort((a, b) => b.summary.value - a.summary.value);
-        break;
-      case 'ticker_asc':
-        sorted.sort((a, b) => a.summary.ticker.localeCompare(b.summary.ticker));
-        break;
-    }
-    return sorted;
-  }, [results, query, sortKey]);
+  const sectors = useMemo(
+    () => [...new Set((summaries ?? []).map((s) => s.sector).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [summaries],
+  );
 
-  const visibleResults = useMemo(() => displayedResults.slice(0, visibleCount), [displayedResults, visibleCount]);
-  const hasMoreResults = displayedResults.length > visibleResults.length;
+  // Rows matching everything readable from StockSummary alone (search, basic filters, watchlist).
+  const isWatchlisted = watchlist.has;
+  const baseRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return results.filter((r) => {
+      const s = r.summary;
+      if (q && !(s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q) || s.sector?.toLowerCase().includes(q))) return false;
+      if (watchlistOnly && !isWatchlisted(s.ticker)) return false;
+      return matchesBasicFilters(s, filters);
+    });
+  }, [results, query, filters, watchlistOnly, isWatchlisted]);
 
-  // Lazily computes each visible row's Market Phase / Fundamental / Setup / Trade Status
-  // (ResultsTableNew's columns) — only for rows actually on screen, since it needs a
-  // per-ticker history + fundamentals fetch.
+  const advancedActive = hasAdvancedFilters(filters);
+  // Advanced filters and verdict-based sorts need every candidate's verdict, not just the visible page.
+  const needAllVerdicts = advancedActive || VERDICT_SORT_KEYS.includes(sort.key);
+
+  const sortedRows = useMemo(() => {
+    const rows = advancedActive ? baseRows.filter((r) => matchesAdvancedFilters(verdictByTicker[r.summary.ticker], filters)) : baseRows;
+    const mul = sort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const va = sortValue(a, sort.key, verdictByTicker[a.summary.ticker]);
+      const vb = sortValue(b, sort.key, verdictByTicker[b.summary.ticker]);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1; // not analyzed yet → always last
+      if (vb == null) return -1;
+      if (typeof va === 'string' && typeof vb === 'string') return mul * va.localeCompare(vb);
+      return mul * ((va as number) - (vb as number));
+    });
+  }, [baseRows, advancedActive, verdictByTicker, filters, sort]);
+
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = useMemo(
+    () => sortedRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [sortedRows, currentPage],
+  );
+
+  const verdictTargets = needAllVerdicts ? baseRows : pageRows;
+  const verdictProgress = needAllVerdicts
+    ? { done: baseRows.filter((r) => verdictByTicker[r.summary.ticker]).length, total: baseRows.length }
+    : null;
+
+  // Lazily computes each target row's verdict (Market Phase / Trend / Fundamental / Momentum /
+  // Volume / Fair Value / Risk) — needs a per-ticker history + fundamentals fetch, so it only runs
+  // for rows on screen unless an advanced filter/sort needs the whole list.
   useEffect(() => {
-    const pending = visibleResults.filter((r) => !verdictAttemptedRef.current.has(r.summary.ticker));
+    const pending = verdictTargets.filter((r) => !verdictAttemptedRef.current.has(r.summary.ticker));
     if (pending.length === 0) return;
-    pending.forEach((r) => verdictAttemptedRef.current.add(r.summary.ticker));
 
     let cancelled = false;
     (async () => {
-      const entries = await mapWithConcurrency(pending, HISTORY_CONCURRENCY, async ({ summary }) => {
-        const [bars, fundamentals] = await Promise.all([
-          getStockHistory(summary.ticker),
-          getStockFundamentals(summary.ticker),
-        ]);
-        return [summary.ticker, computeScreenerVerdict(summary, bars, fundamentals)] as const;
-      });
-      if (cancelled) return;
-      setVerdictByTicker((prev) => {
-        const next = { ...prev };
-        for (const [ticker, verdict] of entries) next[ticker] = verdict;
-        return next;
-      });
+      for (let i = 0; i < pending.length && !cancelled; i += VERDICT_CHUNK) {
+        const chunk = pending.slice(i, i + VERDICT_CHUNK).filter((r) => !verdictAttemptedRef.current.has(r.summary.ticker));
+        chunk.forEach((r) => verdictAttemptedRef.current.add(r.summary.ticker));
+        const entries = await mapWithConcurrency(chunk, HISTORY_CONCURRENCY, async ({ summary }) => {
+          const [bars, fundamentals] = await Promise.all([
+            getStockHistory(summary.ticker),
+            getStockFundamentals(summary.ticker),
+          ]);
+          return [summary.ticker, computeScreenerVerdict(summary, bars, fundamentals)] as const;
+        });
+        // Results are valid regardless of cancellation — commit them so nothing is fetched twice.
+        setVerdictByTicker((prev) => {
+          const next = { ...prev };
+          for (const [ticker, verdict] of entries) next[ticker] = verdict;
+          return next;
+        });
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [visibleResults]);
-
-  const topMovers = useMemo(() => {
-    if (!summaries) return [];
-    return [...summaries].sort((a, b) => b.percentChange1D - a.percentChange1D).slice(0, 12);
-  }, [summaries]);
+  }, [verdictTargets]);
 
   const activeFilterInfo = useMemo(() => {
     if (filterId === 'all') {
-      return {
-        label: 'Semua',
-        description: 'Menampilkan seluruh saham tanpa filter, diurutkan sesuai pilihan Anda.',
-        criteria: [] as string[],
-      };
+      return { label: 'Semua', description: 'Seluruh saham tanpa preset — persempit dengan filter di sidebar.', criteria: [] as string[] };
     }
     const preset = SCREENER_PRESETS[filterId];
     return { label: preset.label, description: preset.description, criteria: preset.criteria };
@@ -279,6 +365,8 @@ export function ScreenerPage() {
   const isBusy = status === 'scanning' || status === 'loading-summary';
   const progressPct = progress.total > 0 ? Math.round((progress.checked / progress.total) * 100) : 0;
   const canCreateJurnal = JOURNAL_PRESETS.includes(filterId as ScreenerPresetId) && results.length > 0;
+  const filtersDirty = JSON.stringify(draftFilters) !== JSON.stringify(filters);
+  const anyFilter = watchlistOnly || JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS) || query.trim() !== '';
 
   const handleCreateJurnal = useCallback(async () => {
     if (!JOURNAL_PRESETS.includes(filterId as ScreenerPresetId)) return;
@@ -328,258 +416,222 @@ export function ScreenerPage() {
     }
   }, [filterId, results, journal]);
 
+  const btnSecondary = 'inline-flex h-9 items-center gap-2 rounded-lg border border-(--sv-border) bg-(--sv-surface) px-3 text-sm font-medium text-(--sv-text) hover:bg-(--sv-bg) disabled:cursor-not-allowed disabled:opacity-50';
+
   return (
-    <div className="flex w-full min-h-screen flex-col bg-white dark:bg-black">
-      <AppHeader
+    <div className={cn('sv-theme flex min-h-screen w-full flex-col', screenerInter.variable)}>
+      <ScreenerHeader
         query={query}
         onQueryChange={handleQueryChange}
         lastUpdatedAt={lastUpdatedAt}
+        ihsg={market.ihsg}
         onOpenDrawer={() => setDrawerOpen(true)}
-        watchlistCount={watchlist.tickers.length}
       />
-      <TickerTape movers={topMovers} />
 
-      <div className="w-full flex flex-1 flex-col gap-6 px-4 pt-6 pb-24 sm:px-6 lg:flex-row lg:items-start lg:gap-8 lg:pb-6">
+      <div className="flex flex-1">
         {drawerOpen && (
-          <div
-            className="fixed inset-0 z-[35] bg-zinc-900/50 lg:hidden"
-            onClick={() => setDrawerOpen(false)}
-            aria-hidden="true"
-          />
+          <div className="fixed inset-0 z-40 bg-slate-900/40 xl:hidden" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
         )}
 
         <aside
-          role="dialog"
-          aria-modal={drawerOpen}
-          aria-label="Filter dan daftar pantau"
+          aria-label="Menu dan filter"
           className={cn(
-            'fixed top-0 bottom-0 left-0 z-40 flex w-64 max-w-[85vw] flex-col gap-4 overflow-y-auto neo-border border-y-0 border-l-0 bg-white p-2 transition-transform duration-300 ease-out',
-            'dark:bg-zinc-950',
-            drawerOpen ? 'translate-x-0 neo-shadow-lg' : '-translate-x-full',
-            'lg:sticky lg:top-20 lg:bottom-auto lg:left-auto lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0',
-            'lg:translate-x-0 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none'
+            'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col gap-6 overflow-y-auto border-r border-(--sv-border) bg-(--sv-surface) p-4 transition-transform duration-300 ease-out',
+            drawerOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full',
+            'xl:sticky xl:top-16 xl:z-auto xl:h-[calc(100vh-4rem)] xl:w-64 xl:max-w-none xl:shrink-0 xl:translate-x-0 xl:shadow-none',
           )}
         >
-          <div className="flex items-center justify-between lg:hidden">
-            <span className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Filter & Pantauan</span>
+          <div className="flex items-center justify-between xl:hidden">
+            <span className="text-sm font-semibold text-(--sv-text)">Menu & Filter</span>
             <button
               type="button"
               onClick={() => setDrawerOpen(false)}
               aria-label="Tutup"
-              className="neo-press flex size-8 items-center justify-center neo-border bg-white text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+              className="flex size-8 items-center justify-center rounded-lg border border-(--sv-border) text-(--sv-text)"
             >
-              <X className="size-4.5" strokeWidth={2.5} />
+              <X className="size-4" strokeWidth={2} />
             </button>
           </div>
-          <FilterInfoCard
-            label={activeFilterInfo.label}
-            description={activeFilterInfo.description}
-            criteria={activeFilterInfo.criteria}
+          <ScreenerNav
+            watchlistOnly={watchlistOnly}
+            watchlistCount={watchlist.tickers.length}
+            onToggleWatchlist={() => { setWatchlistOnly((w) => !w); setPage(1); setDrawerOpen(false); }}
           />
-          <WatchlistCard tickers={watchlist.tickers} summaries={summaries ?? []} onRemove={watchlist.toggle} />
-          <SectorListCard summaries={summaries ?? []} />
+          <div className="border-t border-(--sv-border) pt-5">
+            <ScreenerFilters
+              draft={draftFilters}
+              onChange={setDraftFilters}
+              sectors={sectors}
+              onApply={applyFilters}
+              onReset={resetFilters}
+              dirty={filtersDirty}
+            />
+          </div>
+          <p className="mt-auto text-[11px] text-(--sv-muted)">© {new Date().getFullYear()} {SITE_NAME} · Data EOD, bukan prediksi harga.</p>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col gap-1">
-          <IhsgChart />
+        <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-5 pb-28 sm:px-6 xl:pb-8">
+          <MarketSummary market={market} summaries={summaries} />
 
-          {/* ── UI — top gainer/loser highlight ───────────────────────────────── */}
-          <div className="mb-4 flex flex-col gap-4">
-            <TopGainerCard summaries={summaries ?? []} />
-            <TopLoserCard summaries={summaries ?? []} />
-          </div>
-
-          <div className="hidden lg:flex lg:items-center lg:gap-2">
-            <PresetTabs items={FILTER_ITEMS} selected={filterId} onSelect={handleSelectFilter} />
-            {/* <Link
-              href="/sektor"
-              className="neo-press inline-flex shrink-0 items-center gap-1.5 neo-border neo-shadow-sm bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide text-zinc-600 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              <Building2 className="size-3.5" strokeWidth={2.5} />
-              Sektor
-            </Link> */}
-          </div>
-
-          {status === 'loading-summary' && (
-            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-              <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />
-              Memuat daftar saham dari bursa...
-            </div>
-          )}
-
-          {status === 'scanning' && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
-                  Menganalisis kandidat...
-                </span>
-                <span className="font-mono tabular-nums">
-                  {progress.checked}/{progress.total}
-                </span>
+          <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_300px]">
+            <section aria-labelledby="screener-title" className="flex min-w-0 flex-col gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h1 id="screener-title" className="text-xl font-bold text-(--sv-text) sm:text-2xl">Screener Saham</h1>
+                  <p className="mt-0.5 text-sm text-(--sv-muted)">
+                    Temukan saham berdasarkan fundamental, teknikal, valuasi, momentum dan risiko.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {canCreateJurnal && (
+                    <button
+                      type="button"
+                      onClick={handleCreateJurnal}
+                      disabled={creatingJurnal}
+                      title={`Simpan top ${JOURNAL_TOP_N} saham (berdasarkan perubahan) ke Jurnal`}
+                      className={btnSecondary}
+                    >
+                      {creatingJurnal ? <Loader2 className="size-4 animate-spin" /> : <NotebookPen className="size-4" strokeWidth={2} />}
+                      Create Jurnal
+                    </button>
+                  )}
+                  <button type="button" onClick={handleSaveScreener} className={btnSecondary}>
+                    {savedFlash ? <BookmarkCheck className="size-4 text-emerald-600" strokeWidth={2} /> : <Bookmark className="size-4" strokeWidth={2} />}
+                    {savedFlash ? 'Tersimpan' : 'Simpan Screener'}
+                  </button>
+                  <button type="button" onClick={handleRefresh} disabled={isBusy} className={btnSecondary}>
+                    <RefreshCw className={cn('size-4', isBusy && 'animate-spin')} strokeWidth={2} />
+                    Refresh
+                  </button>
+                </div>
               </div>
-              <div className="h-3 w-full overflow-hidden neo-border bg-zinc-100 dark:bg-zinc-800">
+
+              <ScreenerTabs
+                items={FILTER_ITEMS}
+                selected={filterId}
+                onSelect={handleSelectFilter}
+                count={status === 'done' ? results.length : null}
+              />
+
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+                <p className="flex items-center gap-1.5 text-(--sv-muted)">
+                  <span className="font-medium text-(--sv-text)">{activeFilterInfo.label}:</span>
+                  {activeFilterInfo.description}
+                  {activeFilterInfo.criteria.length > 0 && (
+                    <InfoTip term={`Kriteria ${activeFilterInfo.label}`} text={activeFilterInfo.criteria.join(' · ')} />
+                  )}
+                </p>
+                {status === 'done' && (
+                  <p className="text-(--sv-muted)">
+                    <b className="tabular-nums text-(--sv-text)">{sortedRows.length}</b> hasil dari {summaries?.length ?? 0} saham
+                    {anyFilter && (
+                      <button type="button" onClick={() => { resetFilters(); setQuery(''); }} className="ml-2 font-medium text-(--sv-primary) hover:underline">
+                        Hapus filter
+                      </button>
+                    )}
+                  </p>
+                )}
+              </div>
+
+              {status === 'scanning' && (
+                <div className="rounded-xl border border-(--sv-border) bg-(--sv-surface) p-3">
+                  <div className="flex items-center justify-between text-sm text-(--sv-muted)">
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="size-4 animate-spin text-(--sv-primary)" />
+                      Menganalisis kandidat {activeFilterInfo.label}…
+                    </span>
+                    <span className="tabular-nums">{progress.checked}/{progress.total}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div className="h-full rounded-full bg-(--sv-primary) transition-[width] duration-300" style={{ width: `${progressPct}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {status === 'done' && verdictProgress && verdictProgress.done < verdictProgress.total && (
+                <div className="rounded-xl border border-(--sv-border) bg-(--sv-surface) p-3">
+                  <div className="flex items-center justify-between text-sm text-(--sv-muted)">
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="size-4 animate-spin text-(--sv-primary)" />
+                      Menghitung fase, fundamental &amp; valuasi untuk filter/urutan…
+                    </span>
+                    <span className="tabular-nums">{verdictProgress.done}/{verdictProgress.total}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-(--sv-primary) transition-[width] duration-300"
+                      style={{ width: `${Math.round((verdictProgress.done / Math.max(1, verdictProgress.total)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {status === 'error' && errorMessage && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200">
+                  <span className="flex items-center gap-2"><AlertCircle className="size-4 shrink-0" />{errorMessage}</span>
+                  <button type="button" onClick={handleRefresh} className="rounded-lg bg-rose-600 px-3 py-1.5 font-medium text-white hover:bg-rose-700">
+                    Coba lagi
+                  </button>
+                </div>
+              )}
+
+              {jurnalMessage && (
                 <div
-                  className="h-full bg-emerald-400 transition-[width] duration-300 ease-out"
-                  style={{ width: `${progressPct}%` }}
+                  className={cn(
+                    'flex items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm font-medium',
+                    jurnalMessage.type === 'success'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200'
+                      : 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200'
+                  )}
+                >
+                  <span>{jurnalMessage.text}</span>
+                  {jurnalMessage.type === 'success' && (
+                    <Link href="/jurnal" className="shrink-0 underline underline-offset-2">Lihat Jurnal →</Link>
+                  )}
+                </div>
+              )}
+
+              {status !== 'error' && (
+                <ScreenerTable
+                  rows={pageRows}
+                  startIndex={(currentPage - 1) * PAGE_SIZE}
+                  verdictByTicker={verdictByTicker}
+                  loading={isBusy}
+                  sort={sort}
+                  onSort={handleSort}
+                  emptyHint={
+                    watchlistOnly && watchlist.tickers.length === 0
+                      ? 'Watchlist Anda masih kosong — tandai saham dengan ikon bintang.'
+                      : verdictProgress && verdictProgress.done < verdictProgress.total
+                        ? 'Masih menganalisis kandidat — hasil akan muncul saat data selesai dihitung.'
+                        : 'Coba longgarkan filter, ganti tab preset, atau ubah kata kunci pencarian.'
+                  }
+                  onResetFilters={anyFilter ? () => { resetFilters(); setQuery(''); } : undefined}
+                  isWatchlisted={watchlist.has}
+                  onToggleWatchlist={watchlist.toggle}
+                  isCompareSelected={isCompareSelected}
+                  onToggleCompare={toggleCompare}
                 />
-              </div>
-            </div>
-          )}
-
-          {status === 'error' && errorMessage && (
-            <div className="flex items-center gap-2 neo-border neo-shadow-sm bg-rose-100 px-3.5 py-2.5 text-sm font-semibold text-rose-800 dark:bg-rose-400/10 dark:text-rose-300">
-              <AlertCircle className="size-4 shrink-0" strokeWidth={2.5} />
-              {errorMessage}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="text-xl font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-50">
-                Hasil Screening
-              </h1>
-              <p className="mt-0.5 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-                {hasMoreResults
-                  ? `Menampilkan ${visibleResults.length} dari ${displayedResults.length} saham ditemukan`
-                  : `${displayedResults.length} saham ditemukan`}{' '}
-                dari {summaries?.length ?? 0} total · Data EOD, bukan prediksi harga
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="neo-border neo-shadow-sm bg-white px-3 py-2 text-sm font-semibold text-zinc-700 outline-none dark:bg-zinc-900 dark:text-zinc-200"
-              >
-                {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-
-              <div className="flex items-center gap-1 neo-border neo-shadow-sm bg-white p-1 dark:bg-zinc-900">
-                <button
-                  type="button"
-                  onClick={() => setView('table')}
-                  aria-label="Tampilan tabel"
-                  aria-pressed={view === 'table'}
-                  className={cn(
-                    'p-1.5 transition-colors',
-                    view === 'table'
-                      ? 'bg-(--neo-accent) text-black'
-                      : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
-                  )}
-                >
-                  <Table2 className="size-4" strokeWidth={2.5} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView('grid')}
-                  aria-label="Tampilan grid"
-                  aria-pressed={view === 'grid'}
-                  className={cn(
-                    'p-1.5 transition-colors',
-                    view === 'grid'
-                      ? 'bg-(--neo-accent) text-black'
-                      : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
-                  )}
-                >
-                  <LayoutGrid className="size-4" strokeWidth={2.5} />
-                </button>
-              </div>
-
-              {canCreateJurnal && (
-                <button
-                  type="button"
-                  onClick={handleCreateJurnal}
-                  disabled={creatingJurnal}
-                  title={`Simpan top ${JOURNAL_TOP_N} saham (berdasarkan perubahan) ke Jurnal`}
-                  className="neo-press inline-flex items-center justify-center gap-2 neo-border neo-shadow-sm bg-(--neo-accent) px-3 py-2 text-xs font-bold uppercase tracking-wide text-black disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {creatingJurnal ? (
-                    <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />
-                  ) : (
-                    <NotebookPen className="size-4" strokeWidth={2.5} />
-                  )}
-                  <span className="hidden sm:inline">Create Jurnal</span>
-                </button>
               )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (summaries) runScan(filterId, summaries);
-                  setVisibleCount(RESULTS_LIMIT);
-                }}
-                disabled={!summaries || isBusy}
-                aria-label="Pindai ulang"
-                className="neo-press inline-flex items-center justify-center gap-2 neo-border neo-shadow-sm bg-white p-2 text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-300"
-              >
-                <RefreshCw className={cn('size-4', status === 'scanning' && 'animate-spin')} strokeWidth={2.5} />
-              </button>
-            </div>
+              {!isBusy && (
+                <ScreenerPagination page={currentPage} pageSize={PAGE_SIZE} total={sortedRows.length} onPage={setPage} />
+              )}
+            </section>
+
+            <aside aria-label="Insight pasar" className="grid content-start gap-4 md:grid-cols-3 2xl:sticky 2xl:top-20 2xl:grid-cols-1 2xl:self-start">
+              <GainerLoserPanel summaries={summaries ?? []} />
+              <ValuationSummary tickers={sortedRows.map((r) => r.summary.ticker)} verdictByTicker={verdictByTicker} />
+            </aside>
           </div>
-
-          {jurnalMessage && (
-            <div
-              className={cn(
-                'flex items-center justify-between gap-2 neo-border neo-shadow-sm px-3.5 py-2.5 text-sm font-semibold',
-                jurnalMessage.type === 'success'
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300'
-                  : 'bg-rose-100 text-rose-800 dark:bg-rose-400/10 dark:text-rose-300'
-              )}
-            >
-              <span>{jurnalMessage.text}</span>
-              {jurnalMessage.type === 'success' && (
-                <Link href="/jurnal" className="shrink-0 underline underline-offset-2">
-                  Lihat Jurnal →
-                </Link>
-              )}
-            </div>
-          )}
-
-          {/* <ResultsTable
-            results={visibleResults}
-            view={view}
-            isWatchlisted={watchlist.has}
-            onToggleWatchlist={watchlist.toggle}
-            isCompareSelected={isCompareSelected}
-            onToggleCompare={toggleCompare}
-            phaseByTicker={phaseByTicker}
-          /> */}
-
-          <ResultsTableNew
-            results={visibleResults}
-            view={view}
-            isWatchlisted={watchlist.has}
-            onToggleWatchlist={watchlist.toggle}
-            isCompareSelected={isCompareSelected}
-            onToggleCompare={toggleCompare}
-            verdictByTicker={verdictByTicker}
-          />
-
-          {hasMoreResults && (
-            <button
-              type="button"
-              onClick={() => setVisibleCount((count) => count + RESULTS_LIMIT)}
-              className="neo-press mt-1 neo-border neo-shadow-sm bg-white py-2.5 text-sm font-bold uppercase tracking-wide text-zinc-700 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Muat {Math.min(RESULTS_LIMIT, displayedResults.length - visibleResults.length)} lagi
-            </button>
-          )}
         </main>
       </div>
 
-      <BottomNav items={FILTER_ITEMS} selected={filterId} onSelect={handleSelectFilter} />
-
       {compareSelection.length > 0 && (
-        <div className="fixed inset-x-0 bottom-16 z-40 flex justify-center px-4 lg:bottom-4">
-          <div className="flex items-center gap-3 neo-border neo-shadow-lg bg-white px-4 py-2.5 dark:bg-zinc-900">
-            <GitCompare className="size-4 shrink-0 text-blue-500" strokeWidth={2.5} />
-            <span className="text-sm font-bold text-zinc-700 dark:text-zinc-200">
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+          <div className="flex items-center gap-3 rounded-xl border border-(--sv-border) bg-(--sv-surface) px-4 py-2.5 shadow-lg">
+            <GitCompare className="size-4 shrink-0 text-(--sv-primary)" strokeWidth={2} />
+            <span className="text-sm font-medium text-(--sv-text)">
               {compareSelection.length === 2
                 ? `${compareSelection[0]} vs ${compareSelection[1]}`
                 : `${compareSelection[0]} dipilih — pilih 1 saham lagi`}
@@ -587,7 +639,7 @@ export function ScreenerPage() {
             {compareSelection.length === 2 && (
               <Link
                 href={`/compare?a=${compareSelection[0]}&b=${compareSelection[1]}`}
-                className="neo-press neo-border neo-shadow-sm bg-(--neo-accent) px-3 py-1.5 text-sm font-bold text-black"
+                className="rounded-lg bg-(--sv-primary) px-3 py-1.5 text-sm font-semibold text-(--sv-primary-fg)"
               >
                 Bandingkan →
               </Link>
@@ -596,9 +648,9 @@ export function ScreenerPage() {
               type="button"
               onClick={() => setCompareSelection([])}
               aria-label="Batalkan pilihan bandingkan"
-              className="flex size-7 shrink-0 items-center justify-center text-zinc-400 hover:text-rose-500"
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-(--sv-muted) hover:text-rose-500"
             >
-              <X className="size-4" strokeWidth={2.5} />
+              <X className="size-4" strokeWidth={2} />
             </button>
           </div>
         </div>

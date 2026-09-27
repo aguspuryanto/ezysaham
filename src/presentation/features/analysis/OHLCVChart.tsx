@@ -27,7 +27,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
-import { History } from 'lucide-react';
+import { FlaskConical, History } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
 import { ema } from '@/domain/indicators/movingAverages';
@@ -255,12 +255,24 @@ export function OHLCVChart({ bars, currentClose, ticker, prevClose }: OHLCVChart
               {key}
             </button>
           ))} */}
-        <Link
-          href={`/history/${ticker}`}
-          className="neo-press flex items-center gap-1.5 px-3 py-1.5 neo-border neo-shadow-sm bg-white text-sm font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
-        >
-          <History className="size-3.5" strokeWidth={2.5} />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/history/${ticker}`}
+            aria-label="Riwayat teknikal"
+            title="Riwayat teknikal"
+            className="neo-press flex items-center gap-1.5 px-3 py-1.5 neo-border neo-shadow-sm bg-white text-sm font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+          >
+            <History className="size-3.5" strokeWidth={2.5} />
+          </Link>
+          <Link
+            href={`/backtest/${ticker}`}
+            aria-label="Backtest"
+            title="Backtest"
+            className="neo-press flex items-center gap-1.5 px-3 py-1.5 neo-border neo-shadow-sm bg-white text-sm font-bold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+          >
+            <FlaskConical className="size-3.5" strokeWidth={2.5} />
+          </Link>
+        </div>
         {/* </div> */}
       </div>
 

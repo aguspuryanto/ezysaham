@@ -22,8 +22,11 @@ import {
   isPriceAtEntryTrigger,
   isSetupInvalidated,
 } from '@/domain/analysis/tradeValidation';
-import { evaluateRiskGate, TradeStatus } from '@/domain/analysis/riskGate';
+import { classifyRvol, evaluateRiskGate, RiskGateStatus, TradeStatus } from '@/domain/analysis/riskGate';
 import { computeFundamentalScore, FundamentalScore } from '@/domain/screener/presets';
+import { evaluateFundamentalScreening, evaluateTechnicalScreening } from '@/domain/analysis/aiStockEngine';
+import { buildFundamentalPillars, ValuationVerdict } from '@/domain/analysis/fundamentalPillars';
+import { Trend } from '@/domain/models/StockAnalysis';
 
 /** Minimum bars computeStockAnalysis needs for a non-degenerate read (mirrors its own internal guard). */
 const MIN_ANALYSIS_BARS = 20;
@@ -39,6 +42,22 @@ export type SetupLabel = 'BOW/BOS' | 'BOB' | 'BOS' | 'NO CHASE' | 'NO TRADE' | '
  *  as WAIT. `null` means there isn't enough bar history to run the analysis at all. */
 export type SwingTradeStatus = 'BUY' | 'WAIT' | 'NO_TRADE';
 
+export type MomentumLevel = 'STRONG' | 'MODERATE' | 'WEAK';
+export type VolumeLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+/** Fair value read straight from fundamentalPillars.ts's valuation pillar — never recomputed here. */
+export interface ScreenerValuation {
+  verdict: ValuationVerdict;
+  /** Lowest / highest of the per-method fair values that could be computed. */
+  fairLow: number | null;
+  fairHigh: number | null;
+  /** Median of the methods (fundamentalPillars.ts's `fairValue`). */
+  fairMedian: number | null;
+  /** % from price to median fair value (positive = price below fair value). */
+  upsidePct: number | null;
+}
+
 export interface ScreenerVerdict {
   marketPhase: MarketPhaseResult | null;
   setup: SetupLabel;
@@ -46,6 +65,39 @@ export interface ScreenerVerdict {
    *  formula is untouched; a null `fundamentals` fetch just degrades gracefully (see its dataNotes). */
   fundamentalScore: FundamentalScore;
   tradeStatus: SwingTradeStatus | null;
+  /** Screener display reads — each one a label on top of an existing function's output
+   *  (trendEma.trend, evaluateTechnicalScreening's momentum tone, classifyRvol, riskGate status).
+   *  null = not enough bar history. */
+  trend: Trend | null;
+  momentum: MomentumLevel | null;
+  volume: VolumeLevel | null;
+  relativeVolume: number | null;
+  risk: RiskLevel | null;
+  riskReasons: string[];
+  valuation: ScreenerValuation;
+}
+
+const MOMENTUM_FROM_TONE: Record<'green' | 'amber' | 'red', MomentumLevel> = { green: 'STRONG', amber: 'MODERATE', red: 'WEAK' };
+const RISK_FROM_GATE: Record<RiskGateStatus, RiskLevel> = { CLEAR: 'LOW', CONDITIONAL: 'MEDIUM', BLOCKED: 'HIGH' };
+
+function volumeLevel(relativeVolume: number): VolumeLevel | null {
+  const { tier } = classifyRvol(relativeVolume);
+  if (tier === 'NO_DATA') return null;
+  if (tier === 'VERY_LOW' || tier === 'LOW') return 'LOW';
+  if (tier === 'NORMAL') return 'MEDIUM';
+  return 'HIGH';
+}
+
+function valuationRead(summary: StockSummary, fundamentals: FundamentalDetail | null): ScreenerValuation {
+  const { valuation } = buildFundamentalPillars(summary, fundamentals, evaluateFundamentalScreening(summary));
+  const values = valuation.methods.map((m) => m.fairValue).filter((v): v is number => v != null && Number.isFinite(v) && v > 0);
+  return {
+    verdict: valuation.verdict,
+    fairLow: values.length ? Math.min(...values) : null,
+    fairHigh: values.length ? Math.max(...values) : null,
+    fairMedian: valuation.fairValue,
+    upsidePct: valuation.upsidePct,
+  };
 }
 
 function setupFromPhase(phase: MarketPhaseResult | null): SetupLabel {
@@ -90,8 +142,13 @@ export function computeScreenerVerdict(
   const setup = setupFromPhase(marketPhase);
   const fundamentalScore = computeFundamentalScore(summary, fundamentals);
 
+  const valuation = valuationRead(summary, fundamentals);
+
   if (bars.length < MIN_ANALYSIS_BARS) {
-    return { marketPhase, setup, fundamentalScore, tradeStatus: null };
+    return {
+      marketPhase, setup, fundamentalScore, tradeStatus: null,
+      trend: null, momentum: null, volume: null, relativeVolume: null, risk: null, riskReasons: [], valuation,
+    };
   }
 
   const analysis = computeStockAnalysis(summary, bars);
@@ -155,5 +212,20 @@ export function computeScreenerVerdict(
 
   const rawTradeStatus: TradeStatus = scenario.validationErrors.length > 0 ? 'NO_TRADE' : riskGate.tradeStatus;
 
-  return { marketPhase, setup, fundamentalScore, tradeStatus: collapseTradeStatus(rawTradeStatus) };
+  const technical = evaluateTechnicalScreening(analysis, summary);
+  const rvol = analysis.volume.relativeVolume;
+
+  return {
+    marketPhase,
+    setup,
+    fundamentalScore,
+    tradeStatus: collapseTradeStatus(rawTradeStatus),
+    trend: analysis.trendEma.trend,
+    momentum: MOMENTUM_FROM_TONE[technical.momentumStatus.tone],
+    volume: volumeLevel(rvol),
+    relativeVolume: Number.isFinite(rvol) ? rvol : null,
+    risk: RISK_FROM_GATE[riskGate.riskGateStatus],
+    riskReasons: riskGate.reasons,
+    valuation,
+  };
 }
