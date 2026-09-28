@@ -16,6 +16,10 @@ export interface IntradayResponse {
   ok: boolean;
   bars: IntradayBar[];
   previousClose?: number;
+  /** meta.regularMarketPrice — latest traded price incl. closing auction (the last 1m bar can miss it). */
+  lastPrice?: number;
+  /** meta.regularMarketTime, unix seconds (UTC). */
+  lastPriceTime?: number;
   session?: IntradaySession;
   source?: 'yahoo';
   reason?: 'not_found' | 'error';

@@ -83,12 +83,14 @@ export interface IntradayModeInput {
   bars: IntradayBar[] | null;
   /** Fallback price when there are no intraday bars (last daily close). */
   lastClose: number;
+  /** Live quote (Yahoo meta.regularMarketPrice) — preferred over the last 1m bar so this matches the hero price. */
+  lastPrice?: number | null;
 }
 
-export function buildIntradayModeReview({ bars, lastClose }: IntradayModeInput): ModeReview {
+export function buildIntradayModeReview({ bars, lastClose, lastPrice }: IntradayModeInput): ModeReview {
   const b = bars ?? [];
   const vwap = b.length > 0 ? sessionVwap(b) : null;
-  const price = b.length > 0 ? b[b.length - 1].price : lastClose;
+  const price = lastPrice != null && lastPrice > 0 ? lastPrice : b.length > 0 ? b[b.length - 1].price : lastClose;
 
   if (vwap == null || b.length < INTRADAY_WINDOW * 2) {
     return {

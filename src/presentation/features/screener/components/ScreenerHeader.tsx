@@ -28,12 +28,15 @@ export function ScreenerHeader({
   lastUpdatedAt,
   ihsg,
   onOpenDrawer,
+  onSubmitQuery,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
   lastUpdatedAt: Date | null;
   ihsg: MarketSeriesSnapshot | null;
   onOpenDrawer: () => void;
+  /** Optional Enter handler (e.g. the detail page jumps to the typed ticker). */
+  onSubmitQuery?: (q: string) => void;
 }) {
   const marketOpen = useIdxOpen();
   const up = ihsg != null && ihsg.change >= 0;
@@ -67,6 +70,7 @@ export function ScreenerHeader({
             type="search"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && onSubmitQuery) onSubmitQuery(query); }}
             placeholder="Cari kode saham, nama emiten, atau sektor…"
             className="h-10 w-full rounded-lg border border-(--sv-border) bg-(--sv-bg) pl-9 pr-3 text-sm text-(--sv-text) outline-none placeholder:text-(--sv-muted) focus:border-(--sv-primary) focus:bg-(--sv-surface) focus:ring-2 focus:ring-(--sv-primary)/15"
           />

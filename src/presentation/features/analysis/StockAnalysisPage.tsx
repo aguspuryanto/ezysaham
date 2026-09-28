@@ -4279,20 +4279,10 @@ function TradingModeSection({ ticker, review }: { ticker: string; review: ModeRe
   );
 }
 
-function EquityResearchReportCardv6(props: EquityReportProps) {
-  const { summary, bars, trendEma, volume, priceAction, supportResistance, fundamentals, fundamentalScreening } = props;
-
-  // Session VWAP needs real 1-minute bars — same source as EquityResearchReportCard2 / IntradayChart.tsx.
-  // Keyed by ticker so a stale response is ignored while the next ticker loads.
-  const [intradayState, setIntradayState] = useState<{ ticker: string; data: IntradayResponse } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    getStockIntraday(summary.ticker).then((data) => {
-      if (!cancelled) setIntradayState({ ticker: summary.ticker, data });
-    });
-    return () => { cancelled = true; };
-  }, [summary.ticker]);
-  const intraday = intradayState?.ticker === summary.ticker ? intradayState.data : null;
+// `intraday` is fetched once by StockAnalysisPage (null = still loading) and `summary` arrives with
+// lastClose already patched to that feed's live price, so all three modes and the hero show one price.
+function EquityResearchReportCardv6(props: EquityReportProps & { intraday: IntradayResponse | null }) {
+  const { summary, bars, trendEma, volume, priceAction, supportResistance, fundamentals, fundamentalScreening, intraday } = props;
 
   const pillars = useMemo(
     () => buildFundamentalPillars(summary, fundamentals, fundamentalScreening),
@@ -4300,7 +4290,7 @@ function EquityResearchReportCardv6(props: EquityReportProps) {
   );
 
   const reviews = useMemo(() => [
-    buildIntradayModeReview({ bars: intraday?.ok ? intraday.bars : null, lastClose: summary.lastClose }),
+    buildIntradayModeReview({ bars: intraday?.ok ? intraday.bars : null, lastClose: summary.lastClose, lastPrice: intraday?.ok ? intraday.lastPrice : null }),
     buildSwingModeReview({
       bars: bars ?? [],
       price: summary.lastClose,
@@ -4678,6 +4668,33 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const watchlist = useWatchlist();
   const journal = useJournal();
   const fairValue = useFairValueCalculator(summary, fundamentals);
+
+  // Live quote: `summary` comes from Pasardana's list snapshot (5-min cache, can lag the market),
+  // while the intraday card reads Yahoo 1-minute data (60s cache). Fetch the Yahoo feed once here and
+  // patch the displayed price from it so the hero, header and 3-mode report never show two prices.
+  // Keyed by ticker so a stale response is ignored while the next ticker loads.
+  const [intradayState, setIntradayState] = useState<{ ticker: string; data: IntradayResponse } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getStockIntraday(ticker.toUpperCase()).then((data) => {
+      if (!cancelled) setIntradayState({ ticker: ticker.toUpperCase(), data });
+    });
+    return () => { cancelled = true; };
+  }, [ticker]);
+  const intraday = intradayState?.ticker === ticker.toUpperCase() ? intradayState.data : null;
+
+  const liveSummary = useMemo(() => {
+    if (!summary || !intraday?.ok) return summary;
+    const live = intraday.lastPrice ?? intraday.bars[intraday.bars.length - 1]?.price;
+    if (live == null || !(live > 0)) return summary;
+    const prev = intraday.previousClose ?? summary.prevClose;
+    return {
+      ...summary,
+      lastClose: live,
+      prevClose: prev,
+      percentChange1D: prev > 0 ? ((live - prev) / prev) * 100 : summary.percentChange1D,
+    };
+  }, [summary, intraday]);
   const [addingToJournal, setAddingToJournal] = useState(false);
   const [journalStatus, setJournalStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -4852,7 +4869,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
   const { trendEma, supportResistance, priceAction, volume, indicators, tradingPlan } = analysis;
   const isBullish = trendEma.trend === 'bullish';
   const isBearish = trendEma.trend === 'bearish';
-  const positiveDay = summary.percentChange1D >= 0;
+  const positiveDay = (liveSummary ?? summary).percentChange1D >= 0;
   const isWatched = watchlist.has(summary.ticker);
 
   return (
@@ -4881,7 +4898,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
           {/* Mobile: inline price + change in header */}
           <div className="flex items-center gap-1.5 shrink-0 sm:hidden">
             <span className="font-mono text-sm font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
-              {formatRupiah(summary.lastClose)}
+              {formatRupiah((liveSummary ?? summary).lastClose)}
             </span>
             <span className={cn(
               'inline-flex items-center gap-0.5 text-xs font-mono font-bold tabular-nums px-1.5 py-0.5 rounded-md',
@@ -4890,7 +4907,7 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 : 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400'
             )}>
               {positiveDay ? <TrendingUp className="size-3" strokeWidth={2.5} /> : <TrendingDown className="size-3" strokeWidth={2.5} />}
-              {formatPercent(summary.percentChange1D)}
+              {formatPercent((liveSummary ?? summary).percentChange1D)}
             </span>
           </div>
 
@@ -4991,14 +5008,14 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
             <div className="flex items-end justify-between gap-3">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="font-mono text-2xl sm:text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
-                  {formatRupiah(summary.lastClose)}
+                  {formatRupiah((liveSummary ?? summary).lastClose)}
                 </span>
                 <span className={cn(
                   'hidden sm:inline-flex items-center gap-1 text-base font-mono tabular-nums font-bold',
                   positiveDay ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                 )}>
                   {positiveDay ? <TrendingUp className="size-5" strokeWidth={2.5} /> : <TrendingDown className="size-5" strokeWidth={2.5} />}
-                  {formatPercent(summary.percentChange1D)}
+                  {formatPercent((liveSummary ?? summary).percentChange1D)}
                 </span>
               </div>
 
@@ -5236,7 +5253,8 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                 /> */}
 
                 <EquityResearchReportCardv6
-                  summary={summary}
+                  summary={liveSummary ?? summary}
+                  intraday={intraday}
                   bars={bars}
                   trendEma={trendEma}
                   indicators={indicators}

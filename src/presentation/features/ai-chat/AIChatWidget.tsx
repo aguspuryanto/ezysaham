@@ -2,36 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
-import Script from 'next/script';
 import { Bot, Loader2, MessageCircle, Send, Sparkles, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/format';
-import { SITE_NAME } from '@/lib/site';
-
-type PuterChatMessage = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
-
-type PuterChatChunk = {
-  type: string;
-  text?: string;
-  message?: string;
-};
-
-interface PuterGlobal {
-  ai: {
-    chat(
-      messages: PuterChatMessage[],
-      options: { model?: string; stream: true }
-    ): Promise<AsyncIterable<PuterChatChunk>>;
-  };
-}
-
-declare global {
-  interface Window {
-    puter?: PuterGlobal;
-  }
-}
 
 type ChatMessage = {
   id: string;
@@ -39,10 +11,6 @@ type ChatMessage = {
   content: string;
   isError?: boolean;
 };
-
-const MODEL = 'gpt-5-nano';
-
-const SYSTEM_PROMPT = `Kamu adalah asisten AI dari ${SITE_NAME}, aplikasi screening saham IDX. Jawab pertanyaan seputar saham, analisis teknikal/fundamental, dan istilah investasi dengan singkat, jelas, dan dalam Bahasa Indonesia.`;
 
 const SUGGESTED_PROMPTS = [
   'Apa itu RSI dan MACD?',
@@ -52,7 +20,6 @@ const SUGGESTED_PROMPTS = [
 
 export function AIChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isReady, setIsReady] = useState(() => typeof window !== 'undefined' && !!window.puter);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -72,8 +39,7 @@ export function AIChatWidget() {
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
-    const puter = typeof window !== 'undefined' ? window.puter : undefined;
-    if (!trimmed || isLoading || !puter) return;
+    if (!trimmed || isLoading) return;
 
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: trimmed };
     const history = [...messages, userMessage];
@@ -85,21 +51,28 @@ export function AIChatWidget() {
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
 
     try {
-      const apiMessages: PuterChatMessage[] = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...history.map((m) => ({ role: m.role, content: m.content })),
-      ];
+      const res = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history.filter((m) => !m.isError).map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
 
-      const stream = await puter.ai.chat(apiMessages, { model: MODEL, stream: true });
+      if (!res.ok || !res.body) {
+        const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(data?.message || 'Terjadi kesalahan pada AI.');
+      }
 
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
       let fullText = '';
-      for await (const part of stream) {
-        if (part.type === 'text' && part.text) {
-          fullText += part.text;
-          setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: fullText } : m)));
-        } else if (part.type === 'error') {
-          throw new Error(part.message || 'Terjadi kesalahan pada AI.');
-        }
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+        const content = fullText;
+        setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content } : m)));
       }
 
       if (!fullText) {
@@ -131,8 +104,6 @@ export function AIChatWidget() {
 
   return (
     <>
-      <Script src="https://js.puter.com/v2/" strategy="afterInteractive" onLoad={() => setIsReady(true)} />
-
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
@@ -234,13 +205,12 @@ export function AIChatWidget() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={1}
-              placeholder={isReady ? 'Tulis pertanyaan...' : 'Memuat AI...'}
-              disabled={!isReady}
+              placeholder="Tulis pertanyaan..."
               className="max-h-[120px] flex-1 resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-400 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             />
             <button
               type="submit"
-              disabled={!isReady || isLoading || !input.trim()}
+              disabled={isLoading || !input.trim()}
               aria-label="Kirim pesan"
               className="neo-press flex size-9 shrink-0 items-center justify-center rounded-xl neo-border bg-emerald-400 text-black neo-shadow-sm disabled:pointer-events-none disabled:opacity-50"
             >

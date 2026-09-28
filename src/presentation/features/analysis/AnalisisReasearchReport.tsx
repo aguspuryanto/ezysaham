@@ -25,58 +25,6 @@ import { NewsSentimentSummary } from '@/domain/models/News';
 import { FundamentalScreeningResult, TechnicalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { cn, formatCompact } from '@/lib/format';
 
-// window.puter is declared globally in AIChatWidget.tsx (same TS program).
-type PuterChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
-
-const MODEL = 'gpt-5-nano';
-
-const SYSTEM_PROMPT = `[IDENTITY & ROLE]
-Kamu adalah AI Equity Research Analyst untuk aplikasi "EzySaham". Tugasmu menyusun laporan riset saham singkat dalam Bahasa Indonesia, bergaya profesional sekuritas, HANYA berdasarkan data yang diberikan pada [INPUT DATA] — jangan pernah mengarang angka fundamental/teknikal yang tidak ada di data input.
-
-[RESPONSE FORMAT]
-Gunakan format Markdown persis seperti struktur di bawah ini (ganti semua teks dalam kurung siku sesuai data input, hapus kurung sikunya):
-
-Secara keseluruhan, saham [Nama Perusahaan] ([KODE_SAHAM]) berada dalam [deskripsi fase & kecenderungan tren singkat, mis. "fase konsolidasi dengan kecenderungan bullish"] untuk jangka pendek hingga menengah.
-
----
-
-### **1. Analisis Teknikal**
-
-* **Harga Saat Ini:** Rp[harga]
-* **Tren Utama:** [uraikan tren berdasarkan data EMA & trend]
-* **Moving Average:** Posisi harga [di atas/di bawah] **EMA20** (Rp[x]), **EMA50** (Rp[x]), dan **EMA200** (Rp[x]).
-* **Indikator Momentum:** RSI (14) berada di level **[x]** ([zona]) dan MACD [bullish/bearish/netral] ([keterangan singkat]).
-
-* **Level Kunci:**
-* **Support:** Rp[support]
-* **Resistance:** Rp[resistance]
-
----
-
-### **2. Analisis Fundamental & Katalis Sentimen**
-
-* **Valuasi:** [bahas PER/PBV dibanding status wajar/mahal/murah dari data]
-* **Profitabilitas & Neraca:** [bahas ROE, net margin, debt to equity sejauh tersedia di data — jika N/A, sebutkan data tidak tersedia, jangan mengarang]
-* **Katalis Sentimen Berita:** [ringkas jumlah & arah sentimen berita dari data, sebutkan 1 contoh berita paling relevan jika ada]
-
----
-
-### **3. Ringkasan & Strategi Trading**
-
-| Parameter | Catatan Strategi |
-| --- | --- |
-| **Gaya Trading** | [Swing Trading / Trend Following / dsb, sesuai bias] |
-| **Area Entry (Buy on Weakness)** | Rp[entry] |
-| **Target Price (TP)** | TP 1: Rp[tp1] \\| TP 2: Rp[tp2] |
-| **Stop Loss (SL)** | Rp[sl] |
-| **Risiko Utama** | [1 risiko paling relevan dari data, mis. volatilitas, valuasi mahal, likuiditas] |
-
-*Disclaimer: Analisis ini dihasilkan otomatis oleh AI berdasarkan data historis untuk memberikan gambaran teknikal dan fundamental dasar. Keputusan investasi dan manajemen risiko sepenuhnya menjadi tanggung jawab masing-masing investor.*
-
-[RULES & CONSTRAINTS]
-- Gunakan HANYA angka yang tersedia di [INPUT DATA]. Untuk Entry/TP1/TP2/SL pada tabel strategi, gunakan PERSIS angka dari "RENCANA TRADING SISTEM" di data input — jangan mengubah atau membuat angka baru.
-- Jika sebuah data fundamental bernilai N/A, katakan datanya belum tersedia — jangan menebak.
-- Bahasa Indonesia yang ringkas, lugas, profesional ala riset sekuritas, tanpa kalimat pembuka/penutup basa-basi.`;
 
 interface Props {
   summary: StockSummary;
@@ -161,33 +109,30 @@ export function AnalisisReasearchReport(props: Props) {
   }, [markdown]);
 
   async function generate() {
-    const puter = typeof window !== 'undefined' ? window.puter : undefined;
-    if (!puter) {
-      setError('AI belum siap dimuat, coba lagi sesaat.');
-      setState('error');
-      return;
-    }
-
     setState('loading');
     setMarkdown('');
     setError('');
 
     try {
-      const messages: PuterChatMessage[] = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: buildUserPrompt(props) },
-      ];
+      const res = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'research', messages: [{ role: 'user', content: buildUserPrompt(props) }] }),
+      });
 
-      const stream = await puter.ai.chat(messages, { model: MODEL, stream: true });
+      if (!res.ok || !res.body) {
+        const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(data?.message || 'Terjadi kesalahan pada AI.');
+      }
 
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
       let fullText = '';
-      for await (const part of stream) {
-        if (part.type === 'text' && part.text) {
-          fullText += part.text;
-          setMarkdown(fullText);
-        } else if (part.type === 'error') {
-          throw new Error(part.message || 'Terjadi kesalahan pada AI.');
-        }
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+        setMarkdown(fullText);
       }
 
       if (!fullText) throw new Error('Tidak ada respons dari AI. Coba lagi.');

@@ -47,6 +47,8 @@ export async function fetchYahooIntradayBars(code: string): Promise<IntradayResp
   const quote = result.indicators?.quote?.[0] || {};
   const previousClose: number | undefined = result.meta?.chartPreviousClose ?? result.meta?.previousClose;
   const regular = result.meta?.currentTradingPeriod?.regular;
+  const lastPrice: number | undefined = result.meta?.regularMarketPrice;
+  const lastPriceTime: number | undefined = result.meta?.regularMarketTime;
   const session = regular ? { regularStart: regular.start, regularEnd: regular.end } : undefined;
 
   const bars: IntradayResponse['bars'] = [];
@@ -61,5 +63,5 @@ export async function fetchYahooIntradayBars(code: string): Promise<IntradayResp
     return { code, ok: false, bars: [], reason: 'not_found' };
   }
 
-  return { code, ok: true, bars, previousClose, session, source: 'yahoo' };
+  return { code, ok: true, bars, previousClose, lastPrice, lastPriceTime, session, source: 'yahoo' };
 }
