@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getStockHistory } from '@/data/repositories/StockRepository';
 import { computeBandarScore, getMarketCyclePhase } from '@/domain/analysis/bandarScore';
+import { buildFundamentalPillars } from '@/domain/analysis/fundamentalPillars';
 import { computeScreenerVerdict, RiskLevel, ScreenerVerdict } from '@/domain/analysis/screenerVerdict';
 import { OHLCVBar } from '@/domain/models/History';
 import { Trend } from '@/domain/models/StockAnalysis';
@@ -141,6 +142,11 @@ export function useStockDetail(ticker: string) {
     [summary, bars, fundamentals],
   );
   const bandar = useMemo(() => (summary && bars.length > 0 ? computeBandarScore(summary, bars) : null), [summary, bars]);
+  const { fundamentalScreening } = base;
+  const pillars = useMemo(
+    () => (summary && fundamentalScreening ? buildFundamentalPillars(summary, fundamentals, fundamentalScreening) : null),
+    [summary, fundamentals, fundamentalScreening],
+  );
 
   const data = useMemo<StockDetailData | null>(() => {
     if (!summary || !analysis) return null;
@@ -332,7 +338,9 @@ export function useStockDetail(ticker: string) {
     /** Raw inputs for cards that reuse engines directly (e.g. TradingModesReport). */
     summary,
     bars,
-    fundamentalScreening: base.fundamentalScreening,
+    fundamentalScreening,
+    /** Fundamental health + valuation (SARA's first two dimensions). */
+    pillars,
     fundamentals: base.fundamentals,
     fundamentalsLoading: base.fundamentalsLoading,
     brokerActivity: base.brokerActivity,
