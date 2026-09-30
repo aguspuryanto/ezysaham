@@ -12,7 +12,7 @@ import { AlertCircle, Clock, Flame, Loader2, RefreshCw, Sparkles, X } from 'luci
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { todayWib } from '@/data/repositories/SignalRepository';
-import { POTENTIAL_25_FILTER, SignalFilterState, StockSignal } from '@/domain/models/Signal';
+import { potentialTargetOf, SignalFilterState, StockSignal } from '@/domain/models/Signal';
 import { cn } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useMarketSeries } from '../screener/components/MarketSummary';
@@ -21,14 +21,14 @@ import { ScreenerNav } from '../screener/components/ScreenerNav';
 import { screenerInter } from '../screener/fonts';
 import { useWatchlist } from '../screener/hooks/useWatchlist';
 import { PerformanceSummary, PerformanceSummarySkeleton } from './components/PerformanceSummary';
-import { Potential25Card, Potential25Drawer, Potential25Summary, Potential25Table } from './components/Potential25';
+import { PotentialCard, PotentialDrawer, PotentialSummary, PotentialTable } from './components/PotentialCandidates';
 import { SignalCard } from './components/SignalCard';
 import { SignalDetailDrawer } from './components/SignalDetailDrawer';
 import { SignalFilters } from './components/SignalFilters';
 import { SignalCardSkeleton, SignalEmptyState, SignalTableSkeleton } from './components/SignalStates';
 import { SignalTable } from './components/SignalTable';
 import { fmtDateLong, fmtTimestamp } from './signalUi';
-import { Potential25Candidate, usePotential25 } from './usePotential25';
+import { PotentialCandidate, usePotential } from './usePotential';
 import { useSignals } from './useSignals';
 
 const TOP_N = 3;
@@ -55,9 +55,10 @@ export function SignalPage() {
   const [selected, setSelected] = useState<StockSignal | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { loading, data, error, refresh } = useSignals(filters.date);
-  const potentialMode = filters.action === POTENTIAL_25_FILTER;
-  const potential = usePotential25(filters.date, potentialMode, market.ihsgBars, !market.loading);
-  const [selectedP25, setSelectedP25] = useState<Potential25Candidate | null>(null);
+  const potentialTarget = potentialTargetOf(filters.action);
+  const potentialMode = potentialTarget != null;
+  const potential = usePotential(filters.date, potentialTarget, market.ihsgBars, !market.loading);
+  const [selectedPot, setSelectedPot] = useState<PotentialCandidate | null>(null);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -85,21 +86,21 @@ export function SignalPage() {
   const isFiltered = filters.action !== 'ALL' || filters.pattern !== 'ALL' || filters.minScore > 0 || filters.search.trim() !== '';
   const resetFilters = () => setFilters((f) => ({ ...defaultFilters(f.date) }));
   const closeDetail = useCallback(() => setSelected(null), []);
-  const closeP25 = useCallback(() => setSelectedP25(null), []);
+  const closePot = useCallback(() => setSelectedPot(null), []);
 
-  // Potential 25%: SKIP (<60) is never shown; Min. Score and search still apply.
-  const p25Rows = useMemo(() => {
+  // Potential X%: SKIP (<60) is never shown; Min. Score and search still apply.
+  const potRows = useMemo(() => {
     const q = filters.search.trim().toUpperCase();
     return (potential.scan?.candidates ?? []).filter((c) =>
       c.result.classification !== 'SKIP'
       && c.result.score >= filters.minScore
       && (!q || c.ticker.includes(q) || c.companyName.toUpperCase().includes(q)));
   }, [potential.scan, filters.minScore, filters.search]);
-  const p25Top = useMemo(
-    () => [...p25Rows]
+  const potTop = useMemo(
+    () => [...potRows]
       .sort((a, b) => Number(b.result.action === 'BUY_CANDIDATE') - Number(a.result.action === 'BUY_CANDIDATE') || b.result.score - a.result.score)
       .slice(0, TOP_N),
-    [p25Rows],
+    [potRows],
   );
   const noBatch = !loading && data != null && data.signals.length === 0;
   const busy = potentialMode ? potential.loading : loading;
@@ -150,8 +151,8 @@ export function SignalPage() {
                   ? potential.loading
                     ? 'Memindai saham Rp50–999…'
                     : potential.scan?.dataDate
-                      ? <>Potential 25% · data EOD <span className="font-medium text-(--sv-text)">{fmtDateLong(potential.scan.dataDate)}</span></>
-                      : 'Potential 25%'
+                      ? <>Potential {potentialTarget}% · data EOD <span className="font-medium text-(--sv-text)">{fmtDateLong(potential.scan.dataDate)}</span></>
+                      : `Potential ${potentialTarget}%`
                   : loading
                   ? 'Memuat sinyal…'
                   : data?.lastUpdated
@@ -195,32 +196,32 @@ export function SignalPage() {
                 </div>
               )}
 
-              {potential.scan && <Potential25Summary scan={potential.scan} shown={p25Rows.length} />}
+              {potential.scan && <PotentialSummary scan={potential.scan} target={potentialTarget ?? 0} shown={potRows.length} />}
 
               {!potential.error && (
                 <>
-                  <section aria-labelledby="p25-top-title" className="flex flex-col gap-3">
-                    <h2 id="p25-top-title" className="flex items-center gap-2 text-lg font-semibold text-(--sv-text)">
-                      <Flame className="size-5 text-orange-500" strokeWidth={2} />Top Potential 25% Candidates
+                  <section aria-labelledby="pot-top-title" className="flex flex-col gap-3">
+                    <h2 id="pot-top-title" className="flex items-center gap-2 text-lg font-semibold text-(--sv-text)">
+                      <Flame className="size-5 text-orange-500" strokeWidth={2} />Top Potential {potentialTarget}% Candidates
                     </h2>
                     {potential.loading ? (
                       <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">{Array.from({ length: TOP_N }, (_, i) => <SignalCardSkeleton key={i} />)}</div>
-                    ) : p25Top.length === 0 ? (
+                    ) : potTop.length === 0 ? (
                       <SignalEmptyState
-                        title="Belum ada kandidat Potential 25%"
-                        hint="Tidak ada saham Rp50–999 yang lolos filter momentum, volume dan upside ≥25% untuk tanggal ini. Coba tanggal lain atau turunkan minimum score."
+                        title={`Belum ada kandidat Potential ${potentialTarget}%`}
+                        hint={`Tidak ada saham Rp50–999 yang lolos filter momentum, volume dan upside ≥${potentialTarget}% untuk tanggal ini. Coba target lebih kecil, tanggal lain, atau turunkan minimum score.`}
                         action={filters.minScore > 0 || filters.search ? { label: 'Reset filter', onClick: () => setFilters((f) => ({ ...f, minScore: 0, search: '' })) } : undefined}
                       />
                     ) : (
                       <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                        {p25Top.map((c) => <Potential25Card key={c.ticker} candidate={c} onSelect={setSelectedP25} />)}
+                        {potTop.map((c) => <PotentialCard key={c.ticker} candidate={c} onSelect={setSelectedPot} />)}
                       </div>
                     )}
                   </section>
 
-                  <section aria-labelledby="p25-all-title" className="flex flex-col gap-3">
-                    <h2 id="p25-all-title" className="text-lg font-semibold text-(--sv-text)">Semua Kandidat</h2>
-                    {potential.loading ? <SignalTableSkeleton /> : p25Rows.length > 0 && <Potential25Table candidates={p25Rows} onSelect={setSelectedP25} />}
+                  <section aria-labelledby="pot-all-title" className="flex flex-col gap-3">
+                    <h2 id="pot-all-title" className="text-lg font-semibold text-(--sv-text)">Semua Kandidat</h2>
+                    {potential.loading ? <SignalTableSkeleton /> : potRows.length > 0 && <PotentialTable candidates={potRows} onSelect={setSelectedPot} />}
                   </section>
                 </>
               )}
@@ -290,7 +291,7 @@ export function SignalPage() {
       </div>
 
       <SignalDetailDrawer signal={selected} onClose={closeDetail} />
-      <Potential25Drawer candidate={selectedP25} onClose={closeP25} />
+      <PotentialDrawer candidate={selectedPot} onClose={closePot} />
     </div>
   );
 }

@@ -1,9 +1,11 @@
 /**
- * potential25.ts
+ * potentialUpside.ts
  *
- * "POTENTIAL 25% CANDIDATE" screener (features_potensi_25.md): stocks priced
- * Rp50–999 that are building momentum AND have a structural target ≥25% above
- * the current close. It flags *technical potential*, never a guaranteed 25%.
+ * "POTENTIAL X% CANDIDATE" screener (features_potensi_25.md) for X = 10/20/25/30:
+ * stocks priced Rp50–999 that are building momentum AND have a structural target
+ * ≥X% above the current close. It flags *technical potential*, never a guaranteed
+ * return. Only the upside requirement changes with X — the momentum, volume,
+ * breakout and FOMO rules are the same for every target.
  *
  * EOD daily bars only (swing 1–5 days) — no intraday data is assumed.
  *
@@ -19,11 +21,13 @@ import { roundToTick } from '@/domain/analysis/idxTick';
 import { MarketRegime } from '@/domain/analysis/marketRegimeEngine';
 
 // ── Thresholds ──────────────────────────────────────────────────────────────
-export const P25_MIN_PRICE = 50;
-export const P25_MAX_PRICE = 999;
+export const POT_MIN_PRICE = 50;
+export const POT_MAX_PRICE = 999;
 /** Avg daily traded value (close × volume, 20 days) — below this, fills/exits are unreliable. */
-export const P25_MIN_AVG_VALUE = 1_000_000_000;
-export const P25_MIN_UPSIDE_PCT = 25;
+export const POT_MIN_AVG_VALUE = 1_000_000_000;
+/** Upside targets offered in the Signal filter (%). */
+export const POTENTIAL_TARGETS = [10, 20, 25, 30] as const;
+export type PotentialTarget = (typeof POTENTIAL_TARGETS)[number];
 const MIN_BARS = 60;
 const RVOL_MIN = 1.5;
 const BASE_LOOKBACK = 20;
@@ -40,13 +44,13 @@ const MAX_GAIN_5D = 0.3;
 const FOMO_ABOVE_BREAKOUT = 0.05;
 
 // ── Types ───────────────────────────────────────────────────────────────────
-export type P25Class = 'POTENTIAL_25' | 'MOMENTUM_CANDIDATE' | 'WATCHLIST' | 'SKIP';
-export type P25Action = 'BUY_CANDIDATE' | 'WAIT' | 'NO_TRADE';
-export type P25Tone = 'good' | 'fair' | 'bad';
-export type P25Phase = 'Pre-breakout' | 'Breakout' | 'Accumulation' | 'Uptrend' | 'Distribution';
-export type P25FactorKey = 'trend' | 'volume' | 'proximity' | 'candle' | 'upside' | 'accumulation' | 'market';
+export type PotClass = 'POTENTIAL' | 'MOMENTUM_CANDIDATE' | 'WATCHLIST' | 'SKIP';
+export type PotAction = 'BUY_CANDIDATE' | 'WAIT' | 'NO_TRADE';
+export type PotTone = 'good' | 'fair' | 'bad';
+export type PotPhase = 'Pre-breakout' | 'Breakout' | 'Accumulation' | 'Uptrend' | 'Distribution';
+export type PotFactorKey = 'trend' | 'volume' | 'proximity' | 'candle' | 'upside' | 'accumulation' | 'market';
 
-export const P25_FACTOR_MAX: Record<P25FactorKey, number> = {
+export const POT_FACTOR_MAX: Record<PotFactorKey, number> = {
   trend: 20,
   volume: 20,
   proximity: 15,
@@ -56,7 +60,7 @@ export const P25_FACTOR_MAX: Record<P25FactorKey, number> = {
   market: 5,
 };
 
-export const P25_FACTOR_LABEL: Record<P25FactorKey, string> = {
+export const POT_FACTOR_LABEL: Record<PotFactorKey, string> = {
   trend: 'Trend Structure',
   volume: 'Volume / RVOL',
   proximity: 'Breakout Proximity',
@@ -66,37 +70,39 @@ export const P25_FACTOR_LABEL: Record<P25FactorKey, string> = {
   market: 'Market Condition',
 };
 
-export interface P25Factor {
-  key: P25FactorKey;
+export interface PotFactor {
+  key: PotFactorKey;
   points: number;
   max: number;
   note: string;
 }
 
-export interface P25Check {
+export interface PotCheck {
   label: string;
   value: string;
-  tone: P25Tone;
+  tone: PotTone;
 }
 
-export interface P25Target {
+export interface PotTarget {
   price: number;
   upsidePct: number;
   source: string;
 }
 
-export interface Potential25Result {
+export interface PotentialResult {
+  /** The upside target (%) this result was scored against. */
+  targetPct: PotentialTarget;
   price: number;
   changePct: number;
   date: string;
   score: number;
-  classification: P25Class;
-  action: P25Action;
+  classification: PotClass;
+  action: PotAction;
   /** Short reason for the action, e.g. "Breakout belum terkonfirmasi". */
   actionReason: string;
-  factors: P25Factor[];
-  checks: P25Check[];
-  phase: P25Phase;
+  factors: PotFactor[];
+  checks: PotCheck[];
+  phase: PotPhase;
   base: string;
   ema8: number;
   ema18: number;
@@ -107,7 +113,7 @@ export interface Potential25Result {
   /** % from close up to `resistance`; ≤0 when already above it. */
   breakoutDistancePct: number;
   breakoutConfirmed: boolean;
-  targets: P25Target[];
+  targets: PotTarget[];
   /** Upside to the furthest structural target, %. */
   potentialUpsidePct: number;
   entryLow: number;
@@ -131,9 +137,9 @@ export interface Potential25Result {
 const pct = (from: number, to: number) => ((to - from) / from) * 100;
 const fmt = (n: number) => Math.round(n).toLocaleString('id-ID');
 
-/** The 🔥 label also needs a structural target ≥25% away — a high score alone is not "potential 25%". */
-export function p25ClassOf(score: number, upsidePct: number): P25Class {
-  if (score >= 80 && upsidePct >= P25_MIN_UPSIDE_PCT) return 'POTENTIAL_25';
+/** The 🔥 label also needs a structural target ≥ the chosen X% away — a high score alone is not "potential X%". */
+export function potClassOf(score: number, upsidePct: number, targetPct: number): PotClass {
+  if (score >= 80 && upsidePct >= targetPct) return 'POTENTIAL';
   if (score >= 80) return 'MOMENTUM_CANDIDATE';
   if (score >= 70) return 'MOMENTUM_CANDIDATE';
   if (score >= 60) return 'WATCHLIST';
@@ -169,7 +175,7 @@ function cluster(levels: Array<{ price: number; source: string }>, gap: number) 
  * (price band, liquidity, EMA8/18 trend, above/reclaiming EMA18) or has too little history.
  * `bars` must be daily EOD bars, oldest first, ending on the evaluation date.
  */
-export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | null): Potential25Result | null {
+export function evaluatePotential(bars: OHLCVBar[], market: MarketRegime | null, targetPct: PotentialTarget): PotentialResult | null {
   const valid = bars.filter((b) => b.close > 0 && b.high > 0 && b.low > 0);
   if (valid.length < MIN_BARS) return null;
 
@@ -177,12 +183,12 @@ export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | nul
   const last = valid[n - 1];
   const prev = valid[n - 2];
   const price = last.close;
-  if (price < P25_MIN_PRICE || price > P25_MAX_PRICE) return null;
+  if (price < POT_MIN_PRICE || price > POT_MAX_PRICE) return null;
 
   // Liquidity
   const recent20 = valid.slice(-20);
   const avgValue = recent20.reduce((s, b) => s + b.close * b.volume, 0) / recent20.length;
-  if (avgValue < P25_MIN_AVG_VALUE) return null;
+  if (avgValue < POT_MIN_AVG_VALUE) return null;
 
   // EMA structure
   const cls = closes(valid);
@@ -245,7 +251,7 @@ export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | nul
   if (yearHigh > floor) candidates.push({ price: yearHigh, source: 'High 1 tahun' });
   const measured = resistance + (resistance - baseLow);
   if (measured > floor) candidates.push({ price: measured, source: 'Measured move' });
-  const targets: P25Target[] = cluster(candidates, 0.04)
+  const targets: PotTarget[] = cluster(candidates, 0.04)
     .slice(0, 3)
     .map((t) => ({ price: roundToTick(t.price), upsidePct: pct(price, roundToTick(t.price)), source: t.source }));
   const potentialUpsidePct = targets.length > 0 ? targets[targets.length - 1].upsidePct : 0;
@@ -273,11 +279,12 @@ export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | nul
     ? 3
     : brokeOut ? 15 : breakoutDistancePct <= 3 ? 13 : breakoutDistancePct <= 6 ? 10 : breakoutDistancePct <= 10 ? 6 : 0;
   const candlePts = strongCandle ? 15 : green && closePos >= 0.6 ? 10 : green ? 5 : 0;
-  const upsidePts = potentialUpsidePct >= 40 ? 15 : potentialUpsidePct >= P25_MIN_UPSIDE_PCT ? 12 : potentialUpsidePct >= 15 ? 6 : 0;
+  // Relative to the chosen target: well past it 15, meets it 12, 60% of the way 6.
+  const upsidePts = potentialUpsidePct >= targetPct * 1.6 ? 15 : potentialUpsidePct >= targetPct ? 12 : potentialUpsidePct >= targetPct * 0.6 ? 6 : 0;
   const accumulationPts = (obvRising ? 5 : 0) + (upDownRatio >= 1.5 ? 5 : upDownRatio >= 1.2 ? 3 : 0);
   const marketPts = market === 'bullish' ? 5 : market === 'neutral' ? 3 : market === 'bearish' ? 0 : 2;
 
-  const factors: P25Factor[] = [
+  const factors: PotFactor[] = [
     { key: 'trend', points: trendPts, max: 20, note: [bullishEma && (crossedRecently ? 'EMA8 baru cross di atas EMA18' : 'EMA8 > EMA18'), aboveEma18 && (reclaimEma18 ? 'reclaim EMA18' : 'harga > EMA18'), ema18Rising ? 'EMA18 naik' : 'EMA18 belum naik', higherLow ? 'higher low' : 'belum higher low'].filter(Boolean).join(' · ') },
     { key: 'volume', points: volumePts, max: 20, note: `RVOL ${rvol.toFixed(1)}x vs rata-rata 20 hari` },
     { key: 'proximity', points: proximityPts, max: 15, note: brokeOut ? `Sudah di atas resistance ${fmt(resistance)}` : `${breakoutDistancePct.toFixed(1)}% di bawah resistance ${fmt(resistance)}` },
@@ -287,7 +294,7 @@ export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | nul
     { key: 'market', points: marketPts, max: 5, note: market ? `IHSG ${market === 'bullish' ? 'bullish' : market === 'neutral' ? 'netral' : 'bearish'}` : 'Kondisi IHSG belum tersedia' },
   ];
   const score = Math.min(100, factors.reduce((s, f) => s + f.points, 0));
-  const classification = p25ClassOf(score, potentialUpsidePct);
+  const classification = potClassOf(score, potentialUpsidePct, targetPct);
 
   // ── Plan ──────────────────────────────────────────────────────────────────
   const entryLow = roundToTick(resistance);
@@ -307,7 +314,7 @@ export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | nul
   const fomoWarning = `Jangan entry jika harga sudah > ${fmt(fomoPrice)}`;
 
   // ── Action (score alone never makes it a BUY) ─────────────────────────────
-  let action: P25Action;
+  let action: PotAction;
   let actionReason: string;
   if (extended) {
     action = 'NO_TRADE';
@@ -315,9 +322,16 @@ export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | nul
   } else if (classification === 'SKIP') {
     action = 'NO_TRADE';
     actionReason = 'Skor di bawah 60';
-  } else if (breakoutConfirmed && potentialUpsidePct >= P25_MIN_UPSIDE_PCT && score >= 70) {
+  } else if (breakoutConfirmed && potentialUpsidePct >= targetPct && score >= 70) {
     action = 'BUY_CANDIDATE';
     actionReason = 'Breakout + volume + momentum terkonfirmasi';
+  } else if (breakoutConfirmed && potentialUpsidePct < targetPct) {
+    // Waiting won't create room to the target — this is not a POTENTIAL X% setup.
+    action = 'NO_TRADE';
+    actionReason = `Breakout terkonfirmasi, tapi ruang ke target hanya +${potentialUpsidePct.toFixed(0)}% (< ${targetPct}%)`;
+  } else if (breakoutConfirmed) {
+    action = 'WAIT';
+    actionReason = 'Breakout terkonfirmasi, tapi skor < 70 — tunggu follow-through';
   } else {
     action = 'WAIT';
     actionReason = brokeOut ? 'Breakout belum dikonfirmasi volume/candle' : 'Tunggu breakout terkonfirmasi';
@@ -332,7 +346,7 @@ export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | nul
   if (strongCandle) whyPotential.push('Candle momentum, close dekat high');
   if (!brokeOut && breakoutDistancePct <= 10) whyPotential.push(`Hanya ${breakoutDistancePct.toFixed(1)}% di bawah resistance ${fmt(resistance)}`);
   if (brokeOut && !pastBreakout) whyPotential.push(`Menembus resistance ${fmt(resistance)}`);
-  if (potentialUpsidePct >= P25_MIN_UPSIDE_PCT) whyPotential.push(`Ruang ke target struktural +${potentialUpsidePct.toFixed(0)}%`);
+  if (potentialUpsidePct >= targetPct) whyPotential.push(`Ruang ke target struktural +${potentialUpsidePct.toFixed(0)}%`);
   if (base !== 'Tidak ada base jelas') whyPotential.push(`${base} ${Math.round(baseDepth * 100)}% selama ${BASE_LOOKBACK} hari`);
 
   const riskGate: string[] = [];
@@ -342,30 +356,31 @@ export function evaluatePotential25(bars: OHLCVBar[], market: MarketRegime | nul
   if (!strongCandle) riskGate.push('Candle belum close kuat');
   if (gapPct > 10) riskGate.push(`Gap up ${gapPct.toFixed(1)}% — rawan false breakout`);
   if (changePct >= 15) riskGate.push(`Naik ${changePct.toFixed(1)}% hari ini — dekat ARA, rawan profit taking`);
-  if (potentialUpsidePct < P25_MIN_UPSIDE_PCT) riskGate.push(`Upside target struktural hanya +${potentialUpsidePct.toFixed(0)}% (< 25%)`);
+  if (potentialUpsidePct < targetPct) riskGate.push(`Upside target struktural hanya +${potentialUpsidePct.toFixed(0)}% (< ${targetPct}%)`);
   if (targets.length > 0 && riskReward < 2) riskGate.push(`R:R ke TP1 hanya 1:${riskReward.toFixed(1)} (< 1:2)`);
   if (market === 'bearish') riskGate.push('IHSG bearish — breakout lebih mudah gagal');
   if (avgValue < 3_000_000_000) riskGate.push('Likuiditas tipis — gunakan ukuran posisi kecil');
   if (!ema18Rising) riskGate.push('EMA18 belum naik');
 
-  const phase: P25Phase = breakoutConfirmed
+  const phase: PotPhase = breakoutConfirmed
     ? 'Breakout'
     : !green && rvol >= 2 && closePos < 0.4 ? 'Distribution'
       : !brokeOut && breakoutDistancePct <= 5 && baseDepth <= 0.2 ? 'Pre-breakout'
         : upDownRatio >= 1.3 && obvRising ? 'Accumulation' : 'Uptrend';
 
-  const tone = (ok: boolean, mid = false): P25Tone => (ok ? 'good' : mid ? 'fair' : 'bad');
-  const checks: P25Check[] = [
+  const tone = (ok: boolean, mid = false): PotTone => (ok ? 'good' : mid ? 'fair' : 'bad');
+  const checks: PotCheck[] = [
     { label: 'Trend', value: bullishEma && aboveEma18 && ema18Rising ? 'Bullish' : 'Mulai bullish', tone: tone(bullishEma && aboveEma18 && ema18Rising, true) },
     { label: 'Structure', value: higherLow ? 'Higher Low' : base, tone: tone(higherLow, base !== 'Tidak ada base jelas') },
     { label: 'EMA 8/18', value: crossedRecently ? 'Bullish cross' : 'Bullish', tone: 'good' },
     { label: 'RVOL', value: `${rvol.toFixed(1)}x`, tone: tone(rvol >= 2, rvol >= RVOL_MIN) },
     { label: 'Breakout', value: brokeOut ? (pastBreakout ? `${Math.abs(breakoutDistancePct).toFixed(1)}% di atas` : 'Tembus') : `${breakoutDistancePct.toFixed(1)}% lagi`, tone: pastBreakout ? 'bad' : tone(breakoutConfirmed, !brokeOut ? breakoutDistancePct <= 10 : true) },
-    { label: 'Upside', value: `${potentialUpsidePct.toFixed(0)}%`, tone: tone(potentialUpsidePct >= P25_MIN_UPSIDE_PCT, potentialUpsidePct >= 15) },
+    { label: 'Upside', value: `${potentialUpsidePct.toFixed(0)}%`, tone: tone(potentialUpsidePct >= targetPct, potentialUpsidePct >= targetPct * 0.6) },
     { label: 'Phase', value: phase, tone: phase === 'Distribution' ? 'bad' : phase === 'Uptrend' ? 'fair' : 'good' },
   ];
 
   return {
+    targetPct,
     price,
     changePct,
     date: last.date,

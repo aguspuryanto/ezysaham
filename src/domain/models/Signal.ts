@@ -113,12 +113,18 @@ export interface SignalDashboardData {
   performance: SignalPerformanceSummary;
 }
 
-/** Filter mode that swaps the signal list for the POTENTIAL 25% CANDIDATE scan (domain/analysis/potential25.ts). */
-export const POTENTIAL_25_FILTER = 'POTENTIAL_25';
+/** Filter modes that swap the signal list for a POTENTIAL X% CANDIDATE scan (domain/analysis/potentialUpside.ts). */
+export const POTENTIAL_FILTERS = ['POTENTIAL_10', 'POTENTIAL_20', 'POTENTIAL_25', 'POTENTIAL_30'] as const;
+export type PotentialFilter = (typeof POTENTIAL_FILTERS)[number];
+
+/** 'POTENTIAL_20' → 20; any other filter value → null. */
+export function potentialTargetOf(action: string): 10 | 20 | 25 | 30 | null {
+  return (POTENTIAL_FILTERS as readonly string[]).includes(action) ? (Number(action.slice(10)) as 10 | 20 | 25 | 30) : null;
+}
 
 export interface SignalFilterState {
   date: string;
-  action: SignalAction | 'ALL' | typeof POTENTIAL_25_FILTER;
+  action: SignalAction | 'ALL' | PotentialFilter;
   pattern: SignalPattern | 'ALL';
   minScore: number;
   search: string;

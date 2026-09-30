@@ -1,7 +1,7 @@
 'use client';
 
 import { Flame, Search } from 'lucide-react';
-import { POTENTIAL_25_FILTER, SIGNAL_ACTION_LABEL, SIGNAL_ACTIONS, SIGNAL_PATTERNS, SignalFilterState } from '@/domain/models/Signal';
+import { POTENTIAL_FILTERS, potentialTargetOf, SIGNAL_ACTION_LABEL, SIGNAL_ACTIONS, SIGNAL_PATTERNS, SignalFilterState } from '@/domain/models/Signal';
 import { cn } from '@/lib/format';
 
 const SCORE_OPTIONS = [0, 50, 60, 70, 80] as const;
@@ -19,7 +19,7 @@ export function SignalFilters({
   maxDate: string;
 }) {
   const set = <K extends keyof SignalFilterState>(key: K, v: SignalFilterState[K]) => onChange({ ...value, [key]: v });
-  const potential = value.action === POTENTIAL_25_FILTER;
+  const potential = potentialTargetOf(value.action) != null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -44,20 +44,27 @@ export function SignalFilters({
           );
         })}
         <span className="mx-0.5 w-px shrink-0 self-stretch bg-(--sv-border)" aria-hidden="true" />
-        <button
-          type="button"
-          aria-pressed={potential}
-          onClick={() => set('action', potential ? 'ALL' : POTENTIAL_25_FILTER)}
-          title="Screener saham Rp50–999 dengan momentum & ruang teknikal ≥25% ke target berikutnya"
-          className={cn(
-            'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
-            potential
-              ? 'border-orange-500 bg-orange-500 text-white'
-              : 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-400/40 dark:bg-orange-400/10 dark:text-orange-300',
-          )}
-        >
-          <Flame className="size-3.5" strokeWidth={2.25} /> POTENTIAL 25%
-        </button>
+        {POTENTIAL_FILTERS.map((f) => {
+          const active = value.action === f;
+          const target = potentialTargetOf(f);
+          return (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={active}
+              onClick={() => set('action', active ? 'ALL' : f)}
+              title={`Screener saham Rp50–999 dengan momentum & ruang teknikal ≥${target}% ke target berikutnya`}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                active
+                  ? 'border-orange-500 bg-orange-500 text-white'
+                  : 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-400/40 dark:bg-orange-400/10 dark:text-orange-300',
+              )}
+            >
+              <Flame className="size-3.5" strokeWidth={2.25} /> POTENTIAL {target}%
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

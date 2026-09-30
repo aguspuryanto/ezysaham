@@ -1,38 +1,38 @@
 'use client';
 
 /**
- * Potential25.tsx
+ * PotentialCandidates.tsx
  *
- * UI for the POTENTIAL 25% CANDIDATE scan inside SARA AI Signals: status
+ * UI for the POTENTIAL X% CANDIDATE scans (10/20/25/30) inside SARA AI Signals: status
  * badges, summary strip, candidate card, table and detail drawer. Every value
- * comes from `evaluatePotential25` on real EOD bars.
+ * comes from `evaluatePotential` on real EOD bars.
  */
 
 import { ArrowUpRight, Check, ChevronRight, Flame, Lightbulb, ShieldAlert, TriangleAlert, X, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect } from 'react';
 import { MarketRegime } from '@/domain/analysis/marketRegimeEngine';
-import { P25_FACTOR_LABEL, P25Action, P25Class, P25Tone, Potential25Result } from '@/domain/analysis/potential25';
+import { POT_FACTOR_LABEL, PotAction, PotClass, PotTone, PotentialResult } from '@/domain/analysis/potentialUpside';
 import { cn } from '@/lib/format';
 import { Badge, Card, TONE_TEXT } from '../../screener/detail/components/ui';
 import { fmtNum, fmtPct, Tone, toneOf } from '../../screener/detail/format';
 import { fmtDateLong, fmtRR, SCORE_BAR } from '../signalUi';
-import { Potential25Candidate, Potential25Scan } from '../usePotential25';
+import { PotentialCandidate, PotentialScan } from '../usePotential';
 
-export const P25_CLASS_META: Record<P25Class, { label: string; tone: Tone }> = {
-  POTENTIAL_25: { label: '🔥 POTENTIAL 25%', tone: 'positive' },
+export const POT_CLASS_META: Record<PotClass, { label: string; tone: Tone }> = {
+  POTENTIAL: { label: '🔥 POTENTIAL', tone: 'positive' },
   MOMENTUM_CANDIDATE: { label: '🟢 MOMENTUM CANDIDATE', tone: 'info' },
   WATCHLIST: { label: '🟡 WATCHLIST', tone: 'warning' },
   SKIP: { label: 'SKIP', tone: 'neutral' },
 };
 
-export const P25_ACTION_META: Record<P25Action, { label: string; tone: Tone }> = {
+export const POT_ACTION_META: Record<PotAction, { label: string; tone: Tone }> = {
   BUY_CANDIDATE: { label: 'BUY CANDIDATE', tone: 'positive' },
   WAIT: { label: 'WAIT FOR BREAKOUT', tone: 'warning' },
   NO_TRADE: { label: 'NO TRADE', tone: 'neutral' },
 };
 
-const CHECK_TONE: Record<P25Tone, { dot: string; text: string }> = {
+const CHECK_TONE: Record<PotTone, { dot: string; text: string }> = {
   good: { dot: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-400' },
   fair: { dot: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-400' },
   bad: { dot: 'bg-rose-500', text: 'text-rose-700 dark:text-rose-400' },
@@ -41,22 +41,22 @@ const CHECK_TONE: Record<P25Tone, { dot: string; text: string }> = {
 const MARKET_LABEL: Record<MarketRegime, string> = { bullish: 'IHSG Bullish', neutral: 'IHSG Netral', bearish: 'IHSG Bearish' };
 const SECTION_TITLE = 'text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)';
 
-function p25ScoreTone(score: number): Tone {
+function potScoreTone(score: number): Tone {
   return score >= 80 ? 'positive' : score >= 60 ? 'warning' : 'negative';
 }
 
-export function P25ClassBadge({ value, className }: { value: P25Class; className?: string }) {
-  const m = P25_CLASS_META[value];
-  return <Badge tone={m.tone} className={cn('whitespace-nowrap', className)}>{m.label}</Badge>;
+export function PotClassBadge({ value, target, className }: { value: PotClass; target: number; className?: string }) {
+  const m = POT_CLASS_META[value];
+  return <Badge tone={m.tone} className={cn('whitespace-nowrap', className)}>{value === 'POTENTIAL' ? `${m.label} ${target}%` : m.label}</Badge>;
 }
 
-export function P25ActionBadge({ value, className }: { value: P25Action; className?: string }) {
-  const m = P25_ACTION_META[value];
+export function PotActionBadge({ value, className }: { value: PotAction; className?: string }) {
+  const m = POT_ACTION_META[value];
   return <Badge tone={m.tone} className={cn('whitespace-nowrap tracking-wide', className)}>{m.label}</Badge>;
 }
 
-function P25Score({ score, size = 'md' }: { score: number; size?: 'md' | 'lg' }) {
-  const tone = p25ScoreTone(score);
+function PotScore({ score, size = 'md' }: { score: number; size?: 'md' | 'lg' }) {
+  const tone = potScoreTone(score);
   return (
     <div className="min-w-0">
       <div className="flex items-baseline gap-1">
@@ -70,7 +70,7 @@ function P25Score({ score, size = 'md' }: { score: number; size?: 'md' | 'lg' })
   );
 }
 
-function CheckRow({ label, value, tone }: { label: string; value: string; tone: P25Tone }) {
+function CheckRow({ label, value, tone }: { label: string; value: string; tone: PotTone }) {
   return (
     <li className="flex items-center justify-between gap-3 text-sm">
       <span className="text-(--sv-muted)">{label}</span>
@@ -96,7 +96,7 @@ function BulletList({ items, icon: Icon, iconClass }: { items: string[]; icon: t
   );
 }
 
-function Levels({ r }: { r: Potential25Result }) {
+function Levels({ r }: { r: PotentialResult }) {
   const cell = 'min-w-0 rounded-lg bg-(--sv-bg) px-2.5 py-2';
   const lab = 'text-[11px] font-medium uppercase tracking-wide text-(--sv-muted)';
   const val = 'mt-0.5 truncate text-sm font-semibold tabular-nums';
@@ -118,11 +118,11 @@ function Levels({ r }: { r: Potential25Result }) {
 }
 
 // ── Summary strip ───────────────────────────────────────────────────────────
-export function Potential25Summary({ scan, shown }: { scan: Potential25Scan; shown: number }) {
-  const count = (c: P25Class) => scan.candidates.filter((x) => x.result.classification === c).length;
+export function PotentialSummary({ scan, target, shown }: { scan: PotentialScan; target: number; shown: number }) {
+  const count = (c: PotClass) => scan.candidates.filter((x) => x.result.classification === c).length;
   const buy = scan.candidates.filter((x) => x.result.action === 'BUY_CANDIDATE').length;
   const tiles: Array<{ label: string; value: number; tone: Tone }> = [
-    { label: '🔥 Potential 25%', value: count('POTENTIAL_25'), tone: 'positive' },
+    { label: `🔥 Potential ${target}%`, value: count('POTENTIAL'), tone: 'positive' },
     { label: '🟢 Momentum', value: count('MOMENTUM_CANDIDATE'), tone: 'info' },
     { label: '🟡 Watchlist', value: count('WATCHLIST'), tone: 'warning' },
     { label: 'Buy Candidate', value: buy, tone: 'positive' },
@@ -147,7 +147,7 @@ export function Potential25Summary({ scan, shown }: { scan: Potential25Scan; sho
 }
 
 // ── Card ────────────────────────────────────────────────────────────────────
-export function Potential25Card({ candidate, onSelect }: { candidate: Potential25Candidate; onSelect: (c: Potential25Candidate) => void }) {
+export function PotentialCard({ candidate, onSelect }: { candidate: PotentialCandidate; onSelect: (c: PotentialCandidate) => void }) {
   const r = candidate.result;
   return (
     <article
@@ -156,7 +156,7 @@ export function Potential25Card({ candidate, onSelect }: { candidate: Potential2
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <P25ClassBadge value={r.classification} />
+          <PotClassBadge value={r.classification} target={r.targetPct} />
           <div className="mt-1.5 text-lg font-bold text-(--sv-text)">{candidate.ticker}</div>
           <p className="truncate text-xs text-(--sv-muted)">{candidate.companyName}</p>
         </div>
@@ -167,10 +167,10 @@ export function Potential25Card({ candidate, onSelect }: { candidate: Potential2
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div><div className={SECTION_TITLE}>Score</div><div className="mt-1"><P25Score score={r.score} /></div></div>
+        <div><div className={SECTION_TITLE}>Score</div><div className="mt-1"><PotScore score={r.score} /></div></div>
         <div>
           <div className={SECTION_TITLE}>Potential</div>
-          <div className={cn('mt-1 text-xl font-bold tabular-nums', r.potentialUpsidePct >= 25 ? 'text-emerald-600 dark:text-emerald-400' : 'text-(--sv-text)')}>+{r.potentialUpsidePct.toFixed(0)}%</div>
+          <div className={cn('mt-1 text-xl font-bold tabular-nums', r.potentialUpsidePct >= r.targetPct ? 'text-emerald-600 dark:text-emerald-400' : 'text-(--sv-text)')}>+{r.potentialUpsidePct.toFixed(0)}%</div>
           <div className="text-xs text-(--sv-muted)">Breakout {fmtNum(r.resistance)}</div>
         </div>
       </div>
@@ -182,7 +182,7 @@ export function Potential25Card({ candidate, onSelect }: { candidate: Potential2
       <div className="rounded-lg border border-(--sv-border) px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
           <span className={SECTION_TITLE}>Status</span>
-          <P25ActionBadge value={r.action} />
+          <PotActionBadge value={r.action} />
         </div>
         <p className="mt-2 flex items-start gap-1.5 text-sm text-(--sv-text)">
           <Zap className="mt-0.5 size-4 shrink-0 text-(--sv-primary)" strokeWidth={2} />
@@ -208,7 +208,7 @@ export function Potential25Card({ candidate, onSelect }: { candidate: Potential2
 const TH = 'whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)';
 const TD = 'whitespace-nowrap px-3 py-3 tabular-nums';
 
-export function Potential25Table({ candidates, onSelect }: { candidates: Potential25Candidate[]; onSelect: (c: Potential25Candidate) => void }) {
+export function PotentialTable({ candidates, onSelect }: { candidates: PotentialCandidate[]; onSelect: (c: PotentialCandidate) => void }) {
   return (
     <div className="overflow-hidden rounded-xl border border-(--sv-border) bg-(--sv-surface) shadow-(--sv-shadow)">
       <div className="overflow-x-auto">
@@ -249,10 +249,10 @@ export function Potential25Table({ candidates, onSelect }: { candidates: Potenti
                     <div className={cn('text-xs', TONE_TEXT[toneOf(r.changePct)])}>{fmtPct(r.changePct)}</div>
                   </td>
                   <td className={TD}>
-                    <div className={cn('font-semibold', TONE_TEXT[p25ScoreTone(r.score)])}>{r.score}</div>
-                    <P25ClassBadge value={r.classification} className="mt-1 text-[10px]" />
+                    <div className={cn('font-semibold', TONE_TEXT[potScoreTone(r.score)])}>{r.score}</div>
+                    <PotClassBadge value={r.classification} target={r.targetPct} className="mt-1 text-[10px]" />
                   </td>
-                  <td className={TD}><P25ActionBadge value={r.action} /></td>
+                  <td className={TD}><PotActionBadge value={r.action} /></td>
                   <td className={cn(TD, 'text-right font-semibold', r.rvol >= 1.5 ? 'text-emerald-600 dark:text-emerald-400' : 'text-(--sv-muted)')}>{r.rvol.toFixed(1)}x</td>
                   <td className={cn(TD, 'text-right text-(--sv-text)')}>{fmtNum(r.ema8)} / {fmtNum(r.ema18)}</td>
                   <td className={cn(TD, 'text-right text-(--sv-text)')}>{fmtNum(r.resistance)}</td>
@@ -260,7 +260,7 @@ export function Potential25Table({ candidates, onSelect }: { candidates: Potenti
                     {r.breakoutDistancePct <= 0 ? `Tembus (+${Math.abs(r.breakoutDistancePct).toFixed(1)}%)` : `${r.breakoutDistancePct.toFixed(1)}%`}
                   </td>
                   <td className={cn(TD, 'text-right text-(--sv-text)')}>{r.targets.length ? r.targets.map((t) => fmtNum(t.price)).join(' / ') : '—'}</td>
-                  <td className={cn(TD, 'text-right font-semibold', r.potentialUpsidePct >= 25 ? 'text-emerald-600 dark:text-emerald-400' : 'text-(--sv-text)')}>+{r.potentialUpsidePct.toFixed(0)}%</td>
+                  <td className={cn(TD, 'text-right font-semibold', r.potentialUpsidePct >= r.targetPct ? 'text-emerald-600 dark:text-emerald-400' : 'text-(--sv-text)')}>+{r.potentialUpsidePct.toFixed(0)}%</td>
                   <td className="max-w-56 px-3 py-3 text-xs text-(--sv-muted)"><span className="line-clamp-2">{r.headlineRisk}</span></td>
                   <td className="max-w-56 px-3 py-3 text-xs text-(--sv-text)"><span className="line-clamp-2">{r.trigger}</span></td>
                 </tr>
@@ -283,7 +283,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function Potential25Drawer({ candidate, onClose }: { candidate: Potential25Candidate | null; onClose: () => void }) {
+export function PotentialDrawer({ candidate, onClose }: { candidate: PotentialCandidate | null; onClose: () => void }) {
   const open = candidate != null;
 
   useEffect(() => {
@@ -304,13 +304,13 @@ export function Potential25Drawer({ candidate, onClose }: { candidate: Potential
       <aside
         role="dialog"
         aria-modal="true"
-        aria-label={candidate ? `Potential 25% ${candidate.ticker}` : 'Potential 25%'}
+        aria-label={candidate ? `Potential ${candidate.result.targetPct}% ${candidate.ticker}` : 'Potential'}
         className={cn('fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-(--sv-surface) shadow-xl transition-transform duration-300 ease-out', open ? 'translate-x-0' : 'translate-x-full')}
       >
         {candidate && r && (
           <>
             <div className="flex items-center justify-between gap-2 px-5 py-3">
-              <span className="inline-flex items-center gap-1.5 text-xs text-(--sv-muted)"><Flame className="size-3.5 text-rose-500" />Potential 25% · EOD {fmtDateLong(r.date)}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs text-(--sv-muted)"><Flame className="size-3.5 text-orange-500" />Potential {r.targetPct}% · EOD {fmtDateLong(r.date)}</span>
               <button type="button" onClick={onClose} aria-label="Tutup detail" className="flex size-8 items-center justify-center rounded-lg border border-(--sv-border) text-(--sv-text) hover:bg-(--sv-bg)">
                 <X className="size-4" strokeWidth={2} />
               </button>
@@ -320,7 +320,7 @@ export function Potential25Drawer({ candidate, onClose }: { candidate: Potential
               <div className="space-y-4 px-5 pb-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <P25ClassBadge value={r.classification} />
+                    <PotClassBadge value={r.classification} target={r.targetPct} />
                     <div className="mt-1.5 text-xl font-bold text-(--sv-text)">{candidate.ticker}</div>
                     <p className="truncate text-xs text-(--sv-muted)">{candidate.companyName} · {candidate.sector}</p>
                   </div>
@@ -331,10 +331,10 @@ export function Potential25Drawer({ candidate, onClose }: { candidate: Potential
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 rounded-xl bg-(--sv-bg) p-3">
-                  <div><div className={SECTION_TITLE}>Score</div><div className="mt-1"><P25Score score={r.score} size="lg" /></div></div>
+                  <div><div className={SECTION_TITLE}>Score</div><div className="mt-1"><PotScore score={r.score} size="lg" /></div></div>
                   <div>
                     <div className={SECTION_TITLE}>Potential Upside</div>
-                    <div className={cn('mt-1 text-3xl font-bold tabular-nums', r.potentialUpsidePct >= 25 ? 'text-emerald-600 dark:text-emerald-400' : 'text-(--sv-text)')}>+{r.potentialUpsidePct.toFixed(0)}%</div>
+                    <div className={cn('mt-1 text-3xl font-bold tabular-nums', r.potentialUpsidePct >= r.targetPct ? 'text-emerald-600 dark:text-emerald-400' : 'text-(--sv-text)')}>+{r.potentialUpsidePct.toFixed(0)}%</div>
                     <div className="text-xs text-(--sv-muted)">{r.phase} · {r.base}</div>
                   </div>
                 </div>
@@ -342,7 +342,7 @@ export function Potential25Drawer({ candidate, onClose }: { candidate: Potential
                 <div className={cn('rounded-lg border px-3 py-2.5', r.action === 'BUY_CANDIDATE' ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-400/25 dark:bg-emerald-400/5' : 'border-(--sv-border) bg-(--sv-bg)')}>
                   <div className="flex items-center justify-between gap-2">
                     <span className={SECTION_TITLE}>Status</span>
-                    <P25ActionBadge value={r.action} />
+                    <PotActionBadge value={r.action} />
                   </div>
                   <p className="mt-1.5 text-sm text-(--sv-muted)">{r.actionReason}</p>
                   <p className="mt-2 flex items-start gap-1.5 text-sm text-(--sv-text)">
@@ -396,11 +396,11 @@ export function Potential25Drawer({ candidate, onClose }: { candidate: Potential
                     return (
                       <li key={f.key}>
                         <div className="flex items-baseline justify-between gap-2 text-sm">
-                          <span className="font-medium text-(--sv-text)">{P25_FACTOR_LABEL[f.key]}</span>
+                          <span className="font-medium text-(--sv-text)">{POT_FACTOR_LABEL[f.key]}</span>
                           <span className="font-semibold tabular-nums text-(--sv-text)">{f.points}<span className="text-xs font-normal text-(--sv-muted)">/{f.max}</span></span>
                         </div>
                         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                          <div className={cn('h-full rounded-full', SCORE_BAR[p25ScoreTone(ratio)])} style={{ width: `${ratio}%` }} />
+                          <div className={cn('h-full rounded-full', SCORE_BAR[potScoreTone(ratio)])} style={{ width: `${ratio}%` }} />
                         </div>
                         <p className="mt-1 text-xs text-(--sv-muted)">{f.note}</p>
                       </li>
@@ -411,7 +411,7 @@ export function Potential25Drawer({ candidate, onClose }: { candidate: Potential
 
               <Section title="Catatan">
                 <p className="text-xs leading-relaxed text-(--sv-muted)">
-                  &ldquo;Potential 25%&rdquo; berarti ada ruang teknikal ≥25% ke resistance/target berikutnya — <b>bukan jaminan return 25%</b>.
+                  &ldquo;Potential {r.targetPct}%&rdquo; berarti ada ruang teknikal ≥{r.targetPct}% ke resistance/target berikutnya — <b>bukan jaminan return {r.targetPct}%</b>.
                   Dihitung dari data EOD untuk swing 1–5 hari. Faktor akumulasi memakai proxy OBV &amp; volume naik/turun karena data foreign flow
                   tidak tersedia. Selalu pasang stop loss.
                 </p>
