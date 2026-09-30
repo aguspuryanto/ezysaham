@@ -1,13 +1,15 @@
 'use client';
 
-import { BookOpen, FlaskConical, GitCompare, Home, LayoutGrid, NotebookPen, PieChart, ScanSearch, Star } from 'lucide-react';
+import { BookOpen, FlaskConical, GitCompare, Home, LayoutGrid, NotebookPen, PieChart, Radar, ScanSearch, Star } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/format';
 
 /** Only routes that exist in the app — no dead menu items. */
 const NAV_LINKS = [
   { href: '/', label: 'Beranda', icon: Home },
-  { href: '/screener', label: 'Screener Saham', icon: ScanSearch, active: true },
+  { href: '/screener', label: 'Screener Saham', icon: ScanSearch },
+  { href: '/signal', label: 'Signal', icon: Radar },
   { href: '/sektor', label: 'Sektor', icon: PieChart },
   { href: '/compare', label: 'Bandingkan', icon: GitCompare },
   { href: '/jurnal', label: 'Jurnal Trading', icon: NotebookPen },
@@ -25,11 +27,15 @@ export function ScreenerNav({
   watchlistCount: number;
   onToggleWatchlist: () => void;
 }) {
+  const pathname = usePathname() ?? '/';
+  const onSignal = pathname.startsWith('/signal');
+  // Screener stays highlighted on the pages that host it (/, /screener, /screener/[ticker]).
+  const isActive = (href: string) => (href === '/signal' ? onSignal : href === '/screener' ? !onSignal && !watchlistOnly : false);
   const itemClass = 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors';
   return (
     <nav aria-label="Menu utama" className="flex flex-col gap-0.5">
-      {NAV_LINKS.slice(0, 2).map(({ href, label, icon: Icon, ...rest }) => {
-        const active = 'active' in rest && rest.active && !watchlistOnly;
+      {NAV_LINKS.slice(0, 3).map(({ href, label, icon: Icon }) => {
+        const active = isActive(href);
         return (
           <Link
             key={href}
@@ -54,7 +60,7 @@ export function ScreenerNav({
           <span className="ml-auto rounded-full bg-(--sv-primary) px-1.5 text-[11px] font-semibold text-(--sv-primary-fg) tabular-nums">{watchlistCount}</span>
         )}
       </button>
-      {NAV_LINKS.slice(2).map(({ href, label, icon: Icon }) => (
+      {NAV_LINKS.slice(3).map(({ href, label, icon: Icon }) => (
         <Link key={href} href={href} className={cn(itemClass, 'text-(--sv-text) hover:bg-(--sv-bg)')}>
           <Icon className="size-4.5 shrink-0" strokeWidth={2} />
           {label}
