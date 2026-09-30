@@ -16,6 +16,7 @@ import {
   StockSignal,
   TradePlan,
 } from '@/domain/models/Signal';
+import { roundToTick } from '@/domain/analysis/idxTick';
 
 /** Composite weights (sum = 1). */
 const WEIGHTS: Record<ScoreFactorKey, number> = {
@@ -218,3 +219,42 @@ export const MOCK_PERFORMANCE: SignalPerformanceSummary = {
   activeSignals: 9,
   periodLabel: '30 hari terakhir',
 };
+
+/** Indonesian-formatted numbers ("4.200", "11.400", "70", "2,1") not glued to a word like "EMA200". */
+const NUM_IN_TEXT = /(?<![A-Za-z\d.,])\d{1,3}(?:\.\d{3})+(?![\d,])|(?<![A-Za-z\d.,])\d+(?:,\d+)?(?![\d.])/g;
+
+/**
+ * Re-anchors a mock signal onto the real EOD quote: sets price/change and scales
+ * every price level (trade plan + price numbers in the copy) by real/mock so the
+ * entry zone, targets and triggers stay coherent with the price actually shown.
+ */
+export function rebaseMockSignal(signal: StockSignal, price: number, changePct: number): StockSignal {
+  const base = signal.price;
+  if (!(price > 0) || !(base > 0)) return signal;
+  const ratio = price / base;
+  const scale = (v: number) => roundToTick(v * ratio);
+  const scaleText = (text: string) =>
+    text.replace(NUM_IN_TEXT, (m) => {
+      if (m.includes(',')) return m; // multipliers / decimals, not price levels
+      const v = Number(m.replace(/\./g, ''));
+      return v >= base * 0.6 && v <= base * 1.6 ? scale(v).toLocaleString('id-ID') : m;
+    });
+
+  const plan = signal.tradePlan;
+  const scaledPlan = plan && {
+    entryLow: scale(plan.entryLow), entryHigh: scale(plan.entryHigh),
+    tp1: scale(plan.tp1), tp2: scale(plan.tp2), stopLoss: scale(plan.stopLoss),
+    holdingPeriod: plan.holdingPeriod,
+  };
+
+  return {
+    ...signal,
+    price,
+    changePct,
+    tradePlan: scaledPlan ? { ...scaledPlan, riskReward: roundRR(scaledPlan) } : null,
+    reasons: signal.reasons.map((r) => ({ ...r, label: scaleText(r.label) })),
+    risks: signal.risks.map(scaleText),
+    decision: { ...signal.decision, trigger: scaleText(signal.decision.trigger) },
+    explanation: scaleText(signal.explanation),
+  };
+}

@@ -319,7 +319,7 @@ function pageList(page: number, pages: number): (number | '…')[] {
   return out;
 }
 
-export function ScreenerPagination({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (p: number) => void }) {
+export function ScreenerPagination({ page, pageSize, total, onPage, unit = 'saham' }: { page: number; pageSize: number; total: number; onPage: (p: number) => void; unit?: string }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (total === 0) return null;
   const from = (page - 1) * pageSize + 1;
@@ -327,7 +327,7 @@ export function ScreenerPagination({ page, pageSize, total, onPage }: { page: nu
   const btn = 'flex h-9 min-w-9 items-center justify-center rounded-lg border px-2 text-sm tabular-nums disabled:opacity-40';
   return (
     <nav aria-label="Halaman hasil" className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-      <p className="text-sm text-(--sv-muted)">Menampilkan <b className="text-(--sv-text)">{from}–{to}</b> dari <b className="text-(--sv-text)">{total}</b> saham</p>
+      <p className="text-sm text-(--sv-muted)">Menampilkan <b className="text-(--sv-text)">{from}–{to}</b> dari <b className="text-(--sv-text)">{total}</b> {unit}</p>
       <div className="flex items-center gap-1">
         <button type="button" className={cn(btn, 'border-(--sv-border) bg-(--sv-surface)')} disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Halaman sebelumnya">
           <ChevronLeft className="size-4" />

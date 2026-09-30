@@ -1,133 +1,206 @@
 'use client';
 
-import {
-  AlertCircle,
-  ArrowLeft,
-  Building2,
-  GitCompare,
-  LayoutGrid,
-  Loader2,
-  RefreshCw,
-  Table2,
-  TrendingDown,
-  TrendingUp,
-  X,
-} from 'lucide-react';
+/**
+ * SectorPage.tsx
+ *
+ * /sektor — sector overview + per-sector stock list, sharing the Screener's
+ * header, sidebar nav, `.sv-theme` tokens and ScreenerTable (with the same
+ * lazily computed verdict columns). Data: getStockSummaries (EOD).
+ */
+
+import { AlertCircle, ArrowLeft, BarChart3, GitCompare, Layers, LayoutGrid, PieChart, RefreshCw, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getStockSummaries } from '@/data/repositories/StockRepository';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getStockFundamentals, getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
+import { computeScreenerVerdict, ScreenerVerdict } from '@/domain/analysis/screenerVerdict';
 import { StockSummary } from '@/domain/models/Stock';
-import { cn, formatCompact, formatPercent } from '@/lib/format';
-import { LINKS, SITE_NAME } from '@/lib/site';
-import { ResultsTable, ResultsView, ScreenerResult } from '@/presentation/features/screener/components/ResultsTable';
-import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlist';
+import { mapWithConcurrency } from '@/lib/concurrency';
+import { cn } from '@/lib/format';
+import { SITE_NAME } from '@/lib/site';
+import { GainerLoserPanel } from '../screener/components/GainerLoserPanel';
+import { useMarketSeries } from '../screener/components/MarketSummary';
+import { ScreenerResult } from '../screener/components/ResultsTable';
+import { ScreenerHeader } from '../screener/components/ScreenerHeader';
+import { ScreenerNav } from '../screener/components/ScreenerNav';
+import { ScreenerPagination, ScreenerSort, ScreenerSortKey, ScreenerTable, VERDICT_SORT_KEYS } from '../screener/components/ScreenerTable';
+import { ScreenerTabItem, ScreenerTabs } from '../screener/components/ScreenerTabs';
+import { screenerInter } from '../screener/fonts';
+import { useWatchlist } from '../screener/hooks/useWatchlist';
+import {
+  SectorBreadcrumb,
+  SectorCard,
+  SectorCardSkeleton,
+  SectorHeader,
+  SectorHeaderSkeleton,
+  SectorStats,
+  SectorStatsSkeleton,
+} from './components/SectorCards';
+import { buildSectorGroups, computeBreadth, SectorSortKey, sortSectorGroups } from './sectorGroups';
 
 type Status = 'loading' | 'ready' | 'error';
 
-interface SectorGroup {
-  sector: string;
-  stocks: StockSummary[];
-  avgChange1D: number;
-  totalCapitalization: number;
-  topGainer: StockSummary | null;
-  topLoser: StockSummary | null;
-}
+const PAGE_SIZE = 25;
+const HISTORY_CONCURRENCY = 6;
+const DEFAULT_SORT: ScreenerSort = { key: 'change', dir: 'desc' };
 
-function buildSectorGroups(summaries: StockSummary[]): SectorGroup[] {
-  const bySector = new Map<string, StockSummary[]>();
-  for (const s of summaries) {
-    const key = s.sector || 'Lainnya';
-    const list = bySector.get(key);
-    if (list) list.push(s);
-    else bySector.set(key, [s]);
+const SECTOR_SORT_ITEMS: ScreenerTabItem[] = [
+  { id: 'cap', label: 'Market Cap', icon: PieChart },
+  { id: 'change', label: 'Perubahan', icon: BarChart3 },
+  { id: 'count', label: 'Jumlah Saham', icon: LayoutGrid },
+];
+
+function sortValue(s: StockSummary, key: ScreenerSortKey, v?: ScreenerVerdict): number | string | null {
+  switch (key) {
+    case 'ticker': return s.ticker;
+    case 'change': return s.percentChange1D;
+    case 'price': return s.lastClose;
+    case 'volume': return s.volume;
+    case 'fundamental': return v ? v.fundamentalScore.composite : null;
+    case 'upside': return v?.valuation.upsidePct ?? null;
   }
-
-  const groups: SectorGroup[] = [];
-  for (const [sector, stocks] of bySector) {
-    const avgChange1D = stocks.reduce((sum, s) => sum + s.percentChange1D, 0) / stocks.length;
-    const totalCapitalization = stocks.reduce((sum, s) => sum + s.capitalization, 0);
-    const sortedByChange = [...stocks].sort((a, b) => b.percentChange1D - a.percentChange1D);
-    groups.push({
-      sector,
-      stocks,
-      avgChange1D,
-      totalCapitalization,
-      topGainer: sortedByChange[0] ?? null,
-      topLoser: sortedByChange[sortedByChange.length - 1] ?? null,
-    });
-  }
-
-  return groups.sort((a, b) => b.totalCapitalization - a.totalCapitalization);
 }
 
 export function SectorPage({ initialSector }: { initialSector: string | null }) {
   const router = useRouter();
-  const [summaries, setSummaries] = useState<StockSummary[] | null>(null);
-  const [status, setStatus] = useState<Status>('loading');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedSector, setSelectedSector] = useState<string | null>(initialSector);
-  const [subSector, setSubSector] = useState<string>('all');
-  const [query, setQuery] = useState('');
-  const [view, setView] = useState<ResultsView>('table');
-  const [compareSelection, setCompareSelection] = useState<string[]>([]);
+  const market = useMarketSeries();
   const watchlist = useWatchlist();
+  const [summaries, setSummaries] = useState<StockSummary[] | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [status, setStatus] = useState<Status>('loading');
+  const [selectedSector, setSelectedSector] = useState<string | null>(initialSector);
+  const [sectorSort, setSectorSort] = useState<SectorSortKey>('cap');
+  const [subSector, setSubSector] = useState('all');
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<ScreenerSort>(DEFAULT_SORT);
+  const [page, setPage] = useState(1);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [compareSelection, setCompareSelection] = useState<string[]>([]);
+  const [verdictByTicker, setVerdictByTicker] = useState<Record<string, ScreenerVerdict>>({});
+  const verdictAttemptedRef = useRef<Set<string>>(new Set());
 
-  const fetchSummaries = useCallback(() => {
-    getStockSummaries()
-      .then((data) => {
-        setSummaries(data);
+  // Mobile/tablet drawer: lock body scroll and close on Escape (same behaviour as ScreenerPage).
+  useEffect(() => {
+    if (!drawerOpen) return;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [drawerOpen]);
+
+  const load = useCallback(() => {
+    setStatus('loading');
+    getStockSummariesWithTimestamp()
+      .then(({ summaries, lastUpdatedAt }) => {
+        setSummaries(summaries);
+        setLastUpdatedAt(lastUpdatedAt);
         setStatus('ready');
       })
-      .catch(() => {
-        setErrorMessage('Gagal memuat daftar saham. Coba muat ulang halaman.');
-        setStatus('error');
-      });
+      .catch(() => setStatus('error'));
   }, []);
 
   useEffect(() => {
-    fetchSummaries();
-  }, [fetchSummaries]);
+    Promise.resolve().then(load);
+  }, [load]);
 
-  const reload = useCallback(() => {
-    setStatus('loading');
-    fetchSummaries();
-  }, [fetchSummaries]);
+  const refresh = useCallback(() => {
+    verdictAttemptedRef.current = new Set();
+    setVerdictByTicker({});
+    load();
+  }, [load]);
 
-  const sectorGroups = useMemo(() => (summaries ? buildSectorGroups(summaries) : []), [summaries]);
+  const groups = useMemo(() => (summaries ? buildSectorGroups(summaries) : []), [summaries]);
+  const marketBreadth = useMemo(() => computeBreadth(summaries ?? []), [summaries]);
+  const activeGroup = useMemo(() => groups.find((g) => g.sector === selectedSector) ?? null, [groups, selectedSector]);
 
   const selectSector = useCallback((sector: string | null) => {
     setSelectedSector(sector);
     setSubSector('all');
     setQuery('');
+    setSort(DEFAULT_SORT);
+    setPage(1);
+    setCompareSelection([]);
     router.replace(sector ? `/sektor?sector=${encodeURIComponent(sector)}` : '/sektor', { scroll: false });
+    window.scrollTo({ top: 0 });
   }, [router]);
 
-  const activeGroup = useMemo(
-    () => sectorGroups.find((g) => g.sector === selectedSector) ?? null,
-    [sectorGroups, selectedSector]
-  );
+  const handleQueryChange = useCallback((q: string) => {
+    setQuery(q);
+    setPage(1);
+  }, []);
 
-  const subSectors = useMemo(() => {
+  // Enter on a full ticker jumps to Detail Emiten, like the detail page's search.
+  const handleSubmitQuery = useCallback((q: string) => {
+    const code = q.trim().toUpperCase();
+    if (/^[A-Z]{4}$/.test(code) && summaries?.some((s) => s.ticker === code)) router.push(`/screener/${code}`);
+  }, [router, summaries]);
+
+  // ── Overview ───────────────────────────────────────────────────────────────
+  const q = query.trim().toLowerCase();
+  const visibleGroups = useMemo(() => {
+    const matched = q
+      ? groups.filter((g) => g.sector.toLowerCase().includes(q) || g.stocks.some((s) => s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)))
+      : groups;
+    return sortSectorGroups(matched, sectorSort);
+  }, [groups, q, sectorSort]);
+
+  // ── Sector detail ──────────────────────────────────────────────────────────
+  const subSectorItems = useMemo<ScreenerTabItem[]>(() => {
     if (!activeGroup) return [];
-    return Array.from(new Set(activeGroup.stocks.map((s) => s.subSector).filter(Boolean))).sort();
+    const subs = [...new Set(activeGroup.stocks.map((s) => s.subSector).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    return [{ id: 'all', label: 'Semua', icon: LayoutGrid }, ...subs.map((s) => ({ id: s, label: s, icon: Layers }))];
   }, [activeGroup]);
 
-  const filteredStocks = useMemo(() => {
+  const baseRows = useMemo<ScreenerResult[]>(() => {
     if (!activeGroup) return [];
-    let list = activeGroup.stocks;
-    if (subSector !== 'all') list = list.filter((s) => s.subSector === subSector);
-    if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      list = list.filter((s) => s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
-    }
-    return list;
-  }, [activeGroup, subSector, query]);
+    return activeGroup.stocks
+      .filter((s) => (subSector === 'all' || s.subSector === subSector) && (!q || s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)))
+      .map((summary) => ({ summary, evaluation: { passed: true, reasons: [], failed: [] } }));
+  }, [activeGroup, subSector, q]);
 
-  const results: ScreenerResult[] = useMemo(
-    () => filteredStocks.map((summary) => ({ summary, evaluation: { passed: true, reasons: [], failed: [] } })),
-    [filteredStocks]
-  );
+  const sortedRows = useMemo(() => {
+    const mul = sort.dir === 'asc' ? 1 : -1;
+    return [...baseRows].sort((a, b) => {
+      const va = sortValue(a.summary, sort.key, verdictByTicker[a.summary.ticker]);
+      const vb = sortValue(b.summary, sort.key, verdictByTicker[b.summary.ticker]);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'string' && typeof vb === 'string') return mul * va.localeCompare(vb);
+      return mul * ((va as number) - (vb as number));
+    });
+  }, [baseRows, sort, verdictByTicker]);
+
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = useMemo(() => sortedRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE), [sortedRows, currentPage]);
+
+  // Verdict columns (phase, trend, fundamental, valuation…) are computed lazily — only for the
+  // visible page, or for the whole sector when sorting by a verdict-based column.
+  const verdictTargets = VERDICT_SORT_KEYS.includes(sort.key) ? baseRows : pageRows;
+  useEffect(() => {
+    const pending = verdictTargets.filter((r) => !verdictAttemptedRef.current.has(r.summary.ticker));
+    if (pending.length === 0) return;
+    pending.forEach((r) => verdictAttemptedRef.current.add(r.summary.ticker));
+    mapWithConcurrency(pending, HISTORY_CONCURRENCY, async ({ summary }) => {
+      const [bars, fundamentals] = await Promise.all([getStockHistory(summary.ticker), getStockFundamentals(summary.ticker)]);
+      return [summary.ticker, computeScreenerVerdict(summary, bars, fundamentals)] as const;
+    }).then((entries) => {
+      setVerdictByTicker((prev) => {
+        const next = { ...prev };
+        for (const [ticker, verdict] of entries) next[ticker] = verdict;
+        return next;
+      });
+    });
+  }, [verdictTargets]);
+
+  const handleSort = useCallback((key: ScreenerSortKey) => {
+    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'ticker' ? 'asc' : 'desc' }));
+    setPage(1);
+  }, []);
 
   const toggleCompare = useCallback((ticker: string) => {
     setCompareSelection((prev) => {
@@ -138,219 +211,189 @@ export function SectorPage({ initialSector }: { initialSector: string | null }) 
   }, []);
   const isCompareSelected = useCallback((ticker: string) => compareSelection.includes(ticker), [compareSelection]);
 
+  const loading = status === 'loading';
+  const unknownSector = status === 'ready' && selectedSector != null && !activeGroup;
+  const inDetail = selectedSector != null && !unknownSector;
+  const btnSecondary = 'inline-flex h-9 items-center gap-2 rounded-lg border border-(--sv-border) bg-(--sv-surface) px-3 text-sm font-medium text-(--sv-text) hover:bg-(--sv-bg) disabled:cursor-not-allowed disabled:opacity-50';
+
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <header className="bg-white dark:bg-zinc-950 border-b-[3px] border-(--neo-line)">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-          <Link
-            href={activeGroup ? '#' : '/screener'}
-            onClick={(e) => {
-              if (activeGroup) {
-                e.preventDefault();
-                selectSector(null);
-              }
-            }}
-            className="flex shrink-0 items-center gap-1.5 text-sm font-bold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-          >
-            <ArrowLeft className="size-4" strokeWidth={2.5} />
-            <span className="uppercase tracking-wide text-xs">{activeGroup ? 'Semua Sektor' : 'Screener'}</span>
-          </Link>
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
-          <h1 className="font-bold text-zinc-900 dark:text-zinc-100 truncate">
-            {activeGroup ? activeGroup.sector : 'Saham per Sektor'}
-          </h1>
+    <div className={cn('sv-theme flex min-h-screen w-full flex-col', screenerInter.variable)}>
+      <ScreenerHeader
+        query={query}
+        onQueryChange={handleQueryChange}
+        onSubmitQuery={handleSubmitQuery}
+        lastUpdatedAt={lastUpdatedAt}
+        ihsg={market.ihsg}
+        onOpenDrawer={() => setDrawerOpen(true)}
+      />
 
-          <nav className="ml-auto hidden sm:flex items-center gap-1">
-            {LINKS.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                <Icon className="size-3.5" strokeWidth={2.5} />
-                <span>{label}</span>
-              </Link>
-            ))}
-          </nav>
-
-          <button
-            type="button"
-            onClick={reload}
-            title="Muat ulang"
-            className="neo-press flex shrink-0 size-8 items-center justify-center neo-border neo-shadow-sm bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 sm:ml-0 ml-auto"
-          >
-            <RefreshCw className={cn('size-3.5', status === 'loading' && 'animate-spin')} strokeWidth={2.5} />
-          </button>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 space-y-5">
-        {status === 'loading' && (
-          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-            <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />
-            Memuat daftar saham dari bursa...
+      <div className="flex flex-1">
+        {drawerOpen && <div className="fixed inset-0 z-40 bg-slate-900/40 xl:hidden" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
+        <aside
+          aria-label="Menu utama"
+          className={cn(
+            'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col gap-6 overflow-y-auto border-r border-(--sv-border) bg-(--sv-surface) p-4 transition-transform duration-300 ease-out',
+            drawerOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full',
+            'xl:sticky xl:top-16 xl:z-auto xl:h-[calc(100vh-4rem)] xl:w-64 xl:max-w-none xl:shrink-0 xl:translate-x-0 xl:shadow-none',
+          )}
+        >
+          <div className="flex items-center justify-between xl:hidden">
+            <span className="text-sm font-semibold text-(--sv-text)">Menu</span>
+            <button type="button" onClick={() => setDrawerOpen(false)} aria-label="Tutup" className="flex size-8 items-center justify-center rounded-lg border border-(--sv-border) text-(--sv-text)">
+              <X className="size-4" strokeWidth={2} />
+            </button>
           </div>
-        )}
+          <ScreenerNav watchlistOnly={false} watchlistCount={watchlist.tickers.length} onToggleWatchlist={() => router.push('/screener')} />
+          <p className="mt-auto text-[11px] text-(--sv-muted)">© {new Date().getFullYear()} {SITE_NAME} · Data EOD, bukan prediksi harga.</p>
+        </aside>
 
-        {status === 'error' && errorMessage && (
-          <div className="flex items-center gap-2 neo-border neo-shadow-sm bg-rose-100 px-3.5 py-2.5 text-sm font-semibold text-rose-800 dark:bg-rose-400/10 dark:text-rose-300">
-            <AlertCircle className="size-4 shrink-0" strokeWidth={2.5} />
-            {errorMessage}
-          </div>
-        )}
+        <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-5 pb-28 sm:px-6 xl:pb-8">
+          <SectorBreadcrumb sector={inDetail ? selectedSector : null} onBack={() => selectSector(null)} />
 
-        {status === 'ready' && !activeGroup && (
-          <>
-            <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-              {sectorGroups.length} sektor · {summaries?.length ?? 0} saham total · diurutkan berdasarkan total kapitalisasi pasar
-            </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {sectorGroups.map((g) => {
-                const up = g.avgChange1D >= 0;
-                return (
-                  <button
-                    key={g.sector}
-                    type="button"
-                    onClick={() => selectSector(g.sector)}
-                    className="neo-press text-left neo-border neo-shadow-sm bg-white dark:bg-zinc-900 p-4 space-y-2.5 hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="flex size-8 shrink-0 items-center justify-center neo-border bg-indigo-500 text-white">
-                          <Building2 className="size-4" strokeWidth={2.5} />
-                        </span>
-                        <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100 leading-tight truncate">
-                          {g.sector}
-                        </span>
-                      </div>
-                      <span className={cn(
-                        'shrink-0 inline-flex items-center gap-1 text-xs font-mono font-bold tabular-nums px-1.5 py-0.5',
-                        up ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400'
-                      )}>
-                        {up ? <TrendingUp className="size-3" strokeWidth={2.5} /> : <TrendingDown className="size-3" strokeWidth={2.5} />}
-                        {formatPercent(g.avgChange1D)}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <div className="text-zinc-400 uppercase font-bold text-[10px]">Jumlah Saham</div>
-                        <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{g.stocks.length}</div>
-                      </div>
-                      <div>
-                        <div className="text-zinc-400 uppercase font-bold text-[10px]">Total Market Cap</div>
-                        <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCompact(g.totalCapitalization)}</div>
-                      </div>
-                    </div>
-                    {g.topGainer && (
-                      <div className="text-[11px] text-zinc-400 truncate">
-                        Top gainer: <span className="font-bold text-emerald-600 dark:text-emerald-400">{g.topGainer.ticker}</span> ({formatPercent(g.topGainer.percentChange1D)})
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
+          {status === 'error' && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200">
+              <span className="flex items-center gap-2"><AlertCircle className="size-4 shrink-0" />Gagal memuat daftar saham. Periksa koneksi lalu coba lagi.</span>
+              <button type="button" onClick={refresh} className="rounded-lg bg-rose-600 px-3 py-1.5 font-medium text-white hover:bg-rose-700">Coba lagi</button>
             </div>
-          </>
-        )}
+          )}
 
-        {status === 'ready' && activeGroup && (
-          <>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={cn(
-                'inline-flex items-center gap-1 text-sm font-mono font-bold tabular-nums px-2 py-1 neo-border',
-                activeGroup.avgChange1D >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400'
-              )}>
-                Rata-rata {formatPercent(activeGroup.avgChange1D)}
-              </span>
-              <span className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
-                {filteredStocks.length} dari {activeGroup.stocks.length} saham · Total Cap {formatCompact(activeGroup.totalCapitalization)}
-              </span>
+          {inDetail ? (
+            <>
+              {loading || !activeGroup ? <SectorHeaderSkeleton /> : <SectorHeader group={activeGroup} />}
 
-              {subSectors.length > 1 && (
-                <select
-                  value={subSector}
-                  onChange={(e) => setSubSector(e.target.value)}
-                  className="neo-border neo-shadow-sm bg-white px-3 py-1.5 text-sm font-semibold text-zinc-700 outline-none dark:bg-zinc-900 dark:text-zinc-200"
-                >
-                  <option value="all">Semua Sub-Sektor</option>
-                  {subSectors.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+              {activeGroup && (
+                <aside aria-label="Pergerakan sektor" className="grid gap-4 md:grid-cols-2">
+                  <GainerLoserPanel summaries={activeGroup.stocks} />
+                </aside>
               )}
 
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Cari ticker/nama..."
-                className="neo-border neo-shadow-sm bg-white px-3 py-1.5 text-sm font-semibold text-zinc-700 outline-none dark:bg-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400"
-              />
+              <section aria-labelledby="sector-stocks-title" className="flex min-w-0 flex-col gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 id="sector-stocks-title" className="text-lg font-semibold text-(--sv-text)">Daftar Saham</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => selectSector(null)} className={btnSecondary}>
+                      <ArrowLeft className="size-4" strokeWidth={2} /> Semua Sektor
+                    </button>
+                    <button type="button" onClick={refresh} disabled={loading} className={btnSecondary}>
+                      <RefreshCw className={cn('size-4', loading && 'animate-spin')} strokeWidth={2} /> Refresh
+                    </button>
+                  </div>
+                </div>
 
-              <div className="ml-auto flex items-center gap-1 neo-border neo-shadow-sm bg-white p-1 dark:bg-zinc-900">
-                <button
-                  type="button"
-                  onClick={() => setView('table')}
-                  aria-label="Tampilan tabel"
-                  aria-pressed={view === 'table'}
-                  className={cn('p-1.5 transition-colors', view === 'table' ? 'bg-(--neo-accent) text-black' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300')}
-                >
-                  <Table2 className="size-4" strokeWidth={2.5} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView('grid')}
-                  aria-label="Tampilan grid"
-                  aria-pressed={view === 'grid'}
-                  className={cn('p-1.5 transition-colors', view === 'grid' ? 'bg-(--neo-accent) text-black' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300')}
-                >
-                  <LayoutGrid className="size-4" strokeWidth={2.5} />
+                {subSectorItems.length > 2 && (
+                  <ScreenerTabs
+                    items={subSectorItems}
+                    selected={subSector}
+                    onSelect={(id) => { setSubSector(id); setPage(1); }}
+                    count={baseRows.length}
+                  />
+                )}
+
+                {!loading && activeGroup && (
+                  <p className="text-sm text-(--sv-muted)">
+                    <b className="tabular-nums text-(--sv-text)">{sortedRows.length}</b> dari {activeGroup.stocks.length} saham
+                    {(q || subSector !== 'all') && (
+                      <button type="button" onClick={() => { setQuery(''); setSubSector('all'); setPage(1); }} className="ml-2 font-medium text-(--sv-primary) hover:underline">
+                        Hapus filter
+                      </button>
+                    )}
+                  </p>
+                )}
+
+                {status !== 'error' && (
+                  <ScreenerTable
+                    rows={pageRows}
+                    startIndex={(currentPage - 1) * PAGE_SIZE}
+                    verdictByTicker={verdictByTicker}
+                    loading={loading}
+                    sort={sort}
+                    onSort={handleSort}
+                    emptyHint="Tidak ada saham di sektor ini yang cocok dengan pencarian atau sub-sektor terpilih."
+                    onResetFilters={q || subSector !== 'all' ? () => { setQuery(''); setSubSector('all'); setPage(1); } : undefined}
+                    isWatchlisted={watchlist.has}
+                    onToggleWatchlist={watchlist.toggle}
+                    isCompareSelected={isCompareSelected}
+                    onToggleCompare={toggleCompare}
+                  />
+                )}
+
+                {!loading && <ScreenerPagination page={currentPage} pageSize={PAGE_SIZE} total={sortedRows.length} onPage={setPage} />}
+              </section>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h1 className="text-xl font-bold text-(--sv-text) sm:text-2xl">Sektor Saham</h1>
+                  <p className="mt-0.5 text-sm text-(--sv-muted)">Peta performa harian seluruh sektor BEI/IDX — pilih sektor untuk melihat daftar sahamnya.</p>
+                </div>
+                <button type="button" onClick={refresh} disabled={loading} className={btnSecondary}>
+                  <RefreshCw className={cn('size-4', loading && 'animate-spin')} strokeWidth={2} /> Refresh
                 </button>
               </div>
-            </div>
 
-            <ResultsTable
-              results={results}
-              view={view}
-              isWatchlisted={watchlist.has}
-              onToggleWatchlist={watchlist.toggle}
-              isCompareSelected={isCompareSelected}
-              onToggleCompare={toggleCompare}
-            />
-          </>
-        )}
-      </main>
+              {unknownSector && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+                  Sektor &ldquo;{selectedSector}&rdquo; tidak ditemukan — menampilkan semua sektor.
+                </div>
+              )}
+
+              {loading ? <SectorStatsSkeleton /> : status === 'ready' && (
+                <SectorStats groups={groups} stockCount={summaries?.length ?? 0} breadth={marketBreadth} />
+              )}
+
+              {status !== 'error' && (
+                <section aria-labelledby="sector-list-title" className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <h2 id="sector-list-title" className="text-lg font-semibold text-(--sv-text)">
+                      Semua Sektor
+                      {!loading && <span className="ml-2 text-sm font-normal text-(--sv-muted)">{visibleGroups.length} sektor</span>}
+                    </h2>
+                    <ScreenerTabs items={SECTOR_SORT_ITEMS} selected={sectorSort} onSelect={(id) => setSectorSort(id as SectorSortKey)} count={null} />
+                  </div>
+
+                  {loading ? (
+                    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                      {Array.from({ length: 6 }, (_, i) => <SectorCardSkeleton key={i} />)}
+                    </div>
+                  ) : visibleGroups.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-(--sv-border) bg-(--sv-surface) px-6 py-14 text-center">
+                      <p className="text-base font-semibold text-(--sv-text)">Tidak ada sektor yang cocok</p>
+                      <p className="text-sm text-(--sv-muted)">Tidak ada sektor atau saham yang cocok dengan &ldquo;{query}&rdquo;.</p>
+                      <button type="button" onClick={() => setQuery('')} className="mt-1 rounded-lg border border-(--sv-border) px-3.5 py-2 text-sm font-medium text-(--sv-text) hover:bg-(--sv-bg)">
+                        Hapus pencarian
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                      {visibleGroups.map((g) => <SectorCard key={g.sector} group={g} onSelect={selectSector} />)}
+                    </div>
+                  )}
+                </section>
+              )}
+            </>
+          )}
+        </main>
+      </div>
 
       {compareSelection.length > 0 && (
         <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
-          <div className="flex items-center gap-3 neo-border neo-shadow-lg bg-white px-4 py-2.5 dark:bg-zinc-900">
-            <GitCompare className="size-4 shrink-0 text-blue-500" strokeWidth={2.5} />
-            <span className="text-sm font-bold text-zinc-700 dark:text-zinc-200">
-              {compareSelection.length === 2
-                ? `${compareSelection[0]} vs ${compareSelection[1]}`
-                : `${compareSelection[0]} dipilih — pilih 1 saham lagi`}
+          <div className="flex items-center gap-3 rounded-xl border border-(--sv-border) bg-(--sv-surface) px-4 py-2.5 shadow-lg">
+            <GitCompare className="size-4 shrink-0 text-(--sv-primary)" strokeWidth={2} />
+            <span className="text-sm font-medium text-(--sv-text)">
+              {compareSelection.length === 2 ? `${compareSelection[0]} vs ${compareSelection[1]}` : `${compareSelection[0]} dipilih — pilih 1 saham lagi`}
             </span>
             {compareSelection.length === 2 && (
-              <Link
-                href={`/compare?a=${compareSelection[0]}&b=${compareSelection[1]}`}
-                className="neo-press neo-border neo-shadow-sm bg-(--neo-accent) px-3 py-1.5 text-sm font-bold text-black"
-              >
+              <Link href={`/compare?a=${compareSelection[0]}&b=${compareSelection[1]}`} className="rounded-lg bg-(--sv-primary) px-3 py-1.5 text-sm font-semibold text-(--sv-primary-fg)">
                 Bandingkan →
               </Link>
             )}
-            <button
-              type="button"
-              onClick={() => setCompareSelection([])}
-              aria-label="Batalkan pilihan bandingkan"
-              className="flex size-7 shrink-0 items-center justify-center text-zinc-400 hover:text-rose-500"
-            >
-              <X className="size-4" strokeWidth={2.5} />
+            <button type="button" onClick={() => setCompareSelection([])} aria-label="Batalkan pilihan bandingkan" className="flex size-7 shrink-0 items-center justify-center rounded-md text-(--sv-muted) hover:text-rose-500">
+              <X className="size-4" strokeWidth={2} />
             </button>
           </div>
         </div>
       )}
-
-      <div className="text-center pb-4 text-xs font-semibold text-zinc-400 dark:text-zinc-600">{SITE_NAME}</div>
     </div>
   );
 }

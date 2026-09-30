@@ -197,12 +197,12 @@ export function ScreenerDetailPage({ ticker }: { ticker: string }) {
                     <div key={tab} id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} className="flex min-w-0 flex-col gap-4 animate-in fade-in duration-200">
                       {tab === 'ringkasan' && (
                         <>
-                          {detail.pillars && (
-                            <SaraDecisionCard key={ticker} ticker={ticker} price={data.header.price} pillars={detail.pillars} analysis={analysis} />
-                          )}
                           <PriceChart ticker={ticker} bars={data.chartBars} currentPrice={data.header.price} />
                           <TechnicalSummary indicators={data.technical} />
                           {data.insight && <AIInsight analysis={data.insight} />}
+                          {/* {detail.pillars && (
+                            <SaraDecisionCard key={ticker} ticker={ticker} price={data.header.price} pillars={detail.pillars} analysis={analysis} />
+                          )} */}
                           {detail.summary && detail.fundamentalScreening ? (
                             <TradingModesReport
                               summary={detail.summary}

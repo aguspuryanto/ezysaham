@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import { SITE_NAME } from '@/lib/site';
 import { SectorPage } from '@/presentation/features/sector/SectorPage';
 
 interface Props {
@@ -8,7 +9,7 @@ interface Props {
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const { sector } = await searchParams;
   return {
-    title: sector ? `Saham Sektor ${sector} | StockPilot AI` : 'Saham per Sektor | StockPilot AI',
+    title: sector ? `Saham Sektor ${sector} | ${SITE_NAME}` : `Saham per Sektor | ${SITE_NAME}`,
     description: sector
       ? `Daftar saham BEI/IDX di sektor ${sector}, lengkap dengan harga, perubahan harian, dan kapitalisasi pasar.`
       : 'Jelajahi seluruh saham BEI/IDX dikelompokkan per sektor, lengkap dengan performa rata-rata dan kapitalisasi pasar tiap sektor.',

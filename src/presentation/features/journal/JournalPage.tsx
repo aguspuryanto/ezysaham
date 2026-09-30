@@ -1,438 +1,264 @@
 'use client';
 
-import { ArrowLeft, Check, Loader2, NotebookPen, Pencil, RefreshCw, Trash2, X, XCircle } from 'lucide-react';
+/**
+ * JournalPage.tsx
+ *
+ * /jurnal — trading journal sharing the Screener's header, sidebar nav and
+ * `.sv-theme` tokens. Entries come from useJournal; each plan is graded against
+ * the next trading day's EOD close by the journal API ("Refresh Outcomes").
+ */
+
+import { ChevronRight, CircleDot, Home, LayoutGrid, MinusCircle, RefreshCw, ScanSearch, TrendingDown, TrendingUp, X, XCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { JournalEntry, JournalStatus } from '@/domain/models/JournalEntry';
+import { useRouter } from 'next/navigation';
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import type { JournalEntryEditableFields } from '@/data/repositories/JournalRepository';
-import { cn, formatPercent, formatRupiah } from '@/lib/format';
+import { JournalEntry, JournalStatus } from '@/domain/models/JournalEntry';
+import { cn, formatPercent } from '@/lib/format';
+import { SITE_NAME } from '@/lib/site';
+import { useMarketSeries } from '../screener/components/MarketSummary';
+import { ScreenerHeader } from '../screener/components/ScreenerHeader';
+import { ScreenerNav } from '../screener/components/ScreenerNav';
+import { ScreenerTabItem, ScreenerTabs } from '../screener/components/ScreenerTabs';
+import { Card, Skeleton } from '../screener/detail/components/ui';
+import { screenerInter } from '../screener/fonts';
+import { useWatchlist } from '../screener/hooks/useWatchlist';
+import { JournalEmptyState, JournalTable, STATUS_LABEL } from './components/JournalTable';
 import { useJournal } from './hooks/useJournal';
 
-const STATUS_STYLES: Record<JournalStatus, string> = {
-  open: 'bg-amber-400 text-white dark:bg-amber-500',
-  tp_hit: 'bg-emerald-500 text-white dark:bg-emerald-600',
-  sl_hit: 'bg-rose-500 text-white dark:bg-rose-600',
-  sideways: 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
-};
+type StatusFilter = 'all' | JournalStatus;
 
-const STATUS_LABEL: Record<JournalStatus, string> = {
-  open: 'Open',
-  tp_hit: 'Exit TP',
-  sl_hit: 'Exit SL',
-  sideways: 'Sideways',
-};
+const STATUS_ITEMS: ScreenerTabItem[] = [
+  { id: 'all', label: 'Semua', icon: LayoutGrid },
+  { id: 'open', label: STATUS_LABEL.open, icon: CircleDot },
+  { id: 'tp_hit', label: STATUS_LABEL.tp_hit, icon: TrendingUp },
+  { id: 'sl_hit', label: STATUS_LABEL.sl_hit, icon: TrendingDown },
+  { id: 'sideways', label: STATUS_LABEL.sideways, icon: MinusCircle },
+];
 
-function hasilLabel(status: JournalStatus): string {
-  if (status === 'tp_hit') return 'WIN';
-  if (status === 'sl_hit') return 'LOSS';
-  return '–';
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+function StatTile({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {
+  return (
+    <Card as="div" className="flex min-w-0 flex-col gap-1 p-4">
+      <span className="text-xs font-medium text-(--sv-muted)">{label}</span>
+      <div className="text-xl font-bold tabular-nums text-(--sv-text)">{children}</div>
+      {hint && <div className="text-xs text-(--sv-muted)">{hint}</div>}
+    </Card>
+  );
 }
 
 export function JournalPage() {
+  const router = useRouter();
+  const market = useMarketSeries();
+  const watchlist = useWatchlist();
   const { entries, loading, refresh, removeEntry, updateEntry } = useJournal();
 
-  const [tickerFilter, setTickerFilter] = useState<string>('all');
-  const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<StatusFilter>('all');
+  const [tickerFilter, setTickerFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const sorted = useMemo(
-    () => [...entries].sort((a, b) => b.addedAt.localeCompare(a.addedAt)),
-    [entries]
-  );
+  // Mobile/tablet drawer: lock body scroll and close on Escape (same behaviour as ScreenerPage).
+  useEffect(() => {
+    if (!drawerOpen) return;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [drawerOpen]);
 
-  const tickers = useMemo(
-    () => Array.from(new Set(entries.map((e) => e.ticker))).sort(),
-    [entries]
-  );
+  const tickers = useMemo(() => [...new Set(entries.map((e) => e.ticker))].sort(), [entries]);
 
-  const filtered = useMemo(() => {
-    return sorted.filter((e) => {
-      if (tickerFilter !== 'all' && e.ticker !== tickerFilter) return false;
-      const entryDate = e.addedAt.slice(0, 10);
-      if (dateFrom && entryDate < dateFrom) return false;
-      if (dateTo && entryDate > dateTo) return false;
-      return true;
-    });
-  }, [sorted, tickerFilter, dateFrom, dateTo]);
+  // Ticker / date / search narrow the set the stats describe; the status tab only narrows the table.
+  const scoped = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...entries]
+      .sort((a, b) => b.addedAt.localeCompare(a.addedAt))
+      .filter((e) => {
+        if (tickerFilter !== 'all' && e.ticker !== tickerFilter) return false;
+        const day = e.addedAt.slice(0, 10);
+        if (dateFrom && day < dateFrom) return false;
+        if (dateTo && day > dateTo) return false;
+        if (q && !(e.ticker.toLowerCase().includes(q) || e.reasonBuy.toLowerCase().includes(q) || e.reasonAvoid.toLowerCase().includes(q))) return false;
+        return true;
+      });
+  }, [entries, tickerFilter, dateFrom, dateTo, query]);
 
-  const hasActiveFilter = tickerFilter !== 'all' || dateFrom !== '' || dateTo !== '';
+  const visible = useMemo(() => (status === 'all' ? scoped : scoped.filter((e) => e.status === status)), [scoped, status]);
 
-  const resetFilters = () => {
+  const stats = useMemo(() => {
+    const resolved = scoped.filter((e) => e.status !== 'open');
+    const wins = resolved.filter((e) => e.status === 'tp_hit').length;
+    const losses = resolved.filter((e) => e.status === 'sl_hit').length;
+    const gains = resolved.map((e) => e.gainLossPct ?? 0);
+    return {
+      total: scoped.length,
+      open: scoped.length - resolved.length,
+      resolved: resolved.length,
+      wins,
+      losses,
+      winRate: resolved.length > 0 ? (wins / resolved.length) * 100 : null,
+      avgGainLoss: gains.length > 0 ? gains.reduce((a, b) => a + b, 0) / gains.length : null,
+    };
+  }, [scoped]);
+
+  const hasFilter = tickerFilter !== 'all' || dateFrom !== '' || dateTo !== '' || query.trim() !== '' || status !== 'all';
+  const resetFilters = useCallback(() => {
     setTickerFilter('all');
     setDateFrom('');
     setDateTo('');
-  };
+    setQuery('');
+    setStatus('all');
+  }, []);
 
-  const stats = useMemo(() => {
-    const resolved = filtered.filter((e) => e.status !== 'open');
-    const wins = resolved.filter((e) => e.status === 'tp_hit');
-    const gains = resolved.map((e) => e.gainLossPct ?? 0);
-    const avgGainLoss = gains.length > 0 ? gains.reduce((a, b) => a + b, 0) / gains.length : 0;
-    return {
-      total: filtered.length,
-      resolved: resolved.length,
-      winRate: resolved.length > 0 ? (wins.length / resolved.length) * 100 : null,
-      avgGainLoss,
-    };
-  }, [filtered]);
+  const handleDelete = useCallback(async (entry: JournalEntry) => {
+    if (!confirm(`Hapus entri jurnal ${entry.ticker}?`)) return;
+    await removeEntry(entry.id);
+  }, [removeEntry]);
 
-  const winRateLabel = useMemo(() => {
-    const parts: string[] = [];
-    if (tickerFilter !== 'all') parts.push(tickerFilter);
-    if (dateFrom || dateTo) parts.push('Periode');
-    return parts.length > 0 ? `Win Rate (${parts.join(', ')})` : 'Win Rate';
-  }, [tickerFilter, dateFrom, dateTo]);
+  const handleSave = useCallback(async (id: string, patch: JournalEntryEditableFields) => (await updateEntry(id, patch)).ok, [updateEntry]);
 
-  const handleDelete = async (id: string, ticker: string) => {
-    if (!confirm(`Hapus entri jurnal ${ticker}?`)) return;
-    await removeEntry(id);
-  };
-
-  const handleSave = async (id: string, patch: JournalEntryEditableFields) => {
-    const result = await updateEntry(id, patch);
-    return result.ok;
-  };
+  const initialLoading = loading && entries.length === 0;
+  const btnSecondary = 'inline-flex h-9 items-center gap-2 rounded-lg border border-(--sv-border) bg-(--sv-surface) px-3 text-sm font-medium text-(--sv-text) hover:bg-(--sv-bg) disabled:cursor-not-allowed disabled:opacity-50';
+  const field = 'h-9 rounded-lg border border-(--sv-border) bg-(--sv-bg) px-3 text-sm text-(--sv-text) outline-none focus:border-(--sv-primary) focus:bg-(--sv-surface) focus:ring-2 focus:ring-(--sv-primary)/15';
+  const fieldLabel = 'flex min-w-0 flex-col gap-1 text-xs font-medium text-(--sv-muted)';
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-800 neo-border border-x-0 border-t-0">
-        <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2.5 sm:px-6 sm:py-3">
-          <Link
-            href="/screener"
-            className="flex shrink-0 items-center gap-1 text-sm font-bold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-            aria-label="Kembali ke screener"
-          >
-            <ArrowLeft className="size-4" strokeWidth={2.5} />
-            <span className="hidden sm:inline text-xs uppercase tracking-wide">Screener</span>
-          </Link>
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
-          <div className="flex items-center gap-1.5 flex-1">
-            <NotebookPen className="size-4 text-zinc-500" strokeWidth={2.5} />
-            <span className="font-bold text-zinc-900 dark:text-zinc-100 text-base">Jurnal Trading</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => refresh()}
-            disabled={loading}
-            title="Refresh Outcomes"
-            className="neo-press flex shrink-0 items-center gap-1.5 size-8 sm:size-auto sm:px-3 sm:py-1.5 justify-center neo-border neo-shadow-sm bg-white text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 rounded-lg text-xs font-bold uppercase tracking-wide disabled:opacity-50"
-          >
-            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} strokeWidth={2.5} />
-            <span className="hidden sm:inline">Refresh Outcomes</span>
-          </button>
-        </div>
-      </header>
+    <div className={cn('sv-theme flex min-h-screen w-full flex-col', screenerInter.variable)}>
+      <ScreenerHeader
+        query={query}
+        onQueryChange={setQuery}
+        lastUpdatedAt={null}
+        ihsg={market.ihsg}
+        onOpenDrawer={() => setDrawerOpen(true)}
+      />
 
-      <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6 space-y-4">
-        {/* Filter row */}
-        <div className="flex flex-wrap items-end gap-2 neo-border neo-shadow-sm bg-white dark:bg-zinc-900 px-3 py-2.5">
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-wide font-bold text-zinc-400 dark:text-zinc-500">Ticker</span>
-            <select
-              value={tickerFilter}
-              onChange={(e) => setTickerFilter(e.target.value)}
-              className="neo-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 outline-none dark:bg-zinc-950 dark:text-zinc-200"
-            >
-              <option value="all">Semua Ticker</option>
-              {tickers.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-wide font-bold text-zinc-400 dark:text-zinc-500">Dari Tanggal</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="neo-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 outline-none dark:bg-zinc-950 dark:text-zinc-200"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-wide font-bold text-zinc-400 dark:text-zinc-500">Sampai Tanggal</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="neo-border bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 outline-none dark:bg-zinc-950 dark:text-zinc-200"
-            />
-          </label>
-          {hasActiveFilter && (
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="neo-press flex items-center gap-1.5 neo-border bg-white px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 hover:text-zinc-900 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              <XCircle className="size-3.5" strokeWidth={2.5} />
-              Reset Filter
-            </button>
+      <div className="flex flex-1">
+        {drawerOpen && <div className="fixed inset-0 z-40 bg-slate-900/40 xl:hidden" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
+        <aside
+          aria-label="Menu utama"
+          className={cn(
+            'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col gap-6 overflow-y-auto border-r border-(--sv-border) bg-(--sv-surface) p-4 transition-transform duration-300 ease-out',
+            drawerOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full',
+            'xl:sticky xl:top-16 xl:z-auto xl:h-[calc(100vh-4rem)] xl:w-64 xl:max-w-none xl:shrink-0 xl:translate-x-0 xl:shadow-none',
           )}
-        </div>
-
-        {/* Summary stat row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <StatCard label="Total Entri" value={String(stats.total)} />
-          <StatCard label="Selesai" value={`${stats.resolved} dari ${stats.total}`} />
-          <StatCard label={winRateLabel} value={stats.winRate !== null ? formatPercent(stats.winRate) : '–'} />
-          <StatCard
-            label="Avg Gain/Loss"
-            value={stats.resolved > 0 ? formatPercent(stats.avgGainLoss) : '–'}
-            positive={stats.avgGainLoss >= 0}
-          />
-        </div>
-
-        {loading && entries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 text-zinc-400">
-            <Loader2 className="size-6 animate-spin" />
-            <span className="text-sm font-medium">Memuat jurnal...</span>
-          </div>
-        ) : sorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center px-4">
-            <NotebookPen className="size-8 text-zinc-300 dark:text-zinc-700" />
-            <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 max-w-xs">
-              Belum ada entri jurnal — tambahkan dari Screener (Day Trading / Swing Hunter) atau halaman Analisa saham.
-            </p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center px-4">
-            <NotebookPen className="size-8 text-zinc-300 dark:text-zinc-700" />
-            <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 max-w-xs">
-              Tidak ada entri yang cocok dengan filter saat ini.
-            </p>
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="neo-press neo-border bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
-            >
-              Reset Filter
+        >
+          <div className="flex items-center justify-between xl:hidden">
+            <span className="text-sm font-semibold text-(--sv-text)">Menu</span>
+            <button type="button" onClick={() => setDrawerOpen(false)} aria-label="Tutup" className="flex size-8 items-center justify-center rounded-lg border border-(--sv-border) text-(--sv-text)">
+              <X className="size-4" strokeWidth={2} />
             </button>
           </div>
-        ) : (
-          <div className="neo-border neo-shadow-sm bg-white dark:bg-zinc-900 overflow-x-auto">
-            <table className="w-full text-xs sm:text-sm">
-              <thead>
-                <tr className="border-b-2 border-(--neo-line) text-left text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                  <th className="px-3 py-2 whitespace-nowrap">Tanggal</th>
-                  <th className="px-3 py-2 whitespace-nowrap">Ticker</th>
-                  <th className="px-3 py-2 whitespace-nowrap text-right">Entry</th>
-                  <th className="px-3 py-2 whitespace-nowrap text-right">TP1 / TP2</th>
-                  <th className="px-3 py-2 whitespace-nowrap text-right">SL</th>
-                  <th className="px-3 py-2 whitespace-nowrap">Status Exit</th>
-                  <th className="px-3 py-2 whitespace-nowrap">Hasil</th>
-                  <th className="px-3 py-2 whitespace-nowrap text-right">Gain/Loss %</th>
-                  <th className="px-3 py-2 min-w-[200px]">Alasan Membeli</th>
-                  <th className="px-3 py-2 min-w-[200px]">Alasan Menghindari</th>
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((entry) => (
-                  <JournalRow
-                    key={entry.id}
-                    entry={entry}
-                    onDelete={() => handleDelete(entry.id, entry.ticker)}
-                    onSave={(patch) => handleSave(entry.id, patch)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </main>
-    </div>
-  );
-}
+          <ScreenerNav watchlistOnly={false} watchlistCount={watchlist.tickers.length} onToggleWatchlist={() => router.push('/screener')} />
+          <p className="mt-auto text-[11px] text-(--sv-muted)">© {new Date().getFullYear()} {SITE_NAME} · Data EOD, bukan prediksi harga.</p>
+        </aside>
 
-function StatCard({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
-  return (
-    <div className="neo-border neo-shadow-sm bg-white dark:bg-zinc-900 px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-wide font-bold text-zinc-400 dark:text-zinc-500">{label}</div>
-      <div
-        className={cn(
-          'font-mono text-lg font-bold tabular-nums',
-          positive === undefined
-            ? 'text-zinc-900 dark:text-zinc-100'
-            : positive
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-rose-600 dark:text-rose-400'
-        )}
-      >
-        {value}
+        <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-5 pb-28 sm:px-6 xl:pb-8">
+          <nav aria-label="Breadcrumb" className="text-sm">
+            <ol className="flex items-center gap-1.5 text-(--sv-muted)">
+              <li><Link href="/" aria-label="Beranda" className="flex items-center hover:text-(--sv-text)"><Home className="size-4" strokeWidth={2} /></Link></li>
+              <ChevronRight className="size-3.5" aria-hidden="true" />
+              <li aria-current="page" className="font-medium text-(--sv-text)">Jurnal Trading</li>
+            </ol>
+          </nav>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-(--sv-text) sm:text-2xl">Jurnal Trading</h1>
+              <p className="mt-0.5 text-sm text-(--sv-muted)">Setiap rencana Entry/TP/SL dinilai otomatis terhadap harga penutupan EOD hari bursa berikutnya.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href="/screener" className={btnSecondary}>
+                <ScanSearch className="size-4" strokeWidth={2} /> Cari di Screener
+              </Link>
+              <button type="button" onClick={() => refresh()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--sv-primary) px-3.5 text-sm font-semibold text-(--sv-primary-fg) hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+                <RefreshCw className={cn('size-4', loading && 'animate-spin')} strokeWidth={2} /> Refresh Outcomes
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {initialLoading ? (
+              Array.from({ length: 4 }, (_, i) => (
+                <Card as="div" key={i} className="space-y-2 p-4"><Skeleton className="h-3 w-1/2" /><Skeleton className="h-6 w-2/3" /></Card>
+              ))
+            ) : (
+              <>
+                <StatTile label="Total Entri" hint={`${stats.open} masih open`}>{stats.total}</StatTile>
+                <StatTile label="Selesai" hint={`dari ${stats.total} entri`}>{stats.resolved}</StatTile>
+                <StatTile
+                  label="Win Rate"
+                  hint={stats.resolved > 0 ? (
+                    <span><b className="text-emerald-600 dark:text-emerald-400">{stats.wins}W</b> · <b className="text-rose-600 dark:text-rose-400">{stats.losses}L</b> · {stats.resolved - stats.wins - stats.losses} sideways</span>
+                  ) : 'Belum ada entri selesai'}
+                >
+                  {stats.winRate != null ? `${stats.winRate.toFixed(1)}%` : '–'}
+                </StatTile>
+                <StatTile label="Avg Gain/Loss" hint="rata-rata entri selesai">
+                  <span className={stats.avgGainLoss == null ? undefined : stats.avgGainLoss >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                    {stats.avgGainLoss != null ? formatPercent(stats.avgGainLoss) : '–'}
+                  </span>
+                </StatTile>
+              </>
+            )}
+          </div>
+
+          <section aria-labelledby="journal-title" className="flex min-w-0 flex-col gap-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <h2 id="journal-title" className="text-lg font-semibold text-(--sv-text)">Riwayat Rencana</h2>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className={fieldLabel}>
+                  Kode
+                  <select value={tickerFilter} onChange={(e) => setTickerFilter(e.target.value)} className={cn(field, 'min-w-32')}>
+                    <option value="all">Semua kode</option>
+                    {tickers.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+                <label className={fieldLabel}>
+                  Dari
+                  <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className={field} />
+                </label>
+                <label className={fieldLabel}>
+                  Sampai
+                  <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className={field} />
+                </label>
+                {hasFilter && (
+                  <button type="button" onClick={resetFilters} className={btnSecondary}>
+                    <XCircle className="size-4" strokeWidth={2} /> Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <ScreenerTabs
+              items={STATUS_ITEMS}
+              selected={status}
+              onSelect={(id) => setStatus(id as StatusFilter)}
+              count={initialLoading ? null : visible.length}
+            />
+
+            {!initialLoading && entries.length === 0 ? (
+              <JournalEmptyState
+                title="Belum ada entri jurnal"
+                hint="Tambahkan rencana dari Screener (Day Trading / Swing Hunter → Create Jurnal) atau tombol Buat Trading Plan di Detail Emiten."
+                action={{ label: 'Buka Screener', href: '/screener' }}
+              />
+            ) : !initialLoading && visible.length === 0 ? (
+              <JournalEmptyState
+                title="Tidak ada entri yang cocok"
+                hint="Coba ganti tab status, kode saham, rentang tanggal, atau kata kunci pencarian."
+                action={{ label: 'Reset filter', onClick: resetFilters }}
+              />
+            ) : (
+              <JournalTable entries={visible} loading={initialLoading} onDelete={handleDelete} onSave={handleSave} />
+            )}
+          </section>
+        </main>
       </div>
     </div>
-  );
-}
-
-function toEditableFields(entry: JournalEntry): JournalEntryEditableFields {
-  return {
-    entry: entry.entry,
-    tp1: entry.tp1,
-    tp2: entry.tp2,
-    sl: entry.sl,
-    reasonBuy: entry.reasonBuy,
-    reasonAvoid: entry.reasonAvoid,
-  };
-}
-
-function JournalRow({
-  entry,
-  onDelete,
-  onSave,
-}: {
-  entry: JournalEntry;
-  onDelete: () => void;
-  onSave: (patch: JournalEntryEditableFields) => Promise<boolean>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<JournalEntryEditableFields>(() => toEditableFields(entry));
-  const gain = entry.gainLossPct;
-
-  const startEdit = () => {
-    setDraft(toEditableFields(entry));
-    setEditing(true);
-  };
-
-  const cancelEdit = () => {
-    setEditing(false);
-  };
-
-  const setNumberField = (field: 'entry' | 'tp1' | 'tp2' | 'sl') => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDraft((d) => ({ ...d, [field]: Number(e.target.value) }));
-  };
-
-  const setTextField = (field: 'reasonBuy' | 'reasonAvoid') => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setDraft((d) => ({ ...d, [field]: e.target.value }));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    const ok = await onSave(draft);
-    setSaving(false);
-    if (ok) setEditing(false);
-  };
-
-  const numberInputClass =
-    'w-full min-w-0 border border-(--neo-line) bg-white px-2 py-1 text-right font-mono tabular-nums text-xs dark:bg-zinc-950';
-  const textareaClass =
-    'w-full min-w-[180px] resize-y border border-(--neo-line) bg-white px-2 py-1 text-xs dark:bg-zinc-950';
-
-  return (
-    <tr className="border-b border-(--neo-line) last:border-b-0 align-top">
-      <td className="px-3 py-2 whitespace-nowrap font-mono text-zinc-500 dark:text-zinc-400">{formatDate(entry.addedAt)}</td>
-      <td className="px-3 py-2 whitespace-nowrap font-bold">
-        <Link href={`/screener/${entry.ticker}`} className="text-blue-600 hover:underline dark:text-blue-400">
-          {entry.ticker}
-        </Link>
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums">
-        {editing ? (
-          <input type="number" value={draft.entry} onChange={setNumberField('entry')} className={numberInputClass} />
-        ) : (
-          formatRupiah(entry.entry)
-        )}
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums">
-        {editing ? (
-          <div className="flex items-center gap-1">
-            <input type="number" value={draft.tp1} onChange={setNumberField('tp1')} className={numberInputClass} />
-            <span className="text-zinc-400 dark:text-zinc-600">/</span>
-            <input type="number" value={draft.tp2} onChange={setNumberField('tp2')} className={numberInputClass} />
-          </div>
-        ) : (
-          <>
-            {formatRupiah(entry.tp1)}
-            <span className="text-zinc-400 dark:text-zinc-600"> / {formatRupiah(entry.tp2)}</span>
-          </>
-        )}
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums text-rose-600 dark:text-rose-400">
-        {editing ? (
-          <input type="number" value={draft.sl} onChange={setNumberField('sl')} className={numberInputClass} />
-        ) : (
-          formatRupiah(entry.sl)
-        )}
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap">
-        <span className={cn('inline-flex items-center gap-1.5 border border-(--neo-line) px-2 py-0.5 text-[10px] font-bold tracking-wide', STATUS_STYLES[entry.status])}>
-          {STATUS_LABEL[entry.status]}
-        </span>
-      </td>
-      <td className={cn(
-        'px-3 py-2 whitespace-nowrap font-bold',
-        entry.status === 'sl_hit' ? 'text-rose-600 dark:text-rose-400' : entry.status === 'tp_hit' ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'
-      )}>
-        {hasilLabel(entry.status)}
-      </td>
-      <td className={cn(
-        'px-3 py-2 whitespace-nowrap text-right font-mono tabular-nums',
-        gain === null ? 'text-zinc-400' : gain >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-      )}>
-        {gain === null ? '–' : formatPercent(gain)}
-      </td>
-      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
-        {editing ? (
-          <textarea value={draft.reasonBuy} onChange={setTextField('reasonBuy')} className={textareaClass} rows={3} />
-        ) : (
-          entry.reasonBuy || '–'
-        )}
-      </td>
-      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
-        {editing ? (
-          <textarea value={draft.reasonAvoid} onChange={setTextField('reasonAvoid')} className={textareaClass} rows={3} />
-        ) : (
-          entry.reasonAvoid || '–'
-        )}
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap">
-        {editing ? (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              aria-label={`Simpan entri ${entry.ticker}`}
-              className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-emerald-600 disabled:opacity-50 dark:bg-zinc-900 dark:hover:text-emerald-400"
-            >
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" strokeWidth={2.5} />}
-            </button>
-            <button
-              type="button"
-              onClick={cancelEdit}
-              disabled={saving}
-              aria-label={`Batal edit ${entry.ticker}`}
-              className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-zinc-700 disabled:opacity-50 dark:bg-zinc-900 dark:hover:text-zinc-200"
-            >
-              <X className="size-3.5" strokeWidth={2.5} />
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={startEdit}
-              aria-label={`Edit entri ${entry.ticker}`}
-              className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-zinc-700 dark:bg-zinc-900 dark:hover:text-zinc-200"
-            >
-              <Pencil className="size-3.5" strokeWidth={2.5} />
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              aria-label={`Hapus entri ${entry.ticker}`}
-              className="neo-press flex size-7 items-center justify-center neo-border bg-white text-zinc-400 hover:text-rose-600 dark:bg-zinc-900 dark:hover:text-rose-400"
-            >
-              <Trash2 className="size-3.5" strokeWidth={2.5} />
-            </button>
-          </div>
-        )}
-      </td>
-    </tr>
   );
 }

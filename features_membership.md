@@ -233,3 +233,1700 @@ Pasar Global, Peluang Ritel, Ringkasan/Data Pasar sebagai halaman, sidebar navig
 - Pembagian final Gratis vs Pro di tabel Fase 3 (terutama bagian mana dari v5 & fundamental yang tetap gratis).
 - Nama & domain pengirim email (butuh verifikasi domain di Resend).
 - Harga promo / kode diskon (tidak termasuk rencana ini).
+
+---
+Saya sudah cek langsung **Sahamflix**. Menurut saya, yang menarik untuk EzySaham bukan sekadar meniru fitur mereka, tetapi **cara mereka mengemas membership**.
+
+Sahamflix saat ini memakai model **Free Forever → Pro Lifetime Rp99.000**, dengan free user tetap mendapat Ringkasan Pasar, Data Pasar, Global Market, Market Mover, Screener Pro, dan Analisis Broker. Fitur seperti Data Emiten, Bandarmologi, Peluang Ritel, serta sejumlah analitik teknikal dikunci untuk Pro. ([Sahamflix][1])
+
+## 1. Apa yang dilakukan Sahamflix dengan benar
+
+Strukturnya kira-kira:
+
+```text
+                 SAHAMFLIX
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+       FREE                   PRO
+          │                     │
+ Market Summary          Data Emiten
+ Market Data             Bandarmologi
+ Global Market            Peluang Ritel
+ Market Movers            Analitik Lanjut
+ Screener                 Uptrend Power
+ Broker Analysis          Stochastic GC
+                          Bullish Engulfing
+                          FVG
+                          Bull Parade
+                          ARA Detector
+                          Giant Wave
+                          Asset Play
+                              │
+                         Rp99.000
+                         Lifetime
+```
+
+Mereka menjual **akses terhadap tools**, bukan menjual "saham yang pasti naik".
+
+Ini bagus karena value proposition-nya sederhana:
+
+> **"Saya bayar supaya proses analisis saham saya menjadi lebih cepat."**
+
+Bukan:
+
+> "Saya bayar supaya dikasih saham yang pasti cuan."
+
+Dan ini menurut saya sangat cocok dengan arah EzySaham yang selama ini kita bangun.
+
+---
+
+# 2. Tapi EzySaham jangan menjadi "Sahamflix versi lain"
+
+Ini yang menurut saya paling penting.
+
+Sahamflix banyak menjual:
+
+**DATA + INDICATOR + SCREENER**
+
+Sedangkan EzySaham sebenarnya punya peluang menjual sesuatu yang lebih tinggi levelnya:
+
+**DATA → ANALYSIS → DECISION**
+
+Contohnya:
+
+### Sahamflix
+
+```text
+BBRI
+Price     3.140
+RSI       43
+MACD      Bearish
+Volume    1.8x
+```
+
+User masih harus berpikir:
+
+> "Terus saya beli atau nggak?"
+
+### EzySaham
+
+```text
+BBRI
+━━━━━━━━━━━━━━━━━━━━
+
+MARKET STATE
+Bearish
+
+SETUP
+Momentum Recovery
+
+TREND
+❌ Below EMA200
+
+MOMENTUM
+⚠️ Weak
+
+VOLUME
+✅ Above Average
+
+SMART MONEY
+⚠️ Neutral
+
+RISK
+🔴 High
+
+ACTION
+WAIT
+
+WHY?
+Harga masih berada di bawah EMA200
+dan belum mendapatkan konfirmasi
+momentum + volume.
+
+BUY ONLY IF
+Harga reclaim 3.200
++ volume meningkat
++ bullish candle confirmation.
+```
+
+**Ini jauh lebih bernilai bagi user pemula.**
+
+Karena user tidak membeli data.
+
+User membeli **pengurangan kebingungan**.
+
+---
+
+# 3. Membership EzySaham sebaiknya jangan hanya "Premium"
+
+Saya justru menyarankan 3 level.
+
+## EzySaham FREE
+
+Tujuannya:
+
+> **Bikin orang merasakan EzySaham.**
+
+Contoh:
+
+### FREE
+
+* Market Overview
+* Top Gainer
+* Top Loser
+* Basic Screener
+* 5 saham Watchlist
+* Basic Fundamental
+* Basic Technical
+* 3 Signal / hari
+* Basic Stock Profile
+* Basic EzyScore
+
+Misalnya:
+
+```text
+BBRI
+
+EzyScore
+72 / 100
+
+Trend       🟢
+Momentum    🟡
+Volume      🟢
+Fundamental 🟢
+Smart Money 🟡
+
+Status
+WATCH
+```
+
+Ini sudah cukup berguna.
+
+---
+
+# 4. EzySaham PRO
+
+Ini yang menjadi **produk utama**.
+
+Saya akan membuatnya sekitar:
+
+### Rp49.000 / bulan
+
+### Rp149.000 / 6 bulan
+
+### Rp249.000 / tahun
+
+Dan mungkin:
+
+### Rp499.000 Lifetime
+
+Tidak harus langsung semua tersedia. Bisa dimulai dari monthly + yearly.
+
+---
+
+# 5. Apa yang dikunci di PRO?
+
+Bukan sekadar "lebih banyak indikator".
+
+Justru kunci fitur **decision engine**.
+
+### PRO mendapatkan:
+
+#### ① EzySignal
+
+```text
+🔥 EzySignal
+
+Ticker: XYZ
+
+SETUP
+Momentum Breakout
+
+CONFIDENCE
+78%
+
+ENTRY
+1.020 – 1.040
+
+TP1
+1.100
+
+TP2
+1.160
+
+SL
+980
+
+R:R
+1 : 2.4
+
+STATUS
+🟢 BUY ALLOWED
+```
+
+---
+
+#### ② Why Buy?
+
+Ini menurut saya harus menjadi fitur signature EzySaham.
+
+```text
+WHY BUY?
+
+1. Price > EMA200
+2. EMA8 > EMA18
+3. Momentum candle muncul
+4. Volume 2.4× average
+5. Breakout resistance
+6. Smart money accumulation
+
+CONCLUSION
+
+Setup memiliki momentum + volume
+yang mendukung breakout.
+```
+
+---
+
+#### ③ Risk Gate
+
+Ini bahkan lebih penting daripada BUY.
+
+```text
+RISK GATE
+
+Trend          🟢
+Momentum       🟢
+Volume         🟢
+Liquidity      🟢
+Overextension  🟡
+Market Risk    🟡
+
+TOTAL
+🟢 ACCEPTABLE
+```
+
+Atau:
+
+```text
+🔴 TRADE BLOCKED
+
+Reason:
+
+Price is below EMA200
+Momentum is weakening
+Volume confirmation absent
+
+Do not chase.
+```
+
+Ini sangat cocok dengan filosofi EzySaham yang selama ini kita bangun: **jangan memaksa BUY ketika edge tidak ada.**
+
+---
+
+# 6. Buat "EzySaham Signal" menjadi produk utama
+
+Saya malah akan memisahkan:
+
+### Screener
+
+menjawab:
+
+> **"Saham apa yang menarik?"**
+
+### Signal
+
+menjawab:
+
+> **"Apakah sekarang boleh entry?"**
+
+### Stock Analysis
+
+menjawab:
+
+> **"Kenapa?"**
+
+### Trading Plan
+
+menjawab:
+
+> **"Kalau entry, bagaimana mengelola risikonya?"**
+
+Sehingga:
+
+```text
+SCREENER
+    ↓
+Candidate
+    ↓
+SIGNAL ENGINE
+    ↓
+Why Buy?
+    ↓
+Risk Gate
+    ↓
+Trading Plan
+    ↓
+Entry / TP / SL
+```
+
+Ini jauh lebih jelas daripada menumpuk 20 indikator.
+
+---
+
+# 7. Saya akan membuat 4 "Engine" dalam membership EzySaham
+
+Ini menurut saya bisa menjadi pembeda utama.
+
+## ENGINE 1 — Intraday
+
+```text
+Ezy Intraday
+
+VWAP
+Volume
+RVOL
+Momentum
+Market Structure
+Bid/Offer
+Breakout
+Rejection
+```
+
+Output:
+
+```text
+BUY
+WAIT
+NO TRADE
+```
+
+---
+
+## ENGINE 2 — Swing
+
+Ini yang sudah banyak kita diskusikan.
+
+```text
+EMA8
+EMA18
+EMA200
+RSI
+MACD
+Volume
+Structure
+Momentum Candle
+Breakout
+Pullback
+```
+
+Output:
+
+```text
+SWING SETUP
+
+Entry
+TP
+SL
+R:R
+Risk Gate
+```
+
+---
+
+## ENGINE 3 — Smart Money
+
+Bukan sekadar "bandarmologi".
+
+Gabungkan:
+
+```text
+Broker Flow
+Foreign Flow
+Accumulation
+Distribution
+Volume
+Price Structure
+Big Transaction
+```
+
+Output:
+
+```text
+SMART MONEY
+
+Accumulation
+   ↓
+Early Momentum
+   ↓
+Breakout
+   ↓
+Distribution
+```
+
+Ini bisa menjadi fitur premium yang menarik.
+
+---
+
+## ENGINE 4 — Fundamental
+
+```text
+Revenue Growth
+Profit Growth
+ROE
+DER
+FCF
+PER
+PBV
+Dividend
+Debt
+```
+
+Output jangan hanya:
+
+> ROE 21%
+
+Tetapi:
+
+```text
+FUNDAMENTAL QUALITY
+
+Profit Growth       🟢
+ROE                 🟢
+Debt                🟢
+Cash Flow           🟢
+Valuation           🟡
+
+QUALITY
+82/100
+```
+
+---
+
+# 8. Ada satu fitur yang menurut saya Sahamflix belum "memaksimalkan"
+
+## EzySaham "10 Second Review"
+
+Ini bisa menjadi **signature feature**.
+
+User buka saham:
+
+```text
+BBRI
+━━━━━━━━━━━━━━━━━━
+
+10 SECOND REVIEW
+
+TREND       🟢
+MOMENTUM    🟡
+VOLUME      🟢
+SMART MONEY 🟢
+FUNDAMENTAL 🟢
+VALUATION   🟡
+
+━━━━━━━━━━━━━━━━━━
+
+SIGNAL
+
+🟡 WAIT
+
+WHY?
+
+Trend masih bullish,
+tetapi momentum belum cukup
+untuk entry agresif.
+
+BUY IF
+
+> 3.200
++ volume confirmation
+
+RISK
+
+Below 3.120
+```
+
+User bisa memahami saham **dalam 10 detik**.
+
+Itu jauh lebih mudah dijual daripada:
+
+> "Kami memiliki 35 indikator teknikal."
+
+---
+
+# 9. Buat juga "EzySaham AI"
+
+Nah, ini bisa menjadi pembeda terbesar.
+
+Misalnya user bertanya:
+
+> "Kenapa BBRI turun hari ini?"
+
+AI menjawab berdasarkan data EzySaham:
+
+```text
+BBRI turun 2.1%.
+
+3 penyebab utama:
+
+1. Harga breakdown VWAP
+2. Volume selling meningkat 2.4×
+3. Foreign flow negatif
+
+Namun struktur medium-term
+belum rusak karena harga masih
+di atas EMA200.
+
+Kesimpulan:
+
+SHORT-TERM
+🔴 Bearish
+
+SWING
+🟡 Caution
+
+LONG-TERM
+🟢 Structure intact
+```
+
+Bukan AI generik.
+
+**AI yang membaca database EzySaham.**
+
+---
+
+# 10. Membership page EzySaham
+
+Saya justru tidak akan membuat halaman membership seperti SaaS biasa.
+
+Hero:
+
+# EzySaham Pro
+
+### Berhenti menebak saham.
+
+### Mulai membaca peluang dengan sistem.
+
+Kemudian:
+
+```text
+FREE                         PRO
+
+Market Overview              Everything FREE
+Basic Screener               Advanced Screener
+Basic Technical              EzySignal
+Basic Fundamental            Why Buy
+                             Risk Gate
+                             TP / SL
+                             Smart Money
+                             Swing Engine
+                             Intraday Engine
+                             AI Analysis
+                             Unlimited Watchlist
+```
+
+---
+
+# 11. Pricing yang saya sarankan
+
+Saya tidak akan langsung meniru Rp99.000 lifetime Sahamflix.
+
+Karena ada masalah:
+
+**Lifetime = liability.**
+
+Kalau EzySaham terus berkembang dan biaya:
+
+* database
+* API market data
+* AI
+* server
+* storage
+* maintenance
+
+meningkat, user lifetime tetap membayar Rp0.
+
+Untuk produk EzySaham yang ingin serius, recurring revenue lebih sehat.
+
+Saya akan mulai:
+
+| Paket            |      Harga |
+| ---------------- | ---------: |
+| Free             |        Rp0 |
+| Pro Monthly      |  **Rp49K** |
+| Pro 6 Month      | **Rp199K** |
+| Pro Yearly       | **Rp299K** |
+| Founder Lifetime | **Rp499K** |
+
+Founder Lifetime bisa dibatasi:
+
+> **500 member pertama**
+
+Setelah itu hilangkan.
+
+---
+
+# 12. Bahkan bisa dibuat "EzySaham Trader"
+
+Ini menurut saya lebih menarik daripada satu membership besar.
+
+### EzySaham Free
+
+untuk semua orang.
+
+### EzySaham Pro
+
+untuk investor/trader.
+
+### EzySaham Trader
+
+untuk user aktif:
+
+```text
+Intraday Engine
+Swing Engine
+Real-time Signal
+Smart Money
+Advanced Scanner
+AI Copilot
+Trading Journal
+Backtest
+Alerts
+```
+
+Jadi nantinya:
+
+```text
+FREE
+  ↓
+PRO
+  ↓
+TRADER
+```
+
+---
+
+# 13. Positioning EzySaham
+
+Kalau Sahamflix:
+
+> **IDX Data Platform**
+
+EzySaham menurut saya lebih tepat:
+
+> ## **AI-Powered Stock Decision Platform**
+
+atau versi Indonesia:
+
+> ## **Platform Analisis & Keputusan Trading Saham Indonesia**
+
+Karena EzySaham bukan hanya mengumpulkan data.
+
+Target akhirnya:
+
+```text
+DATA
+ ↓
+PATTERN
+ ↓
+SIGNAL
+ ↓
+REASON
+ ↓
+RISK
+ ↓
+ACTION
+```
+
+**Itulah produk yang sebenarnya Anda jual.**
+
+---
+
+# 14. Arsitektur membership EzySaham
+
+Saya akan merancang seperti ini:
+
+```text
+                    EZYSAHAM
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+        FREE                       PRO
+          │                         │
+     Market Data               EzySignal
+     Market Movers             Why Buy
+     Basic Screener            Risk Gate
+     Basic Analysis            TP / SL
+                               Smart Money
+                               Swing Engine
+                               Intraday Engine
+                               AI Analysis
+                                    │
+                                    ↓
+                              TRADER PRO
+                                    │
+                              Real-time
+                              Alerts
+                              Backtest
+                              Journal
+                              Advanced AI
+```
+
+Dan **jangan menjual "sinyal BUY" sebagai inti produk**.
+
+Jual:
+
+> **"Sistem yang membantu Anda memahami kapan sebuah saham memiliki setup, alasan, target, dan risiko yang jelas."**
+
+Itu jauh lebih sustainable dan cocok dengan arah EzySaham yang sudah kita kembangkan.
+
+Sebagai benchmark, model membership saham di Indonesia memang sangat bervariasi: Sahamflix menggunakan **free forever + lifetime Rp99 ribu**, sedangkan Kaji menggunakan **Rp50 ribu/bulan, Rp199 ribu/6 bulan, Rp299 ribu/12 bulan** dan menekankan riset/edukasi, bukan nasihat investasi. ([Sahamflix][2])
+
+**Kalau saya yang mengembangkan EzySaham sekarang, saya akan memprioritaskan MVP membership hanya 5 fitur:** **EzySignal + Why Buy + Risk Gate + Trading Plan (TP/SL) + AI Stock Analysis.** Jangan dulu membuat 30 fitur. Kelima fitur itu sudah cukup untuk membuat user merasa, *"oh, EzySaham membantu saya mengambil keputusan, bukan cuma menampilkan angka."*
+
+[1]: https://sahamflix.com/ "Sahamflix — Analisis Saham Indonesia"
+[2]: https://sahamflix.com/?p=1050&utm_source=chatgpt.com "Sahamflix — Analisis Saham Indonesia"
+
+----
+Anda adalah Senior Product Engineer + UI/UX Designer yang bertugas membangun MVP Membership EzySaham.
+
+CONTEXT
+EzySaham adalah platform analisis saham Indonesia berbasis data market, technical analysis, fundamental analysis, smart money, dan AI.
+
+Tujuan MVP:
+Membuat membership berbayar yang memberikan user kemampuan mengubah DATA saham menjadi KEPUTUSAN trading yang jelas.
+
+JANGAN membangun terlalu banyak fitur.
+Fokus hanya pada 5 fitur inti:
+
+1. EzySignal
+2. Why Buy
+3. Risk Gate
+4. Trading Plan (Entry / TP / SL)
+5. AI Stock Analysis
+
+
+==================================================
+1. PRODUCT POSITIONING
+==================================================
+
+EzySaham bukan sekadar screener saham.
+
+Core value:
+
+DATA
+→ PATTERN
+→ SIGNAL
+→ REASON
+→ RISK
+→ TRADING PLAN
+→ ACTION
+
+User harus bisa membuka satu saham dan dalam ±10 detik memahami:
+
+- Apa yang sedang terjadi?
+- Apakah ada setup?
+- Kenapa saham ini menarik?
+- Apa risikonya?
+- Di harga berapa entry?
+- Di mana TP?
+- Di mana SL?
+- Apa kesimpulan AI?
+
+
+==================================================
+2. MEMBERSHIP MODEL
+==================================================
+
+Buat 2 role:
+
+FREE
+PRO
+
+FREE:
+- Basic market overview
+- Basic stock search
+- Basic stock profile
+- Basic technical data
+- Basic fundamental data
+- Limited AI analysis
+- Tidak mendapatkan full EzySignal
+
+PRO:
+- Full EzySignal
+- Why Buy
+- Risk Gate
+- Trading Plan
+- AI Stock Analysis
+- Unlimited stock analysis
+- Full signal history
+
+Buat sistem feature gating.
+
+Jika user FREE membuka fitur PRO:
+
+Tampilkan preview fitur + CTA:
+
+"Unlock EzySaham Pro"
+
+Jangan langsung menampilkan seluruh hasil premium.
+
+
+==================================================
+3. EzySIGNAL
+==================================================
+
+Buat engine yang menghasilkan status:
+
+BUY
+WAIT
+NO TRADE
+
+Signal bukan sekadar berdasarkan satu indikator.
+
+Gunakan kombinasi:
+
+TECHNICAL:
+- Price
+- EMA 8
+- EMA 18
+- EMA 200
+- RSI
+- MACD
+- Volume
+- Relative Volume
+- VWAP jika data tersedia
+- Support
+- Resistance
+- Market structure
+
+MOMENTUM:
+- Bullish candle
+- Bearish candle
+- Breakout
+- Pullback
+- Rejection
+- Volume confirmation
+
+TREND:
+- Price > EMA200
+- EMA8 > EMA18
+- EMA18 > EMA200
+
+RISK:
+- Overextended
+- Below EMA200
+- Weak volume
+- Failed breakout
+- Poor risk/reward
+
+Signal engine harus menggunakan weighted scoring.
+
+Contoh:
+
+Trend              25%
+Momentum           25%
+Volume             20%
+Structure          15%
+Risk               15%
+
+Hasil:
+
+80-100 = BUY ALLOWED
+60-79  = WAIT / WATCH
+<60    = NO TRADE
+
+PENTING:
+Score bukan rekomendasi investasi.
+Gunakan score sebagai internal decision-support engine.
+
+Jangan menghasilkan BUY hanya karena RSI rendah atau satu indikator bullish.
+
+
+==================================================
+4. WHY BUY
+==================================================
+
+Buat fitur yang menjelaskan:
+
+"KENAPA SAHAM INI MENARIK?"
+
+Contoh output:
+
+WHY BUY?
+
+✓ Price above EMA200
+✓ EMA8 above EMA18
+✓ Bullish momentum candle
+✓ Volume 2.1× average
+✓ Breakout resistance
+✓ RSI 58 — healthy momentum
+
+CONCLUSION:
+
+"Setup menunjukkan kombinasi trend,
+momentum dan volume yang mendukung
+potensi continuation."
+
+Jika tidak ada alasan kuat:
+
+WHY BUY?
+
+⚠️ Tidak terdapat cukup konfirmasi.
+
+Missing confirmation:
+- Volume
+- Breakout confirmation
+- Momentum
+
+Jangan memaksakan alasan BUY.
+
+
+==================================================
+5. RISK GATE
+==================================================
+
+Risk Gate adalah fitur penting.
+
+Tujuannya menjawab:
+
+"APA YANG BISA SALAH?"
+
+Evaluasi:
+
+- Trend risk
+- Momentum risk
+- Volume risk
+- Liquidity risk
+- Overextension risk
+- Market risk
+- Support proximity
+- Stop-loss distance
+- Risk/reward
+
+Output:
+
+GREEN
+YELLOW
+RED
+
+Contoh:
+
+RISK GATE
+
+Trend          GREEN
+Momentum       GREEN
+Volume         GREEN
+Liquidity      GREEN
+Overextension  YELLOW
+Market Risk    YELLOW
+
+Overall Risk:
+YELLOW
+
+Reason:
+Harga sudah naik 8% dari breakout
+sehingga entry sekarang berisiko mengejar harga.
+
+
+Jika:
+
+Price < EMA200
+AND
+EMA8 < EMA18
+AND
+weak volume
+
+maka:
+
+RED
+
+TRADE BLOCKED
+
+Reason:
+Trend dan momentum belum mendukung.
+
+
+==================================================
+6. TRADING PLAN
+==================================================
+
+Buat Trading Plan otomatis berdasarkan struktur harga.
+
+Output:
+
+TRADING PLAN
+
+Entry Zone:
+1.020 - 1.040
+
+TP1:
+1.100
+
+TP2:
+1.160
+
+Stop Loss:
+980
+
+Risk:
+5.8%
+
+Potential:
+TP1 +6.7%
+TP2 +11.5%
+
+Risk / Reward:
+1 : 1.8
+1 : 3.1
+
+Entry Type:
+
+BUY ON BREAKOUT
+atau
+BUY ON PULLBACK
+
+Jangan membuat TP/SL secara random.
+
+Gunakan:
+
+- Support
+- Resistance
+- ATR jika tersedia
+- Swing low
+- Breakout level
+- Current price
+- Risk/reward
+
+Minimum target R:R configurable.
+
+Default:
+Minimum R:R = 1:2
+
+Jika R:R buruk:
+
+TRADING PLAN
+⚠️ INVALID
+
+Reason:
+Potential reward tidak cukup dibandingkan
+risk.
+
+
+==================================================
+7. AI STOCK ANALYSIS
+==================================================
+
+Buat halaman:
+
+/stock/[ticker]/ai
+
+AI tidak boleh mengarang data.
+
+AI hanya boleh menggunakan structured market data yang diberikan backend.
+
+Input AI:
+
+ticker
+company_name
+price
+change
+volume
+relative_volume
+EMA8
+EMA18
+EMA200
+RSI
+MACD
+VWAP
+support
+resistance
+trend
+momentum
+smart_money
+fundamental
+signal
+risk_gate
+trading_plan
+
+Output:
+
+1. Market Context
+2. Technical Analysis
+3. Momentum
+4. Volume
+5. Smart Money
+6. Fundamental
+7. Risk
+8. Trading Plan
+9. Final Summary
+
+Contoh:
+
+AI STOCK ANALYSIS
+
+BBRI
+
+Market Context:
+Harga sedang berada dalam fase recovery,
+namun belum memberikan konfirmasi breakout.
+
+Technical:
+Price masih berada di bawah resistance.
+
+Momentum:
+RSI mulai membaik tetapi belum menunjukkan
+momentum ekstrem.
+
+Volume:
+Volume belum cukup kuat untuk mengonfirmasi breakout.
+
+Risk:
+Entry agresif memiliki risiko false breakout.
+
+Summary:
+"Setup belum lengkap. Tunggu konfirmasi breakout
+disertai peningkatan volume."
+
+
+==================================================
+8. STOCK DETAIL PAGE
+==================================================
+
+Buat halaman utama:
+
+/stock/[ticker]
+
+Layout:
+
+HEADER
+
+BBRI
+Bank Rakyat Indonesia
+
+Rp3.140
+-1.00%
+
+[ EzySignal ]
+
+WAIT
+
+--------------------------------
+
+WHY BUY?
+
+[reason cards]
+
+--------------------------------
+
+RISK GATE
+
+[YELLOW]
+
+--------------------------------
+
+TRADING PLAN
+
+Entry
+TP1
+TP2
+SL
+R:R
+
+--------------------------------
+
+AI STOCK ANALYSIS
+
+[AI summary]
+
+[View Full Analysis]
+
+--------------------------------
+
+TECHNICAL DATA
+
+EMA
+RSI
+MACD
+Volume
+VWAP
+
+--------------------------------
+
+FUNDAMENTAL
+
+ROE
+PER
+PBV
+Revenue Growth
+Profit Growth
+
+
+==================================================
+9. EzySIGNAL CARD
+==================================================
+
+Buat komponen reusable:
+
+<EzySignalCard />
+
+Props:
+
+ticker
+signal
+confidence
+trend
+momentum
+volume
+risk
+entry
+tp1
+tp2
+sl
+
+Contoh UI:
+
+┌─────────────────────────────┐
+│ BBRI                       │
+│                             │
+│ 🟡 WAIT                     │
+│                             │
+│ Setup: Momentum Recovery    │
+│ Confidence: 68%             │
+│                             │
+│ Trend       🟢              │
+│ Momentum    🟡              │
+│ Volume      🟢              │
+│ Risk        🟡              │
+│                             │
+│ BUY IF                      │
+│ > 3.200 + volume confirm    │
+└─────────────────────────────┘
+
+
+==================================================
+10. DASHBOARD PRO
+==================================================
+
+Buat:
+
+/dashboard
+
+Sections:
+
+Today's Signals
+
+BUY
+WAIT
+NO TRADE
+
+Top Opportunities
+
+Risk Alerts
+
+Recent AI Analysis
+
+Watchlist
+
+Signal History
+
+Contoh:
+
+TODAY'S SIGNALS
+
+BUY ALLOWED
+5 stocks
+
+WAIT
+12 stocks
+
+NO TRADE
+31 stocks
+
+
+==================================================
+11. SIGNAL HISTORY
+==================================================
+
+Simpan setiap signal.
+
+Database:
+
+signals
+
+id
+ticker
+signal
+confidence
+price
+entry
+tp1
+tp2
+sl
+risk_reward
+trend
+momentum
+volume_score
+risk_score
+created_at
+
+User dapat melihat:
+
+Signal
+Price
+Entry
+TP
+SL
+Status
+Created At
+
+Jangan klaim performa / win rate sebelum ada data historis
+yang benar-benar dihitung.
+
+
+==================================================
+12. DATABASE
+==================================================
+
+Buat schema membership:
+
+users
+subscriptions
+plans
+features
+user_features
+
+plans:
+
+FREE
+PRO
+
+subscriptions:
+
+id
+user_id
+plan_id
+status
+started_at
+expired_at
+created_at
+
+features:
+
+id
+key
+name
+description
+
+Contoh feature key:
+
+EZY_SIGNAL
+WHY_BUY
+RISK_GATE
+TRADING_PLAN
+AI_ANALYSIS
+
+
+==================================================
+13. FEATURE GATING
+==================================================
+
+Buat reusable:
+
+<PremiumGate />
+
+Contoh:
+
+<PremiumGate feature="WHY_BUY">
+
+Jika PRO:
+render content
+
+Jika FREE:
+render blurred preview:
+
+WHY BUY
+
+✓ Price > EMA200
+✓ Volume confirmation
+✓ Momentum improving
+
+[ 🔒 Unlock EzySaham Pro ]
+
+
+==================================================
+14. PRICING PAGE
+==================================================
+
+Buat:
+
+/pricing
+
+FREE
+
+Rp0
+
+Basic Market
+Basic Screener
+Basic Stock Data
+
+
+PRO
+
+Rp49.000 / month
+
+✓ EzySignal
+✓ Why Buy
+✓ Risk Gate
+✓ Trading Plan
+✓ AI Stock Analysis
+✓ Unlimited Analysis
+✓ Signal History
+
+CTA:
+
+"Upgrade to Pro"
+
+
+==================================================
+15. UI / UX
+==================================================
+
+Style:
+
+Modern fintech dashboard.
+
+Gunakan:
+
+- clean
+- minimal
+- professional
+- mobile responsive
+- dark/light mode
+- card based layout
+- strong information hierarchy
+
+Jangan membuat UI terlalu ramai.
+
+Prioritaskan:
+
+SIGNAL
+REASON
+RISK
+PLAN
+
+Gunakan visual hierarchy:
+
+BUY = positive
+WAIT = neutral
+NO TRADE = negative
+
+Tetapi jangan menggunakan warna sebagai satu-satunya informasi.
+
+
+==================================================
+16. TECHNICAL ARCHITECTURE
+==================================================
+
+Gunakan architecture yang mudah dikembangkan.
+
+Frontend:
+Next.js
+TypeScript
+Tailwind CSS
+
+Backend:
+gunakan API/backend yang sudah tersedia di project.
+
+Database:
+gunakan database existing EzySaham.
+
+Jangan membuat database baru jika schema existing
+sudah menyediakan data yang diperlukan.
+
+Pisahkan:
+
+/components
+/features
+/lib
+/services
+/types
+/app
+
+Engine:
+
+/lib/analysis/ezySignal
+/lib/analysis/whyBuy
+/lib/analysis/riskGate
+/lib/analysis/tradingPlan
+/lib/ai/stockAnalysis
+
+
+==================================================
+17. API
+==================================================
+
+Buat endpoint:
+
+GET /api/stock/[ticker]
+
+GET /api/stock/[ticker]/signal
+
+GET /api/stock/[ticker]/why-buy
+
+GET /api/stock/[ticker]/risk
+
+GET /api/stock/[ticker]/trading-plan
+
+POST /api/stock/[ticker]/ai-analysis
+
+GET /api/signals
+
+GET /api/subscription
+
+GET /api/features
+
+
+==================================================
+18. IMPORTANT RULES
+==================================================
+
+1. Jangan mengarang market data.
+
+2. Jangan mengarang technical indicator.
+
+3. Jika data tidak tersedia:
+   tampilkan "Data unavailable".
+
+4. Jangan menghasilkan signal hanya berdasarkan satu indikator.
+
+5. BUY harus membutuhkan confirmation.
+
+6. Jika risk terlalu tinggi:
+   signal harus turun menjadi WAIT atau NO TRADE.
+
+7. Jangan menggunakan istilah:
+   "pasti naik"
+   "pasti cuan"
+   "100% profit"
+   "jaminan profit"
+
+8. AI harus menjelaskan uncertainty.
+
+9. Semua signal harus memiliki:
+   Reason
+   Risk
+   Entry
+   TP
+   SL
+
+10. Jangan membuat fitur di luar scope MVP.
+
+
+==================================================
+19. MVP ACCEPTANCE CRITERIA
+==================================================
+
+MVP dianggap selesai jika:
+
+[ ] User dapat login
+[ ] User memiliki FREE / PRO status
+[ ] Feature gating bekerja
+[ ] User dapat mencari ticker
+[ ] Stock detail page tersedia
+[ ] EzySignal bekerja
+[ ] Why Buy bekerja
+[ ] Risk Gate bekerja
+[ ] Trading Plan menghasilkan Entry/TP/SL
+[ ] AI Stock Analysis bekerja
+[ ] Signal tersimpan ke database
+[ ] Signal history tersedia
+[ ] Pricing page tersedia
+[ ] Upgrade CTA tersedia
+[ ] Mobile responsive
+[ ] Loading state
+[ ] Empty state
+[ ] Error state
+[ ] Tidak ada fake market data
+[ ] Tidak ada fake performance claim
+
+==================================================
+20. DEVELOPMENT APPROACH
+==================================================
+
+Jangan langsung membuat seluruh aplikasi.
+
+Kerjakan bertahap:
+
+PHASE 1
+Audit existing EzySaham codebase.
+
+Identifikasi:
+- existing authentication
+- existing database
+- stock data API
+- technical indicators
+- existing screener
+- existing stock detail page
+- existing components
+
+Jangan membuat ulang sesuatu yang sudah tersedia.
+
+PHASE 2
+Implement membership + feature gating.
+
+PHASE 3
+Implement EzySignal engine.
+
+PHASE 4
+Implement:
+Why Buy
+Risk Gate
+Trading Plan
+
+PHASE 5
+Implement AI Stock Analysis.
+
+PHASE 6
+Build PRO dashboard + signal history.
+
+PHASE 7
+Testing.
+
+Sebelum coding, tampilkan:
+
+1. Existing architecture
+2. Files yang akan diubah
+3. Files yang akan dibuat
+4. Database changes
+5. API changes
+6. Implementation plan
+
+Setelah itu implementasikan MVP secara bertahap.
+
+PRIORITAS UTAMA:
+
+Jangan membuat EzySaham menjadi aplikasi yang memiliki
+banyak indikator.
+
+Buat EzySaham menjadi aplikasi yang membantu user
+menjawab 5 pertanyaan:
+
+1. ADA SETUP?
+2. KENAPA MENARIK?
+3. APA RISIKONYA?
+4. ENTRY DI MANA?
+5. TP DAN SL DI MANA?
+
+Core product:
+
+EzySignal
++
+Why Buy
++
+Risk Gate
++
+Trading Plan
++
+AI Stock Analysis

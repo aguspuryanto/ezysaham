@@ -1,86 +1,73 @@
 'use client';
 
 import Link from 'next/link';
-import { ExternalLink, Loader2, TrendingDown, TrendingUp } from 'lucide-react';
-import { formatCompact, formatPercent, formatRupiah } from '@/lib/format';
-import { useStockAnalysis } from '@/presentation/features/analysis/useStockAnalysis';
-import { OHLCVChart } from '@/presentation/features/analysis/OHLCVChart';
+import { ArrowDownRight, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 import { DataFreshnessPill } from '@/presentation/features/analysis/DataFreshnessBanner';
+import { useStockAnalysis } from '@/presentation/features/analysis/useStockAnalysis';
+import { PriceChart, PriceChartSkeleton } from '@/presentation/features/screener/detail/components/PriceChart';
+import { Badge, Card, Skeleton } from '@/presentation/features/screener/detail/components/ui';
 
-/** Live snapshot of a ticker (identity card + EMA chart), embedded inside a blog post. */
+/** Live snapshot of a ticker (identity card + price chart), embedded inside a blog post — Detail Emiten styling. */
 export function StockEmbed({ ticker }: { ticker: string }) {
   const { status, summary, analysis, bars, freshness } = useStockAnalysis(ticker);
 
   if (status === 'loading') {
     return (
-      <div className="neo-border neo-shadow flex items-center justify-center gap-2 bg-white p-8 text-sm font-semibold text-zinc-400 dark:bg-zinc-900">
-        <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />
-        Memuat data {ticker.toUpperCase()}…
+      <div className="flex flex-col gap-4">
+        <Card className="flex items-center gap-4 p-5">
+          <Skeleton className="size-14 rounded-lg" />
+          <div className="flex-1 space-y-2"><Skeleton className="h-6 w-1/3" /><Skeleton className="h-4 w-1/2" /></div>
+        </Card>
+        <PriceChartSkeleton />
       </div>
     );
   }
 
-  if (status === 'error' || !summary || !analysis) {
-    return null;
-  }
+  if (status === 'error' || !summary || !analysis) return null;
 
-  const positiveDay = summary.percentChange1D >= 0;
+  const change = summary.percentChange1D;
+  const up = change >= 0;
+  const ChangeIcon = up ? ArrowUpRight : ArrowDownRight;
 
   return (
-    <div className="not-prose space-y-3">
-      <div className="neo-border neo-shadow bg-white p-5 dark:bg-zinc-900">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-(--sv-primary) text-lg font-bold text-(--sv-primary-fg)">
+            {summary.ticker.slice(0, 2)}
+          </span>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
-                {summary.name} ({summary.ticker})
-              </h3>
-              <span className="neo-border bg-zinc-100 px-2 py-0.5 text-xs font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                {summary.sector || 'Sektor BEI'}
-              </span>
+              <h2 className="text-xl font-bold text-(--sv-text)">{summary.ticker}</h2>
+              <Badge>{summary.sector || 'Sektor BEI'}</Badge>
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-4 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-              <span>Market Cap: <strong>{formatCompact(summary.capitalization)}</strong></span>
-              <span>Avg Vol 20D: <strong>{formatCompact(analysis.volume.volumeMa20)} lembar</strong></span>
-            </div>
-            {freshness && (
-              <div className="mt-1 text-zinc-500 dark:text-zinc-400">
-                <DataFreshnessPill freshness={freshness} />
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-2xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
-                {formatRupiah(summary.lastClose)}
-              </span>
-              <span
-                className={
-                  positiveDay
-                    ? 'inline-flex items-center gap-1 font-mono text-base font-bold tabular-nums text-emerald-600 dark:text-emerald-400'
-                    : 'inline-flex items-center gap-1 font-mono text-base font-bold tabular-nums text-rose-600 dark:text-rose-400'
-                }
-              >
-                {positiveDay ? <TrendingUp className="size-4" strokeWidth={2.5} /> : <TrendingDown className="size-4" strokeWidth={2.5} />}
-                {formatPercent(summary.percentChange1D)}
-              </span>
+            <p className="truncate text-sm text-(--sv-text)">{summary.name}</p>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-(--sv-muted)">
+              <span>Market Cap <b className="font-semibold text-(--sv-text)">{formatCompact(summary.capitalization)}</b></span>
+              <span>Avg Vol 20D <b className="font-semibold text-(--sv-text)">{formatCompact(analysis.volume.volumeMa20)}</b></span>
+              {freshness && <DataFreshnessPill freshness={freshness} />}
             </div>
           </div>
         </div>
-      </div>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums text-(--sv-text)">{formatRupiah(summary.lastClose)}</span>
+            <span className={cn('inline-flex items-center gap-0.5 text-sm font-semibold tabular-nums', up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+              <ChangeIcon className="size-4" strokeWidth={2.25} />
+              {formatPercent(change)}
+            </span>
+          </div>
+          <Link
+            href={`/screener/${summary.ticker}`}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-(--sv-primary) px-3.5 text-sm font-semibold text-(--sv-primary-fg) hover:opacity-90"
+          >
+            Analisis lengkap {summary.ticker} <ArrowRight className="size-4" />
+          </Link>
+        </div>
+      </Card>
 
-      {bars.length > 0 && (
-        <OHLCVChart bars={bars} currentClose={summary.lastClose} ticker={summary.ticker} prevClose={summary.prevClose} />
-      )}
-
-      <Link
-        href={`/screener/${summary.ticker}`}
-        className="neo-press flex w-fit items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-      >
-        Lihat analisis lengkap {summary.ticker} di Screener
-        <ExternalLink className="size-3.5" strokeWidth={2.5} />
-      </Link>
+      {bars.length > 0 && <PriceChart ticker={summary.ticker} bars={bars} currentPrice={summary.lastClose} />}
     </div>
   );
 }

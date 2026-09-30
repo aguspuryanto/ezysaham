@@ -28,9 +28,9 @@ export function ScreenerNav({
   onToggleWatchlist: () => void;
 }) {
   const pathname = usePathname() ?? '/';
-  const onSignal = pathname.startsWith('/signal');
   // Screener stays highlighted on the pages that host it (/, /screener, /screener/[ticker]).
-  const isActive = (href: string) => (href === '/signal' ? onSignal : href === '/screener' ? !onSignal && !watchlistOnly : false);
+  const section = ['/signal', '/sektor', '/jurnal', '/panduan', '/blog'].find((p) => pathname.startsWith(p)) ?? '/screener';
+  const isActive = (href: string) => href === section && !(href === '/screener' && watchlistOnly);
   const itemClass = 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors';
   return (
     <nav aria-label="Menu utama" className="flex flex-col gap-0.5">
@@ -60,12 +60,20 @@ export function ScreenerNav({
           <span className="ml-auto rounded-full bg-(--sv-primary) px-1.5 text-[11px] font-semibold text-(--sv-primary-fg) tabular-nums">{watchlistCount}</span>
         )}
       </button>
-      {NAV_LINKS.slice(3).map(({ href, label, icon: Icon }) => (
-        <Link key={href} href={href} className={cn(itemClass, 'text-(--sv-text) hover:bg-(--sv-bg)')}>
-          <Icon className="size-4.5 shrink-0" strokeWidth={2} />
-          {label}
-        </Link>
-      ))}
+      {NAV_LINKS.slice(3).map(({ href, label, icon: Icon }) => {
+        const active = isActive(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            aria-current={active ? 'page' : undefined}
+            className={cn(itemClass, active ? 'bg-(--sv-primary-soft) text-(--sv-primary) font-semibold' : 'text-(--sv-text) hover:bg-(--sv-bg)')}
+          >
+            <Icon className="size-4.5 shrink-0" strokeWidth={2} />
+            {label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
