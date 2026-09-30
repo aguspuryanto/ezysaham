@@ -2,8 +2,8 @@ import { Metadata } from 'next';
 // import { StockAnalysisPageV3 } from '@/presentation/features/analysis/StockAnalysisPageV3';
 // import { StockAnalysisPageV2 } from '@/presentation/features/analysis/StockAnalysisPageV2';
 // import { StockAnalysisPageNew } from '@/presentation/features/analysis/StockAnalysisPageNew';
-import { StockAnalysisPage } from '@/presentation/features/analysis/StockAnalysisPage';
-// import { ScreenerDetailPage } from '@/presentation/features/screener/detail/ScreenerDetailPage';
+// import { StockAnalysisPage } from '@/presentation/features/analysis/StockAnalysisPage';
+import { ScreenerDetailPage } from '@/presentation/features/screener/detail/ScreenerDetailPage';
 
 interface Props {
   params: Promise<{ ticker: string }>;
@@ -23,6 +23,6 @@ export default async function Page({ params }: Props) {
   // return <StockAnalysisPageV3 ticker={ticker.toUpperCase()} />;
   // return <StockAnalysisPageV2 ticker={ticker.toUpperCase()} />;
   // return <StockAnalysisPageNew ticker={ticker.toUpperCase()} />;
-  return <StockAnalysisPage ticker={ticker.toUpperCase()} />;
-  // return <ScreenerDetailPage ticker={ticker.toUpperCase()} />;
+  // return <StockAnalysisPage ticker={ticker.toUpperCase()} />;
+  return <ScreenerDetailPage ticker={ticker.toUpperCase()} />;
 }

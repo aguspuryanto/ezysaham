@@ -36,6 +36,7 @@ import { StockHeader, StockHeaderSkeleton } from './components/StockHeader';
 import { StockTabId, StockTabs } from './components/StockTabs';
 import { BandarmologyPanel, CorporateActionPanel, FundamentalDetailPanel, NewsPanel, TechnicalDetail } from './components/TabPanels';
 import { TechnicalSummary } from './components/TechnicalSummary';
+import { TradingModesReport, TradingModesReportSkeleton } from './components/TradingModesReport';
 import { Card } from './components/ui';
 import { useStockDetail } from './useStockDetail';
 
@@ -198,6 +199,17 @@ export function ScreenerDetailPage({ ticker }: { ticker: string }) {
                           <PriceChart ticker={ticker} bars={data.chartBars} currentPrice={data.header.price} />
                           <TechnicalSummary indicators={data.technical} />
                           {data.insight && <AIInsight analysis={data.insight} />}
+                          {detail.summary && detail.fundamentalScreening ? (
+                            <TradingModesReport
+                              summary={detail.summary}
+                              bars={detail.bars}
+                              analysis={analysis}
+                              fundamentals={detail.fundamentals}
+                              fundamentalScreening={detail.fundamentalScreening}
+                            />
+                          ) : (
+                            <TradingModesReportSkeleton />
+                          )}
                         </>
                       )}
                       {tab === 'chart' && <PriceChart ticker={ticker} bars={data.chartBars} currentPrice={data.header.price} height={480} />}

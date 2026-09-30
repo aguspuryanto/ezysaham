@@ -329,6 +329,10 @@ export function useStockDetail(ticker: string) {
     status: base.status,
     data,
     analysis,
+    /** Raw inputs for cards that reuse engines directly (e.g. TradingModesReport). */
+    summary,
+    bars,
+    fundamentalScreening: base.fundamentalScreening,
     fundamentals: base.fundamentals,
     fundamentalsLoading: base.fundamentalsLoading,
     brokerActivity: base.brokerActivity,
