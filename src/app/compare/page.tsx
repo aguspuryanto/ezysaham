@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import { SITE_NAME } from '@/lib/site';
 import { ComparePage } from '@/presentation/features/compare/ComparePage';
 
 interface Props {
@@ -10,7 +11,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   const tickerA = (a || 'BRPT').toUpperCase();
   const tickerB = (b || 'TPIA').toUpperCase();
   return {
-    title: `Bandingkan ${tickerA} vs ${tickerB} | StockPilot AI`,
+    title: `Bandingkan ${tickerA} vs ${tickerB} | ${SITE_NAME}`,
     description: `Perbandingan harga, fundamental, dan sinyal AI antara saham ${tickerA} dan ${tickerB}.`,
   };
 }

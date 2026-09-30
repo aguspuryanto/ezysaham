@@ -1,4 +1,5 @@
-import { Trophy } from 'lucide-react';
+import { Scale, Trophy } from 'lucide-react';
+import { Card, PanelTitle } from '@/presentation/features/screener/detail/components/ui';
 import { cn } from '@/lib/format';
 
 function joinList(items: string[]): string {
@@ -14,9 +15,11 @@ interface ComparisonResultCardProps {
   overallB: number;
   winner: 'a' | 'b' | null;
   winnerStrengths: string[];
+  colorA: string;
+  colorB: string;
 }
 
-export function ComparisonResultCard({ tickerA, tickerB, overallA, overallB, winner, winnerStrengths }: ComparisonResultCardProps) {
+export function ComparisonResultCard({ tickerA, tickerB, overallA, overallB, winner, winnerStrengths, colorA, colorB }: ComparisonResultCardProps) {
   const winnerTicker = winner === 'a' ? tickerA : winner === 'b' ? tickerB : null;
   const subtext = winnerTicker
     ? winnerStrengths.length > 0
@@ -25,46 +28,45 @@ export function ComparisonResultCard({ tickerA, tickerB, overallA, overallB, win
     : 'Skor kedua saham berimbang di seluruh kategori utama.';
 
   const sides = [
-    { ticker: tickerA, score: overallA, isWinner: winner === 'a' },
-    { ticker: tickerB, score: overallB, isWinner: winner === 'b' },
+    { ticker: tickerA, score: overallA, isWinner: winner === 'a', color: colorA },
+    { ticker: tickerB, score: overallB, isWinner: winner === 'b', color: colorB },
   ];
 
   return (
-    <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="px-5 py-4 border-b-[3px] border-(--neo-line)">
-        <h2 className="font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Comparison Result</h2>
-        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Skor keseluruhan berbobot dari 6 kategori penilaian</p>
-      </div>
+    <Card>
+      <PanelTitle icon={Scale}>Hasil Perbandingan</PanelTitle>
+      <p className="px-4 pt-3 text-xs text-(--sv-muted)">Skor keseluruhan berbobot dari 6 kategori penilaian.</p>
 
-      <div className="grid grid-cols-2 divide-x-2 divide-(--neo-line)">
+      <div className="flex flex-col gap-3 p-4">
         {sides.map((side) => (
-          <div key={side.ticker} className="px-4 py-5 text-center">
-            <div className="flex items-center justify-center gap-1.5">
-              <span className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{side.ticker}</span>
-              {side.isWinner && <Trophy className="size-4 text-amber-500" strokeWidth={2.5} />}
+          <div key={side.ticker} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-(--sv-text)">
+                <span className="inline-block size-2.5 rounded-full" style={{ backgroundColor: side.color }} aria-hidden="true" />
+                {side.ticker}
+                {side.isWinner && <Trophy className="size-4 text-amber-500" strokeWidth={2} />}
+              </span>
+              <span className={cn('tabular-nums', side.isWinner ? 'text-lg font-bold text-(--sv-text)' : 'font-semibold text-(--sv-muted)')}>
+                {side.score}<span className="text-xs font-medium text-(--sv-muted)">/100</span>
+              </span>
             </div>
-            <div className={cn(
-              'mt-1 font-mono text-3xl font-bold tabular-nums',
-              side.isWinner ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400 dark:text-zinc-500'
-            )}>
-              {side.score}<span className="text-sm font-semibold">/100</span>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+              <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, side.score))}%`, backgroundColor: side.color }} />
             </div>
-            <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-              {winner == null ? 'Skor Seimbang' : side.isWinner ? 'Overall Winner' : 'Runner Up'}
-            </div>
+            <span className="text-[11px] text-(--sv-muted)">{winner == null ? 'Skor seimbang' : side.isWinner ? 'Overall winner' : 'Runner up'}</span>
           </div>
         ))}
       </div>
 
       <div className={cn(
-        'px-5 py-4 border-t-[3px] border-(--neo-line)',
-        winnerTicker ? 'bg-emerald-50 dark:bg-emerald-400/10' : 'bg-zinc-50 dark:bg-zinc-800/60'
+        'rounded-b-xl border-t px-4 py-3',
+        winnerTicker ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/25 dark:bg-emerald-400/10' : 'border-(--sv-border) bg-(--sv-bg)',
       )}>
-        <p className={cn('text-sm font-bold', winnerTicker ? 'text-emerald-700 dark:text-emerald-300' : 'text-zinc-700 dark:text-zinc-200')}>
-          {winnerTicker ? `🟢 ${winnerTicker} LEBIH UNGGUL` : 'SKOR SEIMBANG'}
+        <p className={cn('text-sm font-semibold', winnerTicker ? 'text-emerald-700 dark:text-emerald-300' : 'text-(--sv-text)')}>
+          {winnerTicker ? `${winnerTicker} lebih unggul` : 'Skor seimbang'}
         </p>
-        <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">{subtext}</p>
+        <p className="mt-0.5 text-sm text-(--sv-muted)">{subtext}</p>
       </div>
-    </div>
+    </Card>
   );
 }

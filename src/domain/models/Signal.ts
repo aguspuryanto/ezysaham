@@ -113,9 +113,12 @@ export interface SignalDashboardData {
   performance: SignalPerformanceSummary;
 }
 
+/** Filter mode that swaps the signal list for the POTENTIAL 25% CANDIDATE scan (domain/analysis/potential25.ts). */
+export const POTENTIAL_25_FILTER = 'POTENTIAL_25';
+
 export interface SignalFilterState {
   date: string;
-  action: SignalAction | 'ALL';
+  action: SignalAction | 'ALL' | typeof POTENTIAL_25_FILTER;
   pattern: SignalPattern | 'ALL';
   minScore: number;
   search: string;

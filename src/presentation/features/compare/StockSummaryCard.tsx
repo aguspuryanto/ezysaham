@@ -1,15 +1,17 @@
 import Link from 'next/link';
-import { Loader2, TrendingDown, TrendingUp } from 'lucide-react';
+import { AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight } from 'lucide-react';
 import { StockSummary } from '@/domain/models/Stock';
 import { AiStockAdvisor } from '@/domain/models/News';
 import { StockAnalysisStatus } from '@/presentation/features/analysis/useStockAnalysis';
-import { cn, formatPercent, formatRupiah } from '@/lib/format';
+import { Badge, Card, Skeleton } from '@/presentation/features/screener/detail/components/ui';
+import { Tone } from '@/presentation/features/screener/detail/format';
+import { cn, formatCompact, formatPercent, formatRupiah } from '@/lib/format';
 
-const VERDICT_BADGE_TONE: Record<AiStockAdvisor['verdictTone'], string> = {
-  green: 'bg-emerald-600 text-white',
-  amber: 'bg-amber-500 text-white',
-  red: 'bg-rose-600 text-white',
-  blue: 'bg-blue-600 text-white',
+const VERDICT_TONE: Record<AiStockAdvisor['verdictTone'], Tone> = {
+  green: 'positive',
+  amber: 'warning',
+  red: 'negative',
+  blue: 'info',
 };
 
 /** Short, mockup-style label derived from the full AI verdict (e.g. "SELL / AVOID", "HOLD"). */
@@ -26,66 +28,67 @@ interface StockSummaryCardProps {
   status: StockAnalysisStatus;
   summary: StockSummary | null;
   advisor: AiStockAdvisor | null;
+  /** Series colour of this side in the price chart. */
+  color: string;
 }
 
-export function StockSummaryCard({ status, summary, advisor }: StockSummaryCardProps) {
-  if (status === 'loading' || !summary) {
-    return (
-      <div className="flex min-h-[168px] items-center justify-center gap-2 neo-border neo-shadow bg-white p-5 text-sm font-semibold text-zinc-400 dark:bg-zinc-900">
-        <Loader2 className="size-4 animate-spin text-emerald-500" /> Memuat data saham…
-      </div>
-    );
-  }
-
+export function StockSummaryCard({ status, summary, advisor, color }: StockSummaryCardProps) {
   if (status === 'error') {
     return (
-      <div className="flex min-h-[168px] items-center justify-center neo-border neo-shadow bg-white p-5 text-center text-sm font-semibold text-zinc-400 dark:bg-zinc-900">
-        Data tidak tersedia.
-      </div>
+      <Card className="flex min-h-44 flex-col items-center justify-center gap-2 p-5 text-center">
+        <AlertCircle className="size-6 text-rose-500" />
+        <p className="text-sm text-(--sv-muted)">Data saham tidak tersedia.</p>
+      </Card>
     );
   }
 
-  const positive = summary.percentChange1D >= 0;
+  if (status === 'loading' || !summary) {
+    return (
+      <Card className="flex min-h-44 flex-col gap-4 p-5">
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-12 rounded-lg" />
+          <div className="flex-1 space-y-1.5"><Skeleton className="h-5 w-1/3" /><Skeleton className="h-3.5 w-2/3" /></div>
+        </div>
+        <Skeleton className="h-8 w-1/2" />
+        <Skeleton className="h-4 w-1/3" />
+      </Card>
+    );
+  }
+
+  const change = summary.percentChange1D;
+  const up = change >= 0;
+  const ChangeIcon = up ? ArrowUpRight : ArrowDownRight;
 
   return (
-    <div className="neo-border neo-shadow bg-white p-5 space-y-3 dark:bg-zinc-900">
+    <Card className="relative flex min-h-44 flex-col gap-4 overflow-hidden p-5">
+      <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: color }} aria-hidden="true" />
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{summary.ticker}</h3>
-          <p className="truncate text-xs font-medium text-zinc-500 dark:text-zinc-400">{summary.name}</p>
-        </div>
-        {advisor && (
-          <span className={cn('shrink-0 neo-border px-2.5 py-1 text-[11px] font-bold tracking-wide', VERDICT_BADGE_TONE[advisor.verdictTone])}>
-            {shortSignalLabel(advisor)}
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-(--sv-primary) text-base font-bold text-(--sv-primary-fg)">
+            {summary.ticker.slice(0, 2)}
           </span>
-        )}
+          <div className="min-w-0">
+            <h3 className="text-xl font-bold text-(--sv-text)">{summary.ticker}</h3>
+            <p className="truncate text-sm text-(--sv-muted)">{summary.name}</p>
+          </div>
+        </div>
+        {advisor && <Badge tone={VERDICT_TONE[advisor.verdictTone]} className="shrink-0">{shortSignalLabel(advisor)}</Badge>}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">Harga</p>
-          <p className="font-mono text-base font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
-            {formatRupiah(summary.lastClose)}
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">Perubahan</p>
-          <p className={cn(
-            'flex items-center gap-1 font-mono text-base font-bold tabular-nums',
-            positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-          )}>
-            {positive ? <TrendingUp className="size-3.5" strokeWidth={2.5} /> : <TrendingDown className="size-3.5" strokeWidth={2.5} />}
-            {formatPercent(summary.percentChange1D)}
-          </p>
-        </div>
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-2xl font-bold tabular-nums text-(--sv-text)">{formatRupiah(summary.lastClose)}</span>
+        <span className={cn('inline-flex items-center gap-0.5 text-sm font-semibold tabular-nums', up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+          <ChangeIcon className="size-4" strokeWidth={2.25} />
+          {formatPercent(change)}
+        </span>
       </div>
 
-      <Link
-        href={`/screener/${summary.ticker}`}
-        className="inline-flex items-center gap-1 text-sm font-bold text-emerald-700 hover:underline dark:text-emerald-400"
-      >
-        Lihat Analisis →
-      </Link>
-    </div>
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-(--sv-border) pt-3 text-xs text-(--sv-muted)">
+        <span>{summary.sector || 'Sektor BEI'} · Cap <b className="font-semibold text-(--sv-text)">{formatCompact(summary.capitalization)}</b></span>
+        <Link href={`/screener/${summary.ticker}`} className="inline-flex items-center gap-1 text-sm font-medium text-(--sv-primary) hover:underline">
+          Lihat analisis <ArrowRight className="size-3.5" />
+        </Link>
+      </div>
+    </Card>
   );
 }

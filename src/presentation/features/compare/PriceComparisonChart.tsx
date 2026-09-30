@@ -10,15 +10,16 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Loader2 } from 'lucide-react';
+import { LineChart } from 'lucide-react';
 import { OHLCVBar } from '@/domain/models/History';
 import { getStockHistory } from '@/data/repositories/StockRepository';
 import { cn } from '@/lib/format';
+import { Card, Skeleton } from '@/presentation/features/screener/detail/components/ui';
 
 type Mode = 'absolute' | 'percent';
 
-const COLOR_A = '#3b82f6'; // blue — ticker A
-const COLOR_B = '#10b981'; // emerald — ticker B
+export const COLOR_A = '#3b82f6'; // blue — ticker A
+export const COLOR_B = '#10b981'; // emerald — ticker B
 
 function shortDate(dateStr: string): string {
   try {
@@ -57,18 +58,18 @@ function CompareTooltip({
   const fmt = (v: number) => (mode === 'percent' ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : fmtRp(v));
 
   return (
-    <div className="neo-border neo-shadow-sm bg-white dark:bg-zinc-900 p-3 text-xs space-y-1.5 min-w-[160px]">
-      <p className="font-bold text-zinc-700 dark:text-zinc-200 pb-1 border-b-2 border-(--neo-line)">{label}</p>
+    <div className="min-w-[160px] space-y-1.5 rounded-lg border border-(--sv-border) bg-(--sv-surface) p-3 text-xs shadow-lg">
+      <p className="border-b border-(--sv-border) pb-1 font-semibold text-(--sv-text)">{label}</p>
       {map.a != null && (
         <div className="flex justify-between gap-3">
           <span style={{ color: COLOR_A }} className="font-semibold">{tickerA}</span>
-          <span className="font-mono tabular-nums text-zinc-700 dark:text-zinc-200">{fmt(map.a)}</span>
+          <span className="tabular-nums text-(--sv-text)">{fmt(map.a)}</span>
         </div>
       )}
       {map.b != null && (
         <div className="flex justify-between gap-3">
           <span style={{ color: COLOR_B }} className="font-semibold">{tickerB}</span>
-          <span className="font-mono tabular-nums text-zinc-700 dark:text-zinc-200">{fmt(map.b)}</span>
+          <span className="tabular-nums text-(--sv-text)">{fmt(map.b)}</span>
         </div>
       )}
     </div>
@@ -81,19 +82,17 @@ interface PriceComparisonChartProps {
 }
 
 export function PriceComparisonChart({ tickerA, tickerB }: PriceComparisonChartProps) {
-  const [barsA, setBarsA] = useState<OHLCVBar[]>([]);
-  const [barsB, setBarsB] = useState<OHLCVBar[]>([]);
-  const [loading, setLoading] = useState(true);
+  const pairKey = `${tickerA}|${tickerB}`;
+  const [loaded, setLoaded] = useState<{ key: string; a: OHLCVBar[]; b: OHLCVBar[] } | null>(null);
+  const loading = loaded?.key !== pairKey;
+  const barsA = useMemo(() => (loading ? [] : loaded.a), [loading, loaded]);
+  const barsB = useMemo(() => (loading ? [] : loaded.b), [loading, loaded]);
   const [mode, setMode] = useState<Mode>('absolute');
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     Promise.all([getStockHistory(tickerA, '1y'), getStockHistory(tickerB, '1y')]).then(([a, b]) => {
-      if (cancelled) return;
-      setBarsA(a);
-      setBarsB(b);
-      setLoading(false);
+      if (!cancelled) setLoaded({ key: `${tickerA}|${tickerB}`, a, b });
     });
     return () => { cancelled = true; };
   }, [tickerA, tickerB]);
@@ -118,47 +117,39 @@ export function PriceComparisonChart({ tickerA, tickerB }: PriceComparisonChartP
   }, [barsA, barsB, mode]);
 
   return (
-    <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b-[3px] border-(--neo-line)">
-        <div className="flex items-center gap-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            Perbandingan Harga
-          </p>
-          <div className="flex items-center gap-2 text-[11px] font-semibold">
-            <span className="flex items-center gap-1">
-              <span className="inline-block size-2 border border-(--neo-line)" style={{ backgroundColor: COLOR_A }} />
-              {tickerA}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block size-2 border border-(--neo-line)" style={{ backgroundColor: COLOR_B }} />
-              {tickerB}
-            </span>
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--sv-border) px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold text-(--sv-text)">
+            <LineChart className="size-4.5 text-(--sv-primary)" strokeWidth={2} />
+            Perbandingan Harga <span className="text-xs font-normal text-(--sv-muted)">· 1 tahun</span>
+          </h2>
+          <div className="flex items-center gap-3 text-xs font-medium text-(--sv-text)">
+            <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-full" style={{ backgroundColor: COLOR_A }} />{tickerA}</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-full" style={{ backgroundColor: COLOR_B }} />{tickerB}</span>
           </div>
         </div>
 
-        <div className="flex gap-0.5 neo-border p-0.5">
+        <div role="group" aria-label="Mode grafik" className="flex gap-0.5 rounded-lg border border-(--sv-border) bg-(--sv-bg) p-0.5">
           {(['absolute', 'percent'] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
+              aria-pressed={mode === m}
               className={cn(
-                'px-2.5 py-1 text-[11px] font-bold uppercase transition-colors',
-                mode === m
-                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                  : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                mode === m ? 'bg-(--sv-surface) text-(--sv-text) shadow-sm' : 'text-(--sv-muted) hover:text-(--sv-text)',
               )}
             >
-              {m === 'absolute' ? 'Absolute' : '% Change'}
+              {m === 'absolute' ? 'Harga' : '% Perubahan'}
             </button>
           ))}
         </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-24 text-sm font-semibold text-zinc-400">
-          <Loader2 className="size-4 animate-spin text-emerald-500" /> Memuat data harga…
-        </div>
+        <div className="p-4"><Skeleton className="h-[320px] w-full rounded-lg" /></div>
       ) : (
         <div className="px-2 pt-2 pb-3">
           <ResponsiveContainer width="100%" height={320}>
@@ -210,6 +201,6 @@ export function PriceComparisonChart({ tickerA, tickerB }: PriceComparisonChartP
           </ResponsiveContainer>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

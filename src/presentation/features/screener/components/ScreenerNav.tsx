@@ -29,7 +29,7 @@ export function ScreenerNav({
 }) {
   const pathname = usePathname() ?? '/';
   // Screener stays highlighted on the pages that host it (/, /screener, /screener/[ticker]).
-  const section = ['/signal', '/sektor', '/jurnal', '/panduan', '/blog'].find((p) => pathname.startsWith(p)) ?? '/screener';
+  const section = ['/signal', '/sektor', '/jurnal', '/panduan', '/blog', '/compare'].find((p) => pathname.startsWith(p)) ?? '/screener';
   const isActive = (href: string) => href === section && !(href === '/screener' && watchlistOnly);
   const itemClass = 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors';
   return (

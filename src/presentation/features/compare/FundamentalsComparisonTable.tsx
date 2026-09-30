@@ -1,4 +1,4 @@
-import { Trophy } from 'lucide-react';
+import { Lightbulb, Table2, Trophy } from 'lucide-react';
 import { StockSummary } from '@/domain/models/Stock';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import {
@@ -9,6 +9,7 @@ import {
   winner,
 } from '@/domain/compare/metricConfig';
 import { cn } from '@/lib/format';
+import { Card, PanelTitle } from '@/presentation/features/screener/detail/components/ui';
 
 // ─── Metric explanations ───────────────────────────────────────────────────
 // Qualitative read of each raw value, independent of who "wins" the row —
@@ -143,9 +144,9 @@ function explainMetric(
 }
 
 const EXPLANATION_TONE_BG: Record<Tone, string> = {
-  green: 'bg-emerald-50 dark:bg-emerald-400/10',
-  amber: 'bg-amber-50 dark:bg-amber-400/10',
-  red: 'bg-rose-50 dark:bg-rose-400/10',
+  green: 'border-emerald-200 bg-emerald-50 dark:border-emerald-400/25 dark:bg-emerald-400/10',
+  amber: 'border-amber-200 bg-amber-50 dark:border-amber-400/25 dark:bg-amber-400/10',
+  red: 'border-rose-200 bg-rose-50 dark:border-rose-400/25 dark:bg-rose-400/10',
 };
 const EXPLANATION_TONE_TEXT: Record<Tone, string> = {
   green: 'text-emerald-700 dark:text-emerald-300',
@@ -155,8 +156,8 @@ const EXPLANATION_TONE_TEXT: Record<Tone, string> = {
 
 function WinnerBadge({ ticker }: { ticker: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-      <Trophy className="size-3.5" strokeWidth={2.5} />
+    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/25">
+      <Trophy className="size-3.5" strokeWidth={2} />
       {ticker}
     </span>
   );
@@ -165,8 +166,8 @@ function WinnerBadge({ ticker }: { ticker: string }) {
 function MetricCell({ text, isWinner }: { text: string; isWinner: boolean }) {
   return (
     <span className={cn(
-      'font-mono text-sm tabular-nums',
-      isWinner ? 'font-bold text-zinc-900 dark:text-zinc-50' : 'text-zinc-500 dark:text-zinc-400'
+      'text-sm tabular-nums',
+      isWinner ? 'font-bold text-(--sv-text)' : 'text-(--sv-muted)'
     )}>
       {text}
     </span>
@@ -207,72 +208,72 @@ export function FundamentalsComparisonTable({
     .filter((e): e is MetricExplanation => e !== null);
 
   return (
-    <div className="neo-border neo-shadow bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="px-5 py-4 border-b-[3px] border-(--neo-line)">
-        <h2 className="font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Fundamentals Comparison</h2>
-        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Key financial metrics side by side</p>
-      </div>
+    <Card>
+      <PanelTitle icon={Table2}>Perbandingan Fundamental</PanelTitle>
 
       {/* Desktop / tablet: full table with a dedicated Winner column */}
-      <div className="hidden sm:block overflow-x-auto">
+      <div className="hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
-            <tr className="border-b-2 border-(--neo-line) text-left text-[11px] font-bold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-              <th className="px-5 py-2.5">Metric</th>
+            <tr className="border-b border-(--sv-border) bg-(--sv-bg) text-left text-xs font-semibold text-(--sv-muted)">
+              <th className="px-4 py-2.5">Metrik</th>
               <th className="px-3 py-2.5 text-right">{summaryA.ticker}</th>
               <th className="px-2 py-2.5 text-center">vs</th>
               <th className="px-3 py-2.5">{summaryB.ticker}</th>
-              <th className="px-3 py-2.5">Winner</th>
-              <th className="px-5 py-2.5">Description</th>
+              <th className="px-3 py-2.5">Unggul</th>
+              <th className="px-4 py-2.5">Keterangan</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(({ metric, textA, textB, w }) => (
-              <tr key={metric.key} className="border-b border-zinc-100 dark:border-zinc-800 last:border-b-0">
-                <td className="px-5 py-3 font-semibold text-zinc-700 dark:text-zinc-300">{metric.label}</td>
+              <tr key={metric.key} className="border-b border-(--sv-border) last:border-b-0 hover:bg-(--sv-bg)">
+                <td className="px-4 py-3 font-medium text-(--sv-text)">{metric.label}</td>
                 <td className="px-3 py-3 text-right"><MetricCell text={textA} isWinner={w === 'a'} /></td>
-                <td className="px-2 py-3 text-center text-xs font-semibold text-zinc-300 dark:text-zinc-600">vs</td>
+                <td className="px-2 py-3 text-center text-xs text-(--sv-muted)">vs</td>
                 <td className="px-3 py-3"><MetricCell text={textB} isWinner={w === 'b'} /></td>
                 <td className="px-3 py-3">
-                  {w === 'a' ? <WinnerBadge ticker={summaryA.ticker} /> : w === 'b' ? <WinnerBadge ticker={summaryB.ticker} /> : <span className="text-xs text-zinc-300 dark:text-zinc-600">—</span>}
+                  {w === 'a' ? <WinnerBadge ticker={summaryA.ticker} /> : w === 'b' ? <WinnerBadge ticker={summaryB.ticker} /> : <span className="text-xs text-(--sv-muted)">—</span>}
                 </td>
-                <td className="px-5 py-3 text-xs text-zinc-500 dark:text-zinc-400">{metric.description}</td>
+                <td className="px-4 py-3 text-xs text-(--sv-muted)">{metric.description}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Mobile: stacked cards — a wide 5-column table doesn't fit 320-430px screens */}
-      <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
+      {/* Mobile: stacked cards — a wide 5-column table does not fit 320-430px screens */}
+      <div className="divide-y divide-(--sv-border) sm:hidden">
         {rows.map(({ metric, textA, textB, w }) => (
           <div key={metric.key} className="px-4 py-3">
-            <div className="text-xs font-bold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{metric.label}</div>
+            <div className="text-xs font-semibold text-(--sv-muted)">{metric.label}</div>
             <div className="mt-1.5 grid grid-cols-2 gap-2">
               <div>
-                <div className="text-[10px] font-bold text-zinc-400">{summaryA.ticker}</div>
+                <div className="text-[11px] text-(--sv-muted)">{summaryA.ticker}</div>
                 <MetricCell text={textA} isWinner={w === 'a'} />
-                {w === 'a' && <div className="mt-0.5"><WinnerBadge ticker={summaryA.ticker} /></div>}
+                {w === 'a' && <div className="mt-1"><WinnerBadge ticker={summaryA.ticker} /></div>}
               </div>
               <div>
-                <div className="text-[10px] font-bold text-zinc-400">{summaryB.ticker}</div>
+                <div className="text-[11px] text-(--sv-muted)">{summaryB.ticker}</div>
                 <MetricCell text={textB} isWinner={w === 'b'} />
-                {w === 'b' && <div className="mt-0.5"><WinnerBadge ticker={summaryB.ticker} /></div>}
+                {w === 'b' && <div className="mt-1"><WinnerBadge ticker={summaryB.ticker} /></div>}
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="border-t-[3px] border-(--neo-line) px-5 py-4 space-y-2.5">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">Penjelasan Metrik — Why Win?</h3>
+      <div className="flex flex-col gap-2.5 border-t border-(--sv-border) p-4">
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-(--sv-text)">
+          <Lightbulb className="size-4 text-amber-500" strokeWidth={2} />
+          Penjelasan Metrik — kenapa unggul?
+        </h3>
         {explanations.map((e) => (
-          <div key={e.key} className={cn('neo-border px-4 py-3', EXPLANATION_TONE_BG[e.tone])}>
-            <span className={cn('text-sm font-bold', EXPLANATION_TONE_TEXT[e.tone])}>{e.label}</span>
-            <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400 leading-relaxed">{e.detail}</p>
+          <div key={e.key} className={cn('rounded-lg border px-4 py-3', EXPLANATION_TONE_BG[e.tone])}>
+            <span className={cn('text-sm font-semibold', EXPLANATION_TONE_TEXT[e.tone])}>{e.label}</span>
+            <p className="mt-1 text-sm leading-relaxed text-(--sv-text)">{e.detail}</p>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
