@@ -37,6 +37,7 @@ import { StockHeader, StockHeaderSkeleton } from './components/StockHeader';
 import { StockTabId, StockTabs } from './components/StockTabs';
 import { BandarmologyPanel, CorporateActionPanel, FundamentalDetailPanel, NewsPanel, TechnicalDetail } from './components/TabPanels';
 import { TechnicalSummary } from './components/TechnicalSummary';
+import { Trading1MinutesReport, Trading1MinutesReportSkeleton } from './components/Trading1MinutesReport';
 import { TradingModesReport, TradingModesReportSkeleton } from './components/TradingModesReport';
 import { Card } from './components/ui';
 import { useStockDetail } from './useStockDetail';
@@ -204,7 +205,15 @@ export function ScreenerDetailPage({ ticker }: { ticker: string }) {
                             <SaraDecisionCard key={ticker} ticker={ticker} price={data.header.price} pillars={detail.pillars} analysis={analysis} />
                           )} */}
                           {detail.summary && detail.fundamentalScreening ? (
-                            <TradingModesReport
+                            // <TradingModesReport
+                            //   summary={detail.summary}
+                            //   bars={detail.bars}
+                            //   analysis={analysis}
+                            //   fundamentals={detail.fundamentals}
+                            //   fundamentalScreening={detail.fundamentalScreening}
+                            // />
+
+                            <Trading1MinutesReport
                               summary={detail.summary}
                               bars={detail.bars}
                               analysis={analysis}
@@ -212,7 +221,7 @@ export function ScreenerDetailPage({ ticker }: { ticker: string }) {
                               fundamentalScreening={detail.fundamentalScreening}
                             />
                           ) : (
-                            <TradingModesReportSkeleton />
+                            <Trading1MinutesReportSkeleton />
                           )}
                         </>
                       )}
