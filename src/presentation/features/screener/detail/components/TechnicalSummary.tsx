@@ -40,7 +40,7 @@ function RsiRing({ value, tone }: { value: number; tone: TechnicalItem['tone'] }
 export function TechnicalSummary({ indicators }: { indicators: TechnicalItem[] }) {
   return (
     <section aria-labelledby="tech-summary-title" className="flex flex-col gap-3">
-      <h2 id="tech-summary-title" className="text-base font-semibold text-(--sv-text)">Ringkasan Teknikal</h2>
+      {/* <h2 id="tech-summary-title" className="text-base font-semibold text-(--sv-text)">Ringkasan Teknikal</h2> */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {indicators.map((item) => {
           const Icon = item.key === 'trend' && item.tone === 'negative' ? TrendingDown : ICONS[item.key];

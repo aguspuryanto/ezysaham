@@ -46,3 +46,10 @@ Secara keseluruhan, saham PT Bumi Resources Tbk (**BUMI**) berada dalam fase kon
 | **Risiko Utama** | Volatilitas harga batu baraNewcastle dan besarnya pasokan saham beredar yang membuat pergerakan relatif berat (*ticked-based movement*). |
 
 *Disclaimer: Analisis ini bertujuan untuk memberikan gambaran teknikal dan fundamental dasar. Keputusan investasi dan manajemen risiko sepenuhnya menjadi tanggung jawab masing-masing investor.*
+
+Referensi:
+https://www.prospero.ai/resources-blog/5-chatgpt-prompts-for-stock-picking
+https://medium.com/activated-thinker/stop-asking-chatgpt-for-stock-tips-use-these-7-prompts-instead-99e46efb0c09
+https://learnprompt.org/chatgpt-prompts-for-stock-trading/
+
+https://akunmu.id/blog/detail/chatgpt-untuk-analisa-saham

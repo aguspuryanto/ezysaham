@@ -4,8 +4,8 @@
  * Trading1MinutesReport.tsx
  *
  * "1 Minute Stock Analysis" (features_1menit_analisa.md, versi lengkap) for the detail page's `.sv-theme`.
- * Seven sections: Bisnis · Fundamental 1Y · Harga 1Y · Valuasi · Teknikal · Trading Plan
- * (Intraday / Swing 1–5 hari / Investing) · Final 10-second review + Key Level + Risk Gate + kesimpulan.
+ * Eight sections: Bisnis · Fundamental 1Y · Harga 1Y · Valuasi · Fundamental Change vs Price Lag
+ * (features_fundamental_acceleration.md) · Teknikal · Trading Plan (Intraday / Swing 1–5 hari / Investing) · Final 10-second review + Key Level + Risk Gate + kesimpulan.
  * Reuses the same engines as TradingModesReport (tradingModesReview.ts + fundamentalPillars.ts) so the
  * decisions never disagree between the two reports. DATA rows show raw values only; verdicts are labelled
  * INTERPRETASI. Anything the data feed does not carry renders "DATA TIDAK TERSEDIA" — never a guessed number.
@@ -15,6 +15,17 @@ import { Loader2, Timer } from 'lucide-react';
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { getStockIntraday } from '@/data/repositories/StockRepository';
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
+import {
+  AccelSignal,
+  buildFundamentalAcceleration,
+  FUNDAMENTAL_CHANGE_LABEL,
+  FundamentalAccelerationResult,
+  PRICE_LAG_LABEL,
+  RERATING_STATUS_LABEL,
+  ReratingStatus,
+  TECHNICAL_STAGE_LABEL,
+  ValuationSignal,
+} from '@/domain/analysis/fundamentalAcceleration';
 import {
   buildFundamentalPillars,
   FundamentalPillars,
@@ -42,7 +53,7 @@ import { StockAnalysis, Trend } from '@/domain/models/StockAnalysis';
 import { cn } from '@/lib/format';
 import { fmtMultiple, fmtNum, fmtPct, fmtPctPlain, fmtRp, Tone } from '../format';
 import { CopyShareButton } from './TradingModesReport';
-import { Badge, Card, PanelTitle, Skeleton } from './ui';
+import { Badge, Card, PanelTitle, Skeleton, TONE_TEXT } from './ui';
 
 const NO_DATA = 'DATA TIDAK TERSEDIA';
 
@@ -50,14 +61,32 @@ const NO_DATA = 'DATA TIDAK TERSEDIA';
 
 type Signal3 = 'green' | 'yellow' | 'red' | 'na';
 type TradeStatus = 'BUY' | 'WAIT' | 'NO TRADE';
-type InvestStatus = 'ACCUMULATE' | 'HOLD' | 'WAIT' | 'AVOID';
+type InvestStatus = 'ACCUMULATE' | 'ACCUMULATE BERTAHAP' | 'HOLD' | 'WAIT' | 'AVOID';
 type Momentum = 'Strong' | 'Normal' | 'Weak';
+
+/** One labelled entry type in Key Level — investor, swing, breakout and deep-support entries are never merged. */
+interface EntryType {
+  icon: string;
+  label: string;
+  zone: string;
+  basis: string;
+  invalidation: string;
+  note: string | null;
+  tone: Tone;
+}
+
+/** YoY growth at/above this (%) is treated as unproven (low base / one-off) → ACCUMULATE BERTAHAP, not ACCUMULATE. */
+const EXTREME_GROWTH_PCT = 100;
 
 const SIGNAL_EMOJI: Record<Signal3, string> = { green: '🟢', yellow: '🟡', red: '🔴', na: '⚪' };
 const SIGNAL_TONE: Record<Signal3, Tone> = { green: 'positive', yellow: 'warning', red: 'negative', na: 'neutral' };
+const RERATING_TONE: Record<ReratingStatus, Tone> = { RERATING_CANDIDATE: 'positive', EARLY_WATCH: 'info', WAIT_CONFIRMATION: 'warning', NO_TRADE: 'neutral' };
+const VALUATION_TO_ACCEL: Record<ValuationVerdict, ValuationSignal> = {
+  UNDERVALUED: 'cheap', WAJAR: 'fair', PREMIUM: 'expensive', OVERVALUED: 'expensive', TIDAK_DAPAT_DINILAI: 'na',
+};
 
 const TRADE_TONE: Record<TradeStatus, Tone> = { BUY: 'positive', WAIT: 'warning', 'NO TRADE': 'neutral' };
-const INVEST_TONE: Record<InvestStatus, Tone> = { ACCUMULATE: 'positive', HOLD: 'info', WAIT: 'warning', AVOID: 'negative' };
+const INVEST_TONE: Record<InvestStatus, Tone> = { ACCUMULATE: 'positive', 'ACCUMULATE BERTAHAP': 'positive', HOLD: 'info', WAIT: 'warning', AVOID: 'negative' };
 const TREND_TONE: Record<Trend, Tone> = { bullish: 'positive', sideways: 'warning', bearish: 'negative' };
 const TREND_LABEL: Record<Trend, string> = { bullish: 'Bullish', sideways: 'Sideways', bearish: 'Bearish' };
 const MOMENTUM_TONE: Record<Momentum, Tone> = { Strong: 'positive', Normal: 'warning', Weak: 'negative' };
@@ -127,6 +156,11 @@ function momentumOf(rsi: number, macdHist: number, rvol: number): Momentum {
   if (r < 45 && m < 0) return 'Weak';
   return 'Normal';
 }
+
+const changeSignal = (c: FundamentalAccelerationResult['change']): AccelSignal =>
+  (c === 'POSITIF' ? 'green' : c === 'NEGATIF' ? 'red' : c === 'NETRAL' ? 'yellow' : 'na');
+const lagSignal = (l: FundamentalAccelerationResult['lag']): AccelSignal =>
+  (l === 'TINGGI' ? 'green' : l === 'SEDANG' ? 'yellow' : l === 'RENDAH' ? 'red' : 'na');
 
 // ─── Small layout primitives ────────────────────────────────────────────────────
 
@@ -286,6 +320,32 @@ export function Trading1MinutesReport({
   }, [bars]);
   const vwap = intradayBars && intradayBars.length > 0 ? sessionVwap(intradayBars) : null;
 
+  const accel = useMemo(() => buildFundamentalAcceleration({
+    price,
+    annualHigh: summary.annualHigh,
+    return3M: summary.percentChange3M,
+    return6M: summary.percentChange6M,
+    return1Y: summary.percentChange1Y,
+    revenueGrowth: fundamentals?.revenueGrowth ?? null,
+    earningsGrowth: fundamentals?.earningsGrowth ?? null,
+    roe: summary.roe,
+    netMargin: fundamentals?.netMargin ?? null,
+    debtToEquity: fundamentals?.debtToEquity ?? null,
+    isFinancial: isFinancial(summary),
+    per: summary.per,
+    pbv: summary.pbv,
+    valuation: VALUATION_TO_ACCEL[pillars.valuation.verdict],
+    fairValue: pillars.valuation.fairValue,
+    tradedValue: summary.value,
+    ema20: trendEma.ema20,
+    ema50: trendEma.ema50,
+    trend: trendEma.trend,
+    rsi14: finite(indicators.rsi14) ? indicators.rsi14 : null,
+    macdSignalType: indicators.macdSignalType,
+  }), [price, summary, fundamentals, pillars, trendEma, indicators]);
+  const changeTone = SIGNAL_TONE[changeSignal(accel.change)];
+  const lagTone = SIGNAL_TONE[lagSignal(accel.lag)];
+
   const report = useMemo(() => {
     const outlook = businessOutlook(fundamentals);
     const health = HEALTH_SIGNAL[pillars.health.verdict];
@@ -294,34 +354,84 @@ export function Trading1MinutesReport({
     const momentum = momentumOf(indicators.rsi14, indicators.macdHistogram, volume.relativeVolume);
     const intradayStatus = toTradeStatus(intradayReview.decision);
     const swingStatus = toTradeStatus(swingReview.decision);
-    const investStatus = toInvestStatus(investingReview.decision);
+    const baseInvestStatus = toInvestStatus(investingReview.decision);
 
     const support = supports.find((s) => valid(s) && s < price) ?? null;
     const resistance = resistances.find((r) => valid(r) && r > price) ?? null;
+    const resistance2 = resistances.filter((r) => valid(r) && r > price)[1] ?? null;
     const long = tradingPlan.bullish;
     const longValid = long.validationErrors.length === 0 && valid(long.entry) && valid(long.sl) && long.sl < long.entry;
-    const entryLow = longValid ? Math.min(long.entry, long.avgDown ?? long.entry) : null;
-    const entryHigh = longValid ? long.entry : null;
-    const entryIdeal = entryLow != null && entryHigh != null
-      ? (entryLow === entryHigh ? fmtRp(entryHigh) : `${fmtRp(entryLow)} – ${fmtRp(entryHigh)}`)
-      : NO_DATA;
 
     const accZone = valid(pillars.valuation.accumulationLow) && valid(pillars.valuation.accumulationHigh)
       ? `${fmtRp(pillars.valuation.accumulationLow)} – ${fmtRp(pillars.valuation.accumulationHigh)}`
       : NO_DATA;
+
+    // Extreme YoY growth (low base / one-off) must be proven sustainable before sizing up — never "growth tinggi = accumulate agresif".
+    const rg = fundamentals?.revenueGrowth ?? null;
+    const eg = fundamentals?.earningsGrowth ?? null;
+    const growthUnproven = (rg != null && rg >= EXTREME_GROWTH_PCT) || (eg != null && eg >= EXTREME_GROWTH_PCT);
+    const investStatus: InvestStatus = baseInvestStatus === 'ACCUMULATE' && growthUnproven ? 'ACCUMULATE BERTAHAP' : baseInvestStatus;
+    const growthNote = growthUnproven
+      ? `Growth ekstrem (pendapatan ${rg != null ? fmtPct(rg, 1) : NO_DATA}, laba ${eg != null ? fmtPct(eg, 1) : NO_DATA} YoY) belum terbukti sustainable — bisa karena basis rendah/one-off. Akumulasi bertahap (mis. 3 tahap), tambah posisi hanya bila 1–2 laporan kuartal berikutnya mengonfirmasi growth berlanjut.`
+      : null;
+
+    // Four distinct entry types — each with its own basis and invalidation, never merged into one "entry ideal".
+    const ema9Ok = valid(ema9);
+    const swingLevel = valid(trendEma.ema20) ? Math.max(trendEma.ema20, ema9Ok ? ema9 : 0) : null;
+    const deepLow = longValid ? Math.min(long.entry, long.avgDown ?? long.entry) : support;
+    const deepHigh = longValid ? long.entry : support;
+    const deepZone = valid(deepLow) && valid(deepHigh) && deepHigh < price
+      ? (Math.round(deepLow) === Math.round(deepHigh) ? fmtRp(deepHigh) : `${fmtRp(deepLow)} – ${fmtRp(deepHigh)}`)
+      : NO_DATA;
+    const deepSl = longValid ? long.sl : null;
+    const fundamentalBroken = health.signal === 'red' || baseInvestStatus === 'AVOID';
+    const entries: EntryType[] = [
+      {
+        icon: '💎', label: 'Investor Accumulation', zone: accZone, basis: 'Fundamental-based (area valuasi)',
+        invalidation: 'Thesis batal bila laba turun > 20% YoY, ROE < 5%, atau DER > 2×.',
+        note: investStatus === 'ACCUMULATE BERTAHAP' ? 'Bertahap — growth perlu dibuktikan sustainable.'
+          : investStatus === 'ACCUMULATE' ? null : `Belum berlaku — Investing ${investStatus}.`,
+        tone: 'positive',
+      },
+      {
+        icon: '⚡', label: 'Swing Entry',
+        zone: swingStatus === 'BUY' ? fieldText(findField(swingReview, 'Entry'))
+          : swingLevel != null ? `Close > ${fmtRp(swingLevel)} + volume (RVOL ≥ 1×, candle hijau)` : NO_DATA,
+        basis: 'Technical confirmation (EMA9/EMA20)',
+        invalidation: fieldText(findField(swingReview, 'SL/Invalidation')),
+        note: swingStatus === 'BUY' ? null : `Swing ${swingStatus} — tunggu konfirmasi, jangan antisipasi.`,
+        tone: 'info',
+      },
+      {
+        icon: '🚀', label: 'Breakout Confirmation',
+        zone: valid(resistance) ? `Close > ${fmtRp(resistance)} + RVOL ≥ 1,5×` : NO_DATA,
+        basis: 'Rerating confirmation',
+        invalidation: valid(resistance) ? `Close kembali < ${fmtRp(resistance)} (false breakout).` : NO_DATA,
+        note: valid(resistance2) ? `Target berikutnya ${fmtRp(resistance2)}.` : null,
+        tone: 'positive',
+      },
+      {
+        icon: '🛡️', label: 'Deep Value / Support', zone: deepZone,
+        basis: 'Support teknikal — hanya jika fundamental tetap valid',
+        invalidation: valid(deepSl) ? `Close < ${fmtRp(deepSl)} (support jebol).` : NO_DATA,
+        note: fundamentalBroken ? 'Tidak berlaku — fundamental lemah (risiko value trap).' : 'Tunggu harga turun ke area ini; jangan beli bila turun karena berita fundamental buruk.',
+        tone: 'warning',
+      },
+    ];
 
     const businessShort = outlook.signal === 'green' && health.signal !== 'red' ? 'bagus'
       : outlook.signal === 'red' || health.signal === 'red' ? 'lemah'
         : outlook.signal === 'na' && health.signal === 'na' ? 'data tidak tersedia' : 'netral';
 
     const riskGate = [
-      longValid ? `close < ${fmtRp(long.sl)} (SL swing)` : null,
-      vwap != null ? `harga intraday < VWAP ${fmtRp(vwap)}` : null,
-      `RVOL < 1× tanpa candle hijau konfirmasi`,
-      valid(resistance) ? `harga sudah lari > 3% di atas entry tanpa pullback (jangan kejar menuju ${fmtRp(resistance)})` : null,
+      swingStatus !== 'BUY' && swingLevel != null ? `swing: harga belum close > ${fmtRp(swingLevel)} dengan RVOL ≥ 1×` : null,
+      vwap != null ? `intraday: harga < VWAP ${fmtRp(vwap)}` : null,
+      valid(deepSl) ? `close < ${fmtRp(deepSl)} (support jebol — semua setup teknikal batal)` : null,
+      `harga sudah lari > 3% di atas level entry tanpa pullback${valid(resistance) ? ` (jangan kejar menuju ${fmtRp(resistance)})` : ''}`,
+      growthUnproven ? 'investor: menambah posisi besar sekaligus sebelum growth terbukti sustainable' : null,
     ].filter(Boolean).join(', atau ');
 
-    const attractive = swingStatus === 'BUY' || investStatus === 'ACCUMULATE'
+    const attractive = swingStatus === 'BUY' || investStatus === 'ACCUMULATE' || investStatus === 'ACCUMULATE BERTAHAP'
       || (investStatus === 'HOLD' && trend !== 'bearish')
       || (trend === 'bullish' && health.signal !== 'red' && valuation.signal !== 'red');
     const reasons = [
@@ -330,15 +440,15 @@ export function Trading1MinutesReport({
       valuation.signal !== 'na' && `valuasi ${valuation.short}`,
     ].filter(Boolean).join(', ');
     const trigger = swingStatus === 'BUY'
-      ? `harga bertahan di area ${entryIdeal} dengan volume (RVOL ≥ 1×)`
+      ? `harga bertahan di area entry swing ${fieldText(findField(swingReview, 'Entry'))} dengan volume`
       : fieldText(findField(swingReview, 'Entry')).replace(/^Tunggu:\s*/, '').replace(/\.$/, '');
-    const conclusion = `${ticker} ${attractive ? 'menarik' : 'tidak menarik'} karena ${reasons}, tetapi entry hanya valid jika ${trigger}.`;
+    const conclusion = `${ticker} ${attractive ? 'menarik' : 'tidak menarik'} karena ${reasons}${growthUnproven ? ' (growth ekstrem perlu dibuktikan sustainable)' : ''}, tetapi entry teknikal hanya valid jika ${trigger}.`;
 
     return {
-      outlook, health, valuation, trend, momentum, intradayStatus, swingStatus, investStatus,
-      support, resistance, long, longValid, entryIdeal, accZone, businessShort, riskGate, conclusion,
+      outlook, health, valuation, trend, momentum, intradayStatus, swingStatus, investStatus, growthNote,
+      support, resistance, resistance2, long, longValid, accZone, entries, businessShort, riskGate, conclusion,
     };
-  }, [fundamentals, pillars, trendEma, indicators, volume, intradayReview, swingReview, investingReview, supports, resistances, price, tradingPlan, vwap, ticker]);
+  }, [fundamentals, pillars, trendEma, indicators, volume, intradayReview, swingReview, investingReview, supports, resistances, price, tradingPlan, vwap, ticker, ema9]);
 
   const fundamentalChanges = pillars.health.summary || NO_DATA;
   const { fundamentalRows, intradayPlan, swingPlan, investingPlan } = useMemo(() => {
@@ -370,7 +480,8 @@ export function Trading1MinutesReport({
       ['Catalyst', `${NO_DATA} — cek tab Berita & Aksi Korporasi.`],
     ];
     const investingPlan: Array<[string, string, Tone?]> = [
-      ['Area akumulasi', report.accZone, 'positive'],
+      ['Area akumulasi (valuasi)', report.accZone, 'positive'],
+      ...(report.growthNote ? [['Catatan growth', report.growthNote, 'negative'] as [string, string, Tone]] : []),
       ['Target valuasi', valid(pillars.valuation.fairValue) ? `${fmtRp(pillars.valuation.fairValue)} (gap ${fmtPct(pillars.valuation.upsidePct, 0)})` : NO_DATA],
       ['Risiko fundamental', fieldText(findField(investingReview, 'Risk')), 'negative'],
       ['Thesis', fieldText(findField(investingReview, 'Thesis'))],
@@ -413,7 +524,20 @@ export function Trading1MinutesReport({
         `→ ${SIGNAL_EMOJI[report.valuation.signal]} ${report.valuation.label}`,
       ].join('\n'),
       [
-        '5️⃣ TEKNIKAL',
+        '5️⃣ FUNDAMENTAL CHANGE vs PRICE LAG',
+        ...accel.lines.map((l) => `• ${l.label}: ${l.value} ${SIGNAL_EMOJI[l.signal]}`),
+        `• Fundamental Score: ${accel.fundamentalScore != null ? `${accel.fundamentalScore}/100` : NO_DATA}`,
+        `• Earnings vs Price: ${accel.earningsVsPrice}`,
+        `• Technical Stage: ${TECHNICAL_STAGE_LABEL[accel.stage]}`,
+        `• Rerating Potential: ${SIGNAL_EMOJI[accel.reratingPotential.signal]} ${accel.reratingPotential.label}`,
+        ...(accel.risks.length ? [`• Risk: ${accel.risks.join(' · ')}`] : []),
+        `• Syarat rerating: ${accel.requirements.join(' ')}`,
+        `→ Fundamental Change: ${SIGNAL_EMOJI[changeSignal(accel.change)]} ${FUNDAMENTAL_CHANGE_LABEL[accel.change]}`,
+        `→ Price Lag: ${SIGNAL_EMOJI[lagSignal(accel.lag)]} ${PRICE_LAG_LABEL[accel.lag]}`,
+        `→ Status: ${RERATING_STATUS_LABEL[accel.status]} — ${accel.reason}`,
+      ].join('\n'),
+      [
+        '6️⃣ TEKNIKAL',
         `• EMA 9/21/50/200: ${rpOr(ema9)} / ${rpOr(ema21)} / ${rpOr(trendEma.ema50)} / ${rpOr(trendEma.ema200)}`,
         `• RSI14: ${finite(indicators.rsi14) ? fmtNum(indicators.rsi14, 1) : NO_DATA}`,
         `• MACD hist: ${finite(indicators.macdHistogram) ? fmtNum(indicators.macdHistogram, 2) : NO_DATA}`,
@@ -424,13 +548,13 @@ export function Trading1MinutesReport({
         `→ Trend: ${TREND_LABEL[report.trend]} · Momentum: ${report.momentum}`,
       ].join('\n'),
       [
-        '6️⃣ TRADING PLAN',
+        '7️⃣ TRADING PLAN',
         `⚡ INTRADAY — Status: ${report.intradayStatus}\n${lines(intradayPlan)}`,
         `📈 SWING 1–5 HARI — Status: ${report.swingStatus}\n${lines(swingPlan)}`,
         `💰 INVESTING — Status: ${report.investStatus}\n${lines(investingPlan)}`,
       ].join('\n\n'),
       [
-        '7️⃣ FINAL 10-SECOND REVIEW',
+        '8️⃣ FINAL 10-SECOND REVIEW',
         `🏢 Bisnis: ${report.businessShort}`,
         `📈 Trend: ${TREND_LABEL[report.trend].toLowerCase()}`,
         `🔥 Momentum: ${report.momentum === 'Strong' ? 'kuat' : report.momentum === 'Weak' ? 'lemah' : 'normal'}`,
@@ -438,21 +562,28 @@ export function Trading1MinutesReport({
         `⚡ Intraday: ${report.intradayStatus}`,
         `📈 Swing: ${report.swingStatus}`,
         `💎 Investing: ${report.investStatus}`,
+        `🚀 Rerating: ${RERATING_STATUS_LABEL[accel.status]}`,
         '',
         '🎯 KEY LEVEL:',
         `Support: ${rpOr(report.support)}`,
         `Resistance: ${rpOr(report.resistance)}`,
-        `Entry ideal: ${report.entryIdeal}`,
-        `TP: ${report.longValid ? fmtRp(report.long.tp1) : NO_DATA}`,
-        `SL: ${report.longValid ? fmtRp(report.long.sl) : NO_DATA}`,
+        `TP1: ${rpOr(report.resistance)} · TP2: ${rpOr(report.resistance2)}`,
         '',
+        ...report.entries.flatMap((e) => [
+          `${e.icon} ${e.label.toUpperCase()}`,
+          e.zone,
+          `→ ${e.basis}`,
+          `Invalidasi: ${e.invalidation}`,
+          ...(e.note ? [e.note] : []),
+          '',
+        ]),
         `🚨 RISK GATE:\nJangan entry jika ${report.riskGate}.`,
         '',
         `KESIMPULAN 1 KALIMAT:\n"${report.conclusion}"`,
       ].join('\n'),
       '⚠️ Jangan FOMO. Buy Area ≠ otomatis BUY. Entry hanya setelah konfirmasi. Target adalah proyeksi, bukan janji profit. Edukasi, bukan ajakan jual/beli.',
     ].join('\n\n');
-  }, [ticker, summary, pillars, report, fundamentalRows, fundamentalChanges, price, ema9, ema21, trendEma, indicators, volume, vwap, priceAction, intradayPlan, swingPlan, investingPlan]);
+  }, [ticker, summary, pillars, report, fundamentalRows, fundamentalChanges, price, ema9, ema21, trendEma, indicators, volume, vwap, priceAction, intradayPlan, swingPlan, investingPlan, accel]);
 
   const rsi = finite(indicators.rsi14) ? indicators.rsi14 : null;
   const macd = finite(indicators.macdHistogram) ? indicators.macdHistogram : null;
@@ -524,9 +655,70 @@ export function Trading1MinutesReport({
           </Interpretation>
         </Section>
 
-        {/* 5️⃣ TEKNIKAL */}
+        {/* 5️⃣ FUNDAMENTAL CHANGE vs PRICE LAG */}
         <Section
           n="5️⃣"
+          title="Fundamental Change vs Price Lag"
+          verdict={<Badge tone={RERATING_TONE[accel.status]}>{RERATING_STATUS_LABEL[accel.status]}</Badge>}
+        >
+          <dl className="grid gap-x-4 gap-y-0.5 text-sm sm:grid-cols-2">
+            {accel.lines.map((l) => (
+              <div key={l.label} className="flex justify-between gap-3 border-b border-(--sv-border)/70 py-1.5">
+                <dt className="shrink-0 text-(--sv-muted)">{l.label}</dt>
+                <dd className={cn('min-w-0 text-right font-medium tabular-nums', l.value.startsWith(NO_DATA) ? 'text-xs text-(--sv-muted)' : 'text-(--sv-text)')}>
+                  {l.value} <span aria-hidden="true">{SIGNAL_EMOJI[l.signal]}</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          <div className="grid gap-2 text-sm sm:grid-cols-2">
+            {([
+              [
+                'Fundamental Score',
+                accel.fundamentalScore != null ? `${accel.fundamentalScore}/100` : NO_DATA,
+                accel.fundamentalScore == null ? 'neutral' : accel.fundamentalScore >= 60 ? 'positive' : accel.fundamentalScore >= 40 ? 'warning' : 'negative',
+              ],
+              ['Fundamental Change', `${SIGNAL_EMOJI[changeSignal(accel.change)]} ${FUNDAMENTAL_CHANGE_LABEL[accel.change]}`, changeTone],
+              ['Price Lag', `${SIGNAL_EMOJI[lagSignal(accel.lag)]} ${PRICE_LAG_LABEL[accel.lag]}`, lagTone],
+              [
+                'Technical Stage',
+                TECHNICAL_STAGE_LABEL[accel.stage],
+                accel.stage === 'UPTREND' ? 'positive' : accel.stage === 'DOWNTREND' ? 'negative' : accel.stage === 'DATA_KURANG' ? 'neutral' : 'warning',
+              ],
+              ['Rerating Potential', `${SIGNAL_EMOJI[accel.reratingPotential.signal]} ${accel.reratingPotential.label}`, SIGNAL_TONE[accel.reratingPotential.signal]],
+              ['Status', RERATING_STATUS_LABEL[accel.status], RERATING_TONE[accel.status]],
+            ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
+              <div key={label} className="flex items-center justify-between gap-2 rounded-lg bg-(--sv-surface) px-3 py-2">
+                <span className="text-(--sv-muted)">{label}</span>
+                <Badge tone={tone}>{value}</Badge>
+              </div>
+            ))}
+          </div>
+
+          <Interpretation>
+            <strong>{accel.earningsVsPrice}.</strong> {accel.reason}
+            {accel.risks.length > 0 && (
+              <ul className="mt-2 space-y-1 text-rose-700 dark:text-rose-300">
+                {accel.risks.map((r) => <li key={r}>{r}</li>)}
+              </ul>
+            )}
+            <span className="mt-2 block text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Syarat agar rerating terjadi</span>
+            <ul className="mt-1 space-y-1">
+              {accel.requirements.map((r) => (
+                <li key={r} className="flex items-start gap-2">
+                  <span className="mt-2 size-1 shrink-0 rounded-full bg-(--sv-muted)" />
+                  {r}
+                </li>
+              ))}
+            </ul>
+            <span className="mt-2 block text-xs text-(--sv-muted)">Bukan kepastian harga naik — rerating hanya terjadi bila syarat di atas terpenuhi.</span>
+          </Interpretation>
+        </Section>
+
+        {/* 6️⃣ TEKNIKAL */}
+        <Section
+          n="6️⃣"
           title="Teknikal"
           verdict={(
             <div className="flex flex-wrap gap-1.5">
@@ -566,8 +758,8 @@ export function Trading1MinutesReport({
           </Interpretation>
         </Section>
 
-        {/* 6️⃣ TRADING PLAN */}
-        <Section n="6️⃣" title="Trading Plan">
+        {/* 7️⃣ TRADING PLAN */}
+        <Section n="7️⃣" title="Trading Plan">
           <div className="grid gap-3">
             <PlanCard title="⚡ Intraday" badge={<Badge tone={TRADE_TONE[report.intradayStatus]}>{report.intradayStatus}</Badge>}>
               <PlanList rows={intradayPlan} />
@@ -584,8 +776,8 @@ export function Trading1MinutesReport({
           </div>
         </Section>
 
-        {/* 7️⃣ FINAL REVIEW */}
-        <Section n="7️⃣" title="Final 10-Second Review">
+        {/* 8️⃣ FINAL REVIEW */}
+        <Section n="8️⃣" title="Final 10-Second Review">
           <div className="grid gap-2 text-sm sm:grid-cols-2">
             {([
               ['🏢 Bisnis', report.businessShort, report.businessShort === 'bagus' ? 'positive' : report.businessShort === 'lemah' ? 'negative' : 'warning'],
@@ -595,6 +787,7 @@ export function Trading1MinutesReport({
               ['⚡ Intraday', report.intradayStatus, TRADE_TONE[report.intradayStatus]],
               ['📈 Swing', report.swingStatus, TRADE_TONE[report.swingStatus]],
               ['💎 Investing', report.investStatus, INVEST_TONE[report.investStatus]],
+              ['🚀 Rerating', RERATING_STATUS_LABEL[accel.status], RERATING_TONE[accel.status]],
             ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
               <div key={label} className="flex items-center justify-between gap-2 rounded-lg bg-(--sv-surface) px-3 py-2">
                 <span className="text-(--sv-muted)">{label}</span>
@@ -608,11 +801,23 @@ export function Trading1MinutesReport({
             <DataList rows={[
               ['Support', rpOr(report.support)],
               ['Resistance', rpOr(report.resistance)],
-              ['Entry ideal', report.entryIdeal],
-              ['TP', report.longValid ? fmtRp(report.long.tp1) : NO_DATA],
-              ['SL', report.longValid ? fmtRp(report.long.sl) : NO_DATA],
-              ['R/R', report.longValid && finite(report.long.riskRewardRatio) ? `1:${fmtNum(report.long.riskRewardRatio, 1)}` : NO_DATA],
+              ['TP1', rpOr(report.resistance)],
+              ['TP2', rpOr(report.resistance2)],
             ]} />
+            <p className="mt-3 mb-2 text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Entry berdasarkan tipe — label berbeda, jangan dicampur</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {report.entries.map((e) => (
+                <div key={e.label} className="space-y-1 rounded-lg border border-(--sv-border) p-3 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-(--sv-text)">{e.icon} {e.label}</span>
+                  </div>
+                  <p className={cn('font-semibold tabular-nums', e.zone.startsWith(NO_DATA) ? 'text-xs text-(--sv-muted)' : TONE_TEXT[e.tone])}>{e.zone}</p>
+                  <p className="text-xs text-(--sv-muted)">→ {e.basis}</p>
+                  <p className="text-xs text-rose-600 dark:text-rose-400">Invalidasi: {e.invalidation}</p>
+                  {e.note && <p className="text-xs text-(--sv-muted)">{e.note}</p>}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-sm text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/5 dark:text-rose-200">

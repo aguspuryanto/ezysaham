@@ -57,6 +57,7 @@ export interface FundamentalPillars {
     fairValue: number | null;
     /** % from price to fair value (positive = price below fair value). */
     upsidePct: number | null;
+    /** Valuation-based accumulation zone — never above the current price (anchored to it once price ≤ MOS price = fair value −10%). */
     accumulationLow: number | null;
     accumulationHigh: number | null;
     per: string;
@@ -74,6 +75,8 @@ const MARKET_PER = 15;
 /** Medium-term accumulation = fair value minus this margin of safety range. */
 const MOS_MIN_PCT = 10;
 const MOS_MAX_PCT = 20;
+/** When price is already below the MoS band, accumulate from the current price down to this % below it. */
+const ACC_BELOW_PRICE_PCT = 10;
 
 const rp = (n: number | null) => (n != null && n > 0 ? formatRupiah(Math.round(n)) : '–');
 const pctTxt = (n: number | null, dec = 1) => (n == null || Number.isNaN(n) ? '–' : `${n >= 0 ? '+' : ''}${n.toFixed(dec)}%`);
@@ -171,19 +174,29 @@ export function buildFundamentalPillars(
       : upsidePct >= 20 ? 'UNDERVALUED'
         : upsidePct >= -10 ? 'WAJAR'
           : upsidePct >= -35 ? 'PREMIUM' : 'OVERVALUED';
-  const accumulationHigh = fairValue != null ? fairValue * (1 - MOS_MIN_PCT / 100) : null;
-  const accumulationLow = fairValue != null ? fairValue * (1 - MOS_MAX_PCT / 100) : null;
+  // MoS band (fair value −20%…−10%) is a price CEILING, not a zone to buy into. A zone above the current
+  // price is meaningless (you can't accumulate at a price higher than the market), so once price is at/under
+  // the ceiling the zone is anchored to the current price instead: [band low or price −10%, price].
+  const mosPrice = fairValue != null ? fairValue * (1 - MOS_MIN_PCT / 100) : null;
+  const mosLow = fairValue != null ? fairValue * (1 - MOS_MAX_PCT / 100) : null;
+  const belowMosPrice = mosPrice != null && price > 0 && price <= mosPrice;
+  const accumulationHigh = belowMosPrice ? price : mosPrice;
+  const accumulationLow = belowMosPrice
+    ? (mosLow != null && mosLow <= price ? mosLow : price * (1 - ACC_BELOW_PRICE_PCT / 100))
+    : mosLow;
   const accTxt = `${rp(accumulationLow)} – ${rp(accumulationHigh)}`;
+  /** Price distance from fair value, as % OF FAIR VALUE (upsidePct is % of price, so it can exceed 100%). */
+  const gapVsFairPct = fairValue != null && fairValue > 0 ? Math.abs((price - fairValue) / fairValue) * 100 : 0;
   const valuationSummary =
     valuationVerdict === 'TIDAK_DAPAT_DINILAI'
       ? 'Nilai wajar tidak dapat dihitung (laba/ekuitas negatif atau data PER/PBV kosong).'
       : valuationVerdict === 'UNDERVALUED'
-        ? `Harga ${Math.abs(upsidePct!).toFixed(0)}% di bawah nilai wajar ${rp(fairValue)} — ada margin of safety.${price <= (accumulationHigh ?? 0) ? ' Harga sudah di area akumulasi.' : ''}`
+        ? `Harga ${gapVsFairPct.toFixed(0)}% di bawah nilai wajar ${rp(fairValue)} (upside ${upsidePct!.toFixed(0)}%) — ada margin of safety.${belowMosPrice ? ` Harga sudah jauh di bawah MOS price (nilai wajar −10%) — area akumulasi berbasis valuasi ${accTxt}.` : ''}`
         : valuationVerdict === 'WAJAR'
           ? `Harga di sekitar nilai wajar ${rp(fairValue)}. Area akumulasi jangka menengah ${accTxt}.`
           : valuationVerdict === 'PREMIUM'
-            ? `Harga ${Math.abs(upsidePct!).toFixed(0)}% di atas nilai wajar ${rp(fairValue)} — sudah dihargai premium. Area akumulasi ideal ${accTxt}.`
-            : `Harga ${Math.abs(upsidePct!).toFixed(0)}% di atas nilai wajar ${rp(fairValue)} — terlalu mahal untuk investasi. Area akumulasi ideal ${accTxt}.`;
+            ? `Harga ${gapVsFairPct.toFixed(0)}% di atas nilai wajar ${rp(fairValue)} — sudah dihargai premium. Area akumulasi ideal ${accTxt}.`
+            : `Harga ${gapVsFairPct.toFixed(0)}% di atas nilai wajar ${rp(fairValue)} — terlalu mahal untuk investasi. Area akumulasi ideal ${accTxt}.`;
 
   // ── FILTER UTAMA
   const filter: FundamentalFilter =
