@@ -4,9 +4,10 @@
  * TradingModesReport.tsx
  *
  * "Equity Research Report — 3 Sistem Trading" (EquityResearchReportCardv6 from StockAnalysisPage)
- * restyled for the detail page's `.sv-theme`. Same engines (tradingModesReview.ts): each mode reads
- * only its own indicators — INTRADAY = VWAP + Volume + Price Action, SWING = EMA20/50 + Volume + S/R,
- * INVESTING = growth + ROE + debt + PER/PBV. Missing data stays "N/A".
+ * restyled for the detail page's `.sv-theme`. Same engines (tradingModesReview.ts), three separate reads:
+ * INTRADAY = VWAP + RVOL + session High/Low + breakout, SWING = EMA20/50/200 + RSI/MACD + RVOL + S/R,
+ * INVESTING = growth + ROE + debt + PER/PBV + fair value. Decisions: BUY / WAIT / WATCHLIST / NO TRADE.
+ * Missing data stays "N/A".
  */
 
 import { Check, Copy, Loader2, Sparkles } from 'lucide-react';
@@ -19,7 +20,9 @@ import {
   buildSwingModeReview,
   formatTradingModesReview,
   MODE_DECISION_LABEL,
+  isTechnicalBearish,
   ModeDecision,
+  ModeField,
   ModeReview,
   NA,
   TRADING_MODE_LABEL,
@@ -38,7 +41,13 @@ import { Badge, Card, PanelTitle, Skeleton } from './ui';
 const DECISION_STYLE: Record<ModeDecision, { tone: Tone; box: string }> = {
   BUY: { tone: 'positive', box: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-400/25 dark:bg-emerald-400/5' },
   WAIT: { tone: 'warning', box: 'border-amber-200 bg-amber-50/60 dark:border-amber-400/25 dark:bg-amber-400/5' },
-  SELL: { tone: 'negative', box: 'border-rose-200 bg-rose-50/60 dark:border-rose-400/25 dark:bg-rose-400/5' },
+  WATCHLIST: { tone: 'info', box: 'border-blue-200 bg-blue-50/60 dark:border-blue-400/25 dark:bg-blue-400/5' },
+  NO_TRADE: { tone: 'neutral', box: 'border-(--sv-border) bg-(--sv-bg)' },
+};
+
+const FIELD_TONE: Record<NonNullable<ModeField['tone']>, string> = {
+  positive: 'text-emerald-700 dark:text-emerald-400',
+  negative: 'text-rose-600 dark:text-rose-400',
 };
 
 /** Copies the report as plain text (for WhatsApp/Telegram) with a source line. */
@@ -71,11 +80,22 @@ function Label({ children }: { children: string }) {
   return <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">{children}</p>;
 }
 
-function PlanRow({ label, value, className }: { label: string; value: string; className?: string }) {
+function FieldRow({ field }: { field: ModeField }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
-      <dt className="shrink-0 text-(--sv-muted) sm:w-36">{label}</dt>
-      <dd className={cn('font-medium', className ?? 'text-(--sv-text)')}>{value}</dd>
+      <dt className="shrink-0 text-(--sv-muted) sm:w-36">{field.label}</dt>
+      <dd className={cn('min-w-0 font-medium', field.tone ? FIELD_TONE[field.tone] : 'text-(--sv-text)')}>
+        {Array.isArray(field.value) ? (
+          <ul className="space-y-1">
+            {field.value.map((s) => (
+              <li key={s} className="flex items-start gap-2">
+                <span className="mt-2 size-1 shrink-0 rounded-full bg-(--sv-muted)" />
+                {s}
+              </li>
+            ))}
+          </ul>
+        ) : field.value}
+      </dd>
     </div>
   );
 }
@@ -85,48 +105,35 @@ function TradingModeSection({ ticker, review }: { ticker: string; review: ModeRe
   return (
     <div className={cn('space-y-3 rounded-xl border p-4', style.box)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-(--sv-text)">{ticker} — {TRADING_MODE_LABEL[review.mode]}</h3>
+        <h3 className="text-sm font-semibold text-(--sv-text)">📊 {ticker} — {TRADING_MODE_LABEL[review.mode]}</h3>
         <Badge tone={style.tone}>{MODE_DECISION_LABEL[review.decision]}</Badge>
       </div>
 
       <div>
-        <Label>Market / Trend</Label>
-        <p className="text-sm leading-relaxed text-(--sv-text)">{review.trend}</p>
+        <Label>{review.headline.label}</Label>
+        <p className="text-sm leading-relaxed text-(--sv-text)">{review.headline.value}</p>
       </div>
 
-      <div>
-        <Label>Indikator (Data)</Label>
-        <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
-          {review.data.map((d) => (
-            <div key={d.label} className="flex justify-between gap-3 border-b border-(--sv-border)/70 py-1">
-              <dt className="text-(--sv-muted)">{d.label}</dt>
-              <dd className={cn('text-right font-medium tabular-nums', d.value.startsWith(NA) ? 'text-(--sv-muted)' : 'text-(--sv-text)')}>{d.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
+      {review.data.length > 0 && (
+        <div>
+          <Label>Data</Label>
+          <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+            {review.data.map((d) => (
+              <div key={d.label} className="flex justify-between gap-3 border-b border-(--sv-border)/70 py-1">
+                <dt className="text-(--sv-muted)">{d.label}</dt>
+                <dd className={cn('text-right font-medium tabular-nums', d.value.startsWith(NA) ? 'text-(--sv-muted)' : 'text-(--sv-text)')}>{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
 
-      <div>
-        <Label>Sinyal (Interpretasi)</Label>
-        <ul className="space-y-1 text-sm text-(--sv-text)">
-          {review.signals.map((s) => (
-            <li key={s} className="flex items-start gap-2">
-              <span className="mt-2 size-1 shrink-0 rounded-full bg-(--sv-muted)" />
-              {s}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <dl className="space-y-1.5 rounded-lg bg-(--sv-surface) p-3 text-sm">
-        <PlanRow label="Entry" value={review.entry} className="text-emerald-700 dark:text-emerald-400" />
-        <PlanRow label="Stop / Invalidation" value={review.stop} className="text-rose-600 dark:text-rose-400" />
-        <PlanRow label="Target" value={review.target} />
-        <PlanRow label="Risk" value={review.risk} />
+      <dl className="space-y-2 rounded-lg bg-(--sv-surface) p-3 text-sm">
+        {review.fields.map((f) => <FieldRow key={f.label} field={f} />)}
       </dl>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Keputusan</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Decision</span>
         <Badge tone={style.tone}>{MODE_DECISION_LABEL[review.decision]}</Badge>
         <span className="text-(--sv-text)">{review.reason}</span>
       </div>
@@ -147,7 +154,7 @@ export function TradingModesReport({
   fundamentals: FundamentalDetail | null;
   fundamentalScreening: FundamentalScreeningResult;
 }) {
-  const { trendEma, volume, priceAction, supportResistance } = analysis;
+  const { trendEma, indicators, volume, priceAction, supportResistance } = analysis;
 
   // Yahoo 1-minute feed for the INTRADAY mode; keyed by ticker so a stale response is ignored.
   const [intradayState, setIntradayState] = useState<{ ticker: string; data: IntradayResponse } | null>(null);
@@ -166,12 +173,20 @@ export function TradingModesReport({
   );
 
   const reviews = useMemo(() => [
-    buildIntradayModeReview({ bars: intraday?.ok ? intraday.bars : null, lastClose: summary.lastClose, lastPrice: intraday?.ok ? intraday.lastPrice : null }),
+    buildIntradayModeReview({
+      bars: intraday?.ok ? intraday.bars : null,
+      lastClose: summary.lastClose,
+      lastPrice: intraday?.ok ? intraday.lastPrice : null,
+      resistances: supportResistance.resistances.map((r) => r.price),
+    }),
     buildSwingModeReview({
       bars,
       price: summary.lastClose,
       ema20: trendEma.ema20,
       ema50: trendEma.ema50,
+      ema200: trendEma.ema200,
+      rsi14: indicators.rsi14,
+      macdHistogram: indicators.macdHistogram,
       relativeVolume: volume.relativeVolume,
       lastCandleColor: priceAction.lastCandleColor,
       supports: supportResistance.supports.map((s) => s.price),
@@ -191,8 +206,9 @@ export function TradingModesReport({
       fairValue: pillars.valuation.fairValue,
       accumulationLow: pillars.valuation.accumulationLow,
       accumulationHigh: pillars.valuation.accumulationHigh,
+      technicalBearish: isTechnicalBearish({ price: summary.lastClose, ema20: trendEma.ema20, ema50: trendEma.ema50, ema200: trendEma.ema200 }),
     }),
-  ], [intraday, summary, bars, trendEma, volume, priceAction, supportResistance, fundamentals, pillars]);
+  ], [intraday, summary, bars, trendEma, indicators, volume, priceAction, supportResistance, fundamentals, pillars]);
 
   const getShareText = useCallback(() => formatTradingModesReview(summary.ticker, reviews), [summary.ticker, reviews]);
 
@@ -209,8 +225,9 @@ export function TradingModesReport({
         )}
         {reviews.map((r) => <TradingModeSection key={r.mode} ticker={summary.ticker} review={r} />)}
         <p className="text-xs leading-relaxed text-(--sv-muted)">
-          Setiap mode hanya memakai indikatornya sendiri. Satu sinyal saja bukan alasan BUY — konfirmasi tidak cukup = WAIT.
-          Data intraday adalah kuotasi tertunda. Target adalah proyeksi, bukan janji profit. Edukasi, bukan ajakan jual/beli.
+          Tiga timeframe terpisah, bukan satu sinyal: INTRADAY = timing hari ini, SWING = setup beberapa hari/minggu,
+          INVESTING = kualitas bisnis + valuasi. BUY hanya bila setup + konfirmasi + Risk Gate valid; belum valid = WAIT.
+          Tidak ada sinyal SELL karena posisi Anda tidak diketahui. Data intraday adalah kuotasi tertunda. Target adalah proyeksi, bukan janji profit. Edukasi, bukan ajakan jual/beli.
         </p>
       </div>
     </Card>
