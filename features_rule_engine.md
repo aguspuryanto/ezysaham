@@ -286,3 +286,455 @@ OUTPUT PRINCIPLE:
 "VALID PLAN > COMPLETE PLAN."
 
 Jangan memaksakan semua field terisi.
+
+----
+PATCH FINAL — EZYSAHAM TRADING PLAN RULE ENGINE V3
+
+TUJUAN:
+Trading Plan harus VALID secara matematis DAN logis.
+Jangan memaksakan Entry/TP/Breakout jika data level tidak cukup.
+
+==================================================
+1. LEVEL ROLE ENGINE
+==================================================
+
+Setiap harga wajib memiliki ROLE:
+
+SUPPORT
+PULLBACK_ENTRY
+VWAP
+EMA_CONFIRMATION
+BREAKOUT_TRIGGER
+TP1
+TP2
+TP3
+INVALIDATION
+
+Jangan menggunakan satu harga untuk dua role berbeda kecuali secara eksplisit valid.
+
+Contoh:
+Resistance 5.500
+→ BREAKOUT_TRIGGER
+
+Resistance berikutnya tidak tersedia
+→ TP1 = DATA TIDAK TERSEDIA
+
+JANGAN:
+Breakout > 5.500
+Target = DATA TIDAK TERSEDIA
+tetapi tetap menyebut setup sebagai valid breakout.
+
+==================================================
+2. LAST RESISTANCE RULE
+==================================================
+
+Jika harga berada dekat resistance tertinggi yang tersedia:
+
+IF resistance_next == NONE:
+
+    BREAKOUT_SETUP = "WAIT — NO TARGET DATA"
+
+    Jangan membuat TP.
+
+    Jangan menghitung R/R.
+
+    Jangan menyatakan breakout sebagai setup executable.
+
+    Status:
+    "WAIT CONFIRMATION"
+
+Setelah breakout terjadi:
+→ tunggu pembentukan resistance baru
+→ jangan mengarang target.
+
+==================================================
+3. BREAKOUT VALIDATION
+==================================================
+
+Breakout hanya EXECUTABLE jika:
+
+BREAKOUT_TRIGGER tersedia
+AND
+TP1 tersedia
+AND
+TP1 > BREAKOUT_TRIGGER
+AND
+volume confirmation valid
+AND
+price action bullish.
+
+Jika:
+
+BREAKOUT_TRIGGER tersedia
+BUT
+TP1 tidak tersedia
+
+maka:
+
+Technical Breakout = "WATCH ONLY"
+
+bukan:
+
+Technical Breakout = "WAIT ENTRY"
+
+==================================================
+4. ENTRY VALIDATION
+==================================================
+
+LONG:
+
+SL < ENTRY < TP1
+
+Jika TP1 tidak tersedia:
+→ Entry tidak boleh dihitung sebagai executable trade.
+
+Jika Entry >= TP1:
+→ INVALID PLAN.
+
+Jika Entry < TP1 tetapi risk/reward < minimum:
+→ WAIT / NO TRADE.
+
+==================================================
+5. RISK/REWARD
+==================================================
+
+R/R hanya dihitung jika:
+
+ENTRY tersedia
+SL tersedia
+TP1 tersedia
+
+Formula:
+
+Risk = ENTRY - SL
+Reward = TP1 - ENTRY
+RR = Reward / Risk
+
+Jika TP1 DATA TIDAK TERSEDIA:
+→ R/R = DATA TIDAK TERSEDIA
+
+Jangan menghasilkan angka R/R.
+
+==================================================
+6. MULTIPLE ENTRY SETUPS
+==================================================
+
+Pisahkan:
+
+A. PULLBACK SETUP
+B. BREAKOUT SETUP
+
+Jangan mencampur keduanya.
+
+Contoh BSSR:
+
+PULLBACK:
+Entry = EMA20 5.082
+SL = valid structural support
+TP = resistance berikutnya 5.500
+
+BREAKOUT:
+Trigger = 5.500
+TP = DATA TIDAK TERSEDIA
+
+Maka:
+
+Pullback Setup = WAIT
+Breakout Setup = WATCH ONLY
+
+Jangan membuat satu trading plan yang mencampur:
+"pullback ke 5.082 ATAU breakout 5.500"
+
+==================================================
+7. EMA = CONFIRMATION, BUKAN OTOMATIS ENTRY
+==================================================
+
+EMA20 dapat digunakan sebagai:
+
+- trend confirmation
+- reclaim confirmation
+- pullback reference
+
+Tetapi jangan otomatis:
+
+EMA20 = Entry
+
+kecuali harga benar-benar melakukan pullback/rejection/reclaim
+di sekitar EMA20.
+
+==================================================
+8. VWAP RULE
+==================================================
+
+Intraday LONG:
+
+Price < VWAP
+→ WAIT / NO TRADE
+
+Price > VWAP
+→ belum otomatis BUY.
+
+Valid confirmation membutuhkan:
+Price > VWAP
++ hold/reclaim
++ bullish price action
++ volume/activity confirmation.
+
+==================================================
+9. RVOL RULE
+==================================================
+
+RVOL hanya mengukur AKTIVITAS.
+
+RVOL tinggi ≠ bullish.
+
+Gunakan:
+
+RVOL + bullish candle + breakout
+→ BUY-SIDE CONFIRMATION
+
+RVOL + bearish candle + rejection
+→ SELLING PRESSURE
+
+RVOL rendah
+→ WEAK CONFIRMATION
+
+==================================================
+10. MOMENTUM RULE
+==================================================
+
+Momentum score harus mempertimbangkan:
+
+VWAP
+EMA structure
+Price Action
+MACD
+RSI
+RVOL
+
+Namun:
+
+MACD negatif + RSI rendah + harga di bawah EMA
+tidak boleh diberi status "Momentum Normal" hanya karena
+satu indikator bullish.
+
+Gunakan:
+
+STRONG BULLISH
+BULLISH
+NEUTRAL
+WEAK
+BEARISH
+
+==================================================
+11. SWING STATUS
+==================================================
+
+Gunakan:
+
+BUY / WAIT / NO TRADE
+
+BUY hanya jika:
+- executable entry tersedia
+- TP1 tersedia
+- SL valid
+- R/R memenuhi minimum
+- trend/price action memenuhi setup.
+
+WAIT jika:
+- setup mungkin valid tetapi confirmation belum terjadi.
+
+NO TRADE jika:
+- struktur berlawanan
+- risk/reward buruk
+- fundamental/technical risk terlalu tinggi
+- tidak ada executable setup.
+
+==================================================
+12. INVESTING STATUS
+==================================================
+
+ACCUMULATE:
+Fundamental sehat + valuation menarik + thesis valid.
+
+HOLD:
+Posisi sudah ada + thesis masih valid.
+
+WAIT:
+Fundamental menarik tetapi valuation/timing belum ideal.
+
+AVOID:
+Fundamental deterioration / valuation tidak menarik / value trap risk tinggi.
+
+Jangan menggunakan HOLD jika sistem tidak mengetahui apakah user
+memiliki saham.
+
+==================================================
+13. FUNDAMENTAL vs TECHNICAL
+==================================================
+
+SELALU PISAHKAN:
+
+Fundamental Quality
+Valuation
+Technical Trend
+Technical Momentum
+Technical Breakout
+Fundamental Rerating
+
+Technical breakout ≠ fundamental rerating.
+
+Fundamental rerating hanya:
+fundamental improvement
++ sustainability
++ valuation room
++ market confirmation.
+
+==================================================
+14. BANK SPECIAL RULE
+==================================================
+
+Untuk bank/financial:
+
+JANGAN menggunakan DER sebagai quality metric utama.
+
+Prioritaskan:
+
+ROE
+NIM
+NPL
+CAR
+CASA
+LDR
+Loan Growth
+Profit Growth
+PER
+PBV
+
+Jika data tidak tersedia:
+DATA TIDAK TERSEDIA.
+
+==================================================
+15. FINAL QA — SEMANTIC VALIDATOR
+==================================================
+
+Selain numerical QA, lakukan semantic QA:
+
+[ ] Apakah BREAKOUT benar-benar resistance?
+[ ] Apakah TP1 benar-benar resistance setelah breakout?
+[ ] Apakah TP bukan resistance yang sama dengan breakout?
+[ ] Apakah Entry executable?
+[ ] Apakah TP1 tersedia?
+[ ] Apakah SL berada di sisi yang benar?
+[ ] Apakah R/R dapat dihitung?
+[ ] Apakah VWAP logic konsisten?
+[ ] Apakah EMA digunakan sebagai confirmation/reference?
+[ ] Apakah RVOL tidak dianggap directional?
+[ ] Apakah Technical Breakout dipisahkan dari Fundamental Rerating?
+[ ] Apakah tidak ada level yang diarang?
+[ ] Apakah status sesuai dengan kondisi setup?
+
+==================================================
+16. INVALID PLAN HANDLER
+==================================================
+
+Jika validator gagal:
+
+JANGAN hanya menulis:
+
+"INVALID PLAN"
+
+Tetapi:
+
+1. Identifikasi error
+2. Hapus level invalid
+3. Regenerate dari data valid
+4. Jika tidak bisa → tampilkan DATA TIDAK TERSEDIA
+5. Ubah status menjadi WAIT / NO TRADE.
+
+==================================================
+17. NO ARTIFICIAL TARGET
+==================================================
+
+MASTER RULE:
+
+"VALID PLAN > COMPLETE PLAN"
+
+Lebih baik:
+
+TP1 = DATA TIDAK TERSEDIA
+
+daripada:
+
+TP1 = angka hasil tebakan.
+
+Lebih baik:
+
+BREAKOUT = WATCH ONLY
+
+daripada:
+
+BREAKOUT = WAIT dengan R/R palsu.
+
+==================================================
+18. FINAL OUTPUT RULE
+==================================================
+
+Jika tidak ada executable setup:
+
+Jangan menulis:
+
+"entry hanya valid jika..."
+
+Gunakan:
+
+"Belum ada executable setup.
+Tunggu kondisi berikut: ..."
+
+Jika ada executable setup:
+
+Tampilkan:
+
+ENTRY
+SL
+TP1
+R/R
+TRIGGER
+INVALIDATION
+
+==================================================
+19. KESIMPULAN
+==================================================
+
+Kesimpulan harus mengikuti STATUS aktual.
+
+Jika:
+Fundamental bagus
+Technical bullish
+tetapi breakout belum valid
+
+→ "Fundamental sehat, tetapi technical entry belum terkonfirmasi."
+
+Jika:
+Fundamental buruk
+Technical bearish
+
+→ "Fundamental dan technical sama-sama lemah; tidak ada setup."
+
+JANGAN membuat kesimpulan seperti:
+
+"menarik ... tetapi entry hanya valid jika Tidak ada entry"
+
+Ini adalah OUTPUT BUG dan wajib diperbaiki.
+
+==================================================
+MASTER PRINCIPLE
+==================================================
+
+JANGAN MEMAKSA SAHAM MEMILIKI TRADING PLAN.
+
+Sistem harus mampu mengatakan:
+
+"NO EXECUTABLE SETUP"
+
+jika data memang belum memberikan edge.
