@@ -32,6 +32,8 @@ export interface StockHeaderData {
   high: number | null;
   low: number | null;
   volume: number | null;
+  /** Unix seconds (UTC) of the live Yahoo quote behind `price`; null = price from the (cached) daily snapshot. */
+  quoteTime: number | null;
 }
 
 export interface TechnicalItem {
@@ -167,6 +169,7 @@ export function useStockDetail(ticker: string) {
       high: lastBar?.high ?? summary.high ?? null,
       low: lastBar?.low ?? summary.low ?? null,
       volume: lastBar?.volume ?? summary.volume ?? null,
+      quoteTime: base.liveQuoteTime,
     };
 
     // ── Technical summary (labels on top of existing engine outputs) ──
@@ -326,10 +329,15 @@ export function useStockDetail(ticker: string) {
       { label: '1Y', value: summary.percentChange1Y },
     ];
 
-    const chartBars = chartHistory?.ticker === ticker && chartHistory.bars.length >= bars.length ? chartHistory.bars : bars;
+    const historyBars = chartHistory?.ticker === ticker && chartHistory.bars.length >= bars.length ? chartHistory.bars : bars;
+    // The 2y chart history is fetched once; carry the live-patched last bar over so the chart matches the header price.
+    const chartLast = historyBars[historyBars.length - 1];
+    const chartBars = historyBars === bars || !lastBar || !chartLast || lastBar.date < chartLast.date
+      ? historyBars
+      : lastBar.date === chartLast.date ? [...historyBars.slice(0, -1), lastBar] : [...historyBars, lastBar];
 
     return { header, chartBars, technical, insight, snapshot, keyLevels, fundamental, flow, performance };
-  }, [summary, analysis, bars, verdict, bandar, fundamentals, brokerActivity, chartHistory, ticker]);
+  }, [summary, analysis, bars, verdict, bandar, fundamentals, brokerActivity, chartHistory, ticker, base.liveQuoteTime]);
 
   return {
     status: base.status,

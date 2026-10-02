@@ -1,6 +1,6 @@
 import { fetchYahooDailyBars } from '@/data/external/yahooFinance';
 
-export const revalidate = 1800; // 30 minutes cache
+export const revalidate = 60; // 1 minute — today's bar is live during market hours (client also patches via /intraday)
 
 export async function GET(
   request: Request,
@@ -20,7 +20,7 @@ export async function GET(
   const result = await fetchYahooDailyBars(code, range);
   return Response.json(result, {
     headers: {
-      'Cache-Control': 'public, max-age=1800, stale-while-revalidate=3600',
+      'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
     },
   });
 }

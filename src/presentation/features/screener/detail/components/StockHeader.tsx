@@ -19,6 +19,16 @@ function useMarketOpen() {
   return open;
 }
 
+const WIB_TIME = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false });
+const WIB_DAY = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short' });
+
+/** "10.42 WIB", or "2 Okt 15.59 WIB" when the quote is not from today (WIB). */
+function formatQuoteTime(unixSec: number): string {
+  const d = new Date(unixSec * 1000);
+  const sameDay = WIB_DAY.format(d) === WIB_DAY.format(new Date());
+  return `${sameDay ? '' : `${WIB_DAY.format(d)} `}${WIB_TIME.format(d)} WIB`;
+}
+
 export function StockHeader({
   stock,
   watchlisted,
@@ -77,6 +87,20 @@ export function StockHeader({
             </div>
           ))}
         </dl>
+        {stock.quoteTime != null && (
+          <span
+            className="inline-flex items-center gap-1.5 text-xs text-(--sv-muted)"
+            title="Harga dari kuotasi Yahoo Finance (tertunda ±10–15 menit), diperbarui tiap 1 menit saat market buka."
+          >
+            {marketOpen && (
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-60 motion-reduce:animate-none" />
+                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
+            {marketOpen ? 'Live · update ' : 'Update '}{formatQuoteTime(stock.quoteTime)}
+          </span>
+        )}
       </div>
 
       {/* Actions */}

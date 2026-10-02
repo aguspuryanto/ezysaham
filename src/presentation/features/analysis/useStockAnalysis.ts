@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OHLCVBar } from '@/domain/models/History';
+import { IntradayResponse } from '@/domain/models/Intraday';
+import { getIdxSessionStatus } from '@/domain/market/tradingSession';
 import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
@@ -9,7 +11,7 @@ import { BrokerActivityDetail } from '@/domain/models/BrokerSummary';
 import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { computeDataFreshness, DataFreshness } from '@/domain/analysis/dataFreshness';
 import { BreakoutScores, computeBreakoutScores } from '@/domain/screener/presets';
-import { getStockBrokerActivity, getStockFundamentals, getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
+import { getStockBrokerActivity, getStockFundamentals, getStockHistory, getStockIntraday, getStockSummaries } from '@/data/repositories/StockRepository';
 import { getStockNews, processNewsSummary } from '@/data/repositories/newsRepository';
 import { StockNewsItem, NewsSentimentSummary, AiStockAdvisor } from '@/domain/models/News';
 import {
@@ -44,6 +46,8 @@ export interface UseStockAnalysisResult {
    *  never coerced to zero. */
   brokerActivity: BrokerActivityDetail | null;
   brokerActivityLoading: boolean;
+  /** Unix seconds (UTC) of the last live quote applied (Yahoo regularMarketTime). Null until the first quote arrives. */
+  liveQuoteTime: number | null;
   reload: (forceRefresh?: boolean) => Promise<void>;
 }
 
@@ -55,6 +59,62 @@ const EMPTY_NEWS_SUMMARY: NewsSentimentSummary = {
   netSentimentScore: 50,
   overallSentiment: 'neutral',
 };
+
+/** Live-quote poll interval while IDX is open — matches the /intraday route's 60s cache. */
+const LIVE_QUOTE_INTERVAL_MS = 60 * 1000;
+const WIB_OFFSET_SEC = 7 * 60 * 60;
+
+/**
+ * Patches the last daily bar + summary price with Yahoo's live quote (meta.regularMarketPrice from the 1m feed).
+ * The daily-history route and the client analysis cache are both cached for minutes, so without this the detail
+ * page keeps showing yesterday's close / a stale price during market hours. Returns null when nothing changed.
+ */
+export function applyLiveQuote(
+  summary: StockSummary,
+  bars: OHLCVBar[],
+  q: IntradayResponse,
+): { summary: StockSummary; bars: OHLCVBar[] } | null {
+  const price = q.lastPrice;
+  const time = q.lastPriceTime ?? q.bars[q.bars.length - 1]?.time;
+  if (!q.ok || price == null || !Number.isFinite(price) || price <= 0 || time == null || bars.length === 0) return null;
+
+  const day = new Date((time + WIB_OFFSET_SEC) * 1000).toISOString().slice(0, 10);
+  const last = bars[bars.length - 1];
+  if (day < last.date) return null;
+
+  const prices = q.bars.map((b) => b.price);
+  const sessionHigh = Math.max(price, ...prices);
+  const sessionLow = Math.min(price, ...prices);
+  const sessionVolume = q.bars.reduce((sum, b) => sum + b.volume, 0);
+
+  let liveBar: OHLCVBar;
+  let next: OHLCVBar[];
+  if (day === last.date) {
+    liveBar = {
+      ...last,
+      close: price,
+      high: Math.max(last.high, sessionHigh),
+      low: Math.min(last.low, sessionLow),
+      volume: Math.max(last.volume, sessionVolume),
+    };
+    if (liveBar.close === last.close && liveBar.high === last.high && liveBar.low === last.low && liveBar.volume === last.volume) return null;
+    next = [...bars.slice(0, -1), liveBar];
+  } else {
+    liveBar = { date: day, open: q.bars[0]?.price ?? price, high: sessionHigh, low: sessionLow, close: price, volume: sessionVolume };
+    next = [...bars, liveBar];
+  }
+
+  const prevClose = next.length > 1 ? next[next.length - 2].close : summary.prevClose;
+  return {
+    summary: {
+      ...summary,
+      lastClose: price,
+      prevClose,
+      percentChange1D: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : summary.percentChange1D,
+    },
+    bars: next,
+  };
+}
 
 /**
  * Fetches + computes everything needed to render a single ticker's full
@@ -176,6 +236,37 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
 
   useEffect(() => { load(false); }, [load]);
 
+  // Live price: once the (possibly cached) snapshot is ready, patch it with Yahoo's live quote immediately, then
+  // every minute while IDX is open. Analysis is recomputed from the patched bars so levels/plans follow the price.
+  const [liveQuote, setLiveQuote] = useState<{ ticker: string; time: number } | null>(null);
+  const latest = useRef({ summary, bars });
+  useEffect(() => { latest.current = { summary, bars }; }, [summary, bars]);
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const code = ticker.toUpperCase();
+    let cancelled = false;
+    const tick = async () => {
+      const q = await getStockIntraday(code);
+      const { summary: s, bars: b } = latest.current;
+      if (cancelled || !s || s.ticker !== code) return;
+      const quoteTime = q.ok && q.lastPrice != null ? (q.lastPriceTime ?? q.bars[q.bars.length - 1]?.time ?? null) : null;
+      if (quoteTime != null) setLiveQuote({ ticker: code, time: quoteTime });
+      const patched = applyLiveQuote(s, b, q);
+      if (!patched) return;
+      setSummary(patched.summary);
+      setBars(patched.bars);
+      setAnalysis(computeStockAnalysis(patched.summary, patched.bars));
+    };
+    tick();
+    const id = setInterval(() => {
+      if (getIdxSessionStatus(new Date()).isOpen) tick();
+    }, LIVE_QUOTE_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [status, ticker]);
+
   // Dividend/balance-sheet detail is fetched separately from the summary/bars/news
   // pipeline above: it's not part of the instant-cache shape (it changes slowly and
   // the API route itself is cached 6h server-side), so it loads independently and
@@ -249,6 +340,7 @@ export function useStockAnalysis(ticker: string): UseStockAnalysisResult {
     fundamentalsLoading,
     brokerActivity,
     brokerActivityLoading,
+    liveQuoteTime: liveQuote?.ticker === ticker.toUpperCase() ? liveQuote.time : null,
     reload: load,
   };
 }
