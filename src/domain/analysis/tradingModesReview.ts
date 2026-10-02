@@ -68,24 +68,65 @@ export interface PlanLevels {
   entry: number | null;
   tp1: number | null;
   tp2: number | null;
+  tp3?: number | null;
   sl: number | null;
+  /** Breakout trigger (a validated resistance), when the plan is a breakout plan. Must sit below TP1 (LONG). */
+  breakout?: number | null;
+}
+
+export interface PlanQaCheck {
+  label: string;
+  /** null = level not available → check skipped (never a pass by invention). */
+  ok: boolean | null;
+  detail?: string;
 }
 
 /**
- * Hard validation — a plan whose targets/stop sit on the wrong side of entry is INVALID, never shown as a trade.
- *   LONG:  TP1 > ENTRY, TP2 > TP1, SL < ENTRY
- *   SHORT: TP1 < ENTRY, TP2 < TP1, SL > ENTRY
- * Missing levels are not violations (they render "N/A"). Returns the violated rules; empty = valid.
+ * Rule-engine target selection (features_rule_engine.md §1–3): targets are validated resistances strictly above the
+ * highest of entry/breakout, de-duplicated (same tick = one level) and strictly increasing. Never pads TP2/TP3 —
+ * missing levels stay null.
  */
-export function validatePlanLevels(l: PlanLevels | undefined): string[] {
+export function pickTargets(levelsAbove: number[], floor: number, count = 3): number[] {
+  const out: number[] = [];
+  for (const r of [...levelsAbove].filter((x) => valid(x) && x > floor).sort((a, b) => a - b)) {
+    const t = roundToTick(r);
+    if (t > floor && (out.length === 0 || t > out[out.length - 1])) out.push(t);
+    if (out.length === count) break;
+  }
+  return out;
+}
+
+/**
+ * FINAL QA VALIDATOR (features_rule_engine.md §10). LONG:
+ *   Entry < TP1 · TP1 < TP2 < TP3 · SL < Entry · Breakout < TP1 · no duplicate TP · breakout trigger is not a target.
+ * SHORT mirrors the inequalities. Checks on missing levels are skipped (ok: null).
+ */
+export function planQaChecks(l: PlanLevels | undefined): PlanQaCheck[] {
   if (!l || !valid(l.entry)) return [];
   const { entry, tp1, tp2, sl } = l;
+  const tp3 = l.tp3 ?? null;
+  const bo = l.breakout ?? null;
   const long = l.side === 'LONG';
-  const errors: string[] = [];
-  if (valid(tp1) && (long ? tp1 <= entry : tp1 >= entry)) errors.push(`TP1 ${rp(tp1)} ${long ? '≤' : '≥'} Entry ${rp(entry)}`);
-  if (valid(tp1) && valid(tp2) && (long ? tp2 <= tp1 : tp2 >= tp1)) errors.push(`TP2 ${rp(tp2)} ${long ? '≤' : '≥'} TP1 ${rp(tp1)}`);
-  if (valid(sl) && (long ? sl >= entry : sl <= entry)) errors.push(`SL ${rp(sl)} ${long ? '≥' : '≤'} Entry ${rp(entry)}`);
-  return errors;
+  const above = (a: number, b: number) => (long ? a > b : a < b);
+  const has = (...xs: Array<number | null>) => xs.every((x) => valid(x));
+  const tps = [tp1, tp2, tp3].filter((x): x is number => valid(x));
+  return [
+    { label: `Entry ${long ? '<' : '>'} TP1`, ok: has(tp1) ? above(tp1!, entry) : null, detail: `${rp(entry)} vs ${rp(tp1)}` },
+    { label: `TP1 ${long ? '<' : '>'} TP2`, ok: has(tp1, tp2) ? above(tp2!, tp1!) : null, detail: `${rp(tp1)} vs ${rp(tp2)}` },
+    { label: `TP2 ${long ? '<' : '>'} TP3`, ok: has(tp2, tp3) ? above(tp3!, tp2!) : null, detail: `${rp(tp2)} vs ${rp(tp3)}` },
+    { label: `SL ${long ? '<' : '>'} Entry`, ok: has(sl) ? above(entry, sl!) : null, detail: `${rp(sl)} vs ${rp(entry)}` },
+    { label: `Breakout ${long ? '<' : '>'} TP1`, ok: has(bo, tp1) ? above(tp1!, bo!) : null, detail: `${rp(bo)} vs ${rp(tp1)}` },
+    { label: 'Tidak ada TP duplikat', ok: tps.length > 1 ? new Set(tps.map(Math.round)).size === tps.length : null },
+    { label: 'Breakout trigger bukan target', ok: has(bo) && tps.length > 0 ? !tps.some((t) => Math.round(t) === Math.round(bo!)) : null },
+  ];
+}
+
+/**
+ * Hard validation — a plan whose levels break the hierarchy is INVALID PLAN, never shown as a trade.
+ * Returns the failed QA checks as text; empty = valid. Missing levels are not violations.
+ */
+export function validatePlanLevels(l: PlanLevels | undefined): string[] {
+  return planQaChecks(l).filter((c) => c.ok === false).map((c) => (c.detail ? `${c.label} gagal (${c.detail})` : `${c.label} gagal`));
 }
 
 const rp = (n: number | null | undefined) => (n != null && Number.isFinite(n) && n > 0 ? formatRupiah(Math.round(n)) : NA);
@@ -110,6 +151,8 @@ const RVOL_RISING_X = 1.2;
 /** Price more than this % above VWAP is extended — wait for a pullback instead of chasing. */
 const INTRADAY_EXTENDED_PCT = 2;
 const INTRADAY_MIN_RR = 1.5;
+/** "Reclaim VWAP + hold": the last N one-minute bars must all close above VWAP (features_rule_engine.md §5). */
+const VWAP_HOLD_BARS = 5;
 const INTRADAY_MAX_RISK_PCT = 2.5;
 
 export interface IntradayModeInput {
@@ -185,22 +228,29 @@ export function buildIntradayModeReview({ bars, lastClose, lastPrice, resistance
     else if (d < 0) downVol += b[i].volume;
   }
   const sellingPressure = downVol > upVol * 1.2 && (volumeRising || lowerLow);
+  // RVOL is activity, not direction (§6): high RVOL only confirms a LONG when up-tick volume dominates.
+  const buyVolume = volumeRising && upVol > downVol;
 
   const aboveVwap = price > vwap * (1 + VWAP_BAND);
   const belowVwap = price < vwap * (1 - VWAP_BAND);
   const vwapDistPct = ((price - vwap) / vwap) * 100;
   const extended = vwapDistPct > INTRADAY_EXTENDED_PCT;
+  const holdsVwap = b.slice(-VWAP_HOLD_BARS).every((x) => x.price > vwap);
 
   // Entry reference = the highest level still to be reclaimed (VWAP, then the session-high breakout) — never below price.
   // Target = nearest resistance ABOVE that entry, so a "breakout > X" plan never targets a level below X.
   const breakoutPending = !(breakout || higherHigh);
   const entryRef = Math.max(price, !aboveVwap ? vwap : 0, breakoutPending ? priorSessionHigh : 0);
-  const targetCandidates = [...new Set([priorSessionHigh, ...resistances].filter((r) => valid(r) && r > entryRef * (1 + VWAP_BAND)))].sort((x, y) => x - y);
-  const target = targetCandidates.length > 0 ? roundToTick(targetCandidates[0]) : null;
-  const target2 = targetCandidates.length > 1 ? roundToTick(targetCandidates[1]) : null;
+  // Breakout trigger = the session high still to be broken (a real resistance); targets are the resistances above it.
+  const targets = pickTargets([priorSessionHigh, ...resistances], entryRef * (1 + VWAP_BAND));
+  const target = targets[0] ?? null;
+  const target2 = targets[1] ?? null;
   const stop = roundToTick(Math.max(vwap, recentLow) * 0.997);
   const { riskPct, rr } = riskReward(entryRef, stop, target);
-  const levels: PlanLevels = { side: 'LONG', entry: roundToTick(entryRef), tp1: target, tp2: target2, sl: stop };
+  const levels: PlanLevels = {
+    side: 'LONG', entry: roundToTick(entryRef), tp1: target, tp2: target2, tp3: targets[2] ?? null, sl: stop,
+    breakout: breakoutPending ? roundToTick(priorSessionHigh) : null,
+  };
   const gateOk = !extended && target != null && rr != null && rr >= INTRADAY_MIN_RR && riskPct > 0 && riskPct <= INTRADAY_MAX_RISK_PCT;
 
   const structure = higherHigh ? 'Higher High / Higher Low' : lowerLow ? 'Lower High / Lower Low' : 'Sideways';
@@ -214,7 +264,10 @@ export function buildIntradayModeReview({ bars, lastClose, lastPrice, resistance
 
   const signals = [
     aboveVwap ? 'Harga di atas VWAP — pembeli menguasai sesi.' : belowVwap ? 'Harga di bawah VWAP — penjual menguasai sesi.' : 'Harga menempel VWAP — belum ada pihak dominan.',
-    volumeRising ? `Volume ${INTRADAY_WINDOW} menit terakhir meningkat (RVOL ${rvol!.toFixed(2)}×).` : `Volume ${INTRADAY_WINDOW} menit terakhir belum meningkat (RVOL ${rvol != null ? `${rvol.toFixed(2)}×` : NA}).`,
+    volumeRising
+      ? (buyVolume ? `Volume ${INTRADAY_WINDOW} menit terakhir meningkat (RVOL ${rvol!.toFixed(2)}×) dengan dominasi up-tick — konfirmasi positif.`
+        : `RVOL ${rvol!.toFixed(2)}× tinggi tetapi volume down-tick ≥ up-tick — aktivitas tinggi bukan berarti beli; waspada tekanan jual.`)
+      : `Volume ${INTRADAY_WINDOW} menit terakhir belum meningkat (RVOL ${rvol != null ? `${rvol.toFixed(2)}×` : NA}).`,
     breakout ? `Breakout: harga menembus high sesi sebelumnya ${rp(priorSessionHigh)}.`
       : higherHigh ? 'Momentum naik: Higher High / Higher Low terbentuk.'
         : lowerLow ? 'Momentum turun: Lower High / Lower Low.'
@@ -224,8 +277,9 @@ export function buildIntradayModeReview({ bars, lastClose, lastPrice, resistance
   if (sellingPressure) signals.push('Volume down-tick lebih besar dari up-tick — tekanan jual meningkat.');
 
   const trend = aboveVwap ? 'Bullish intraday (di atas VWAP)' : belowVwap ? 'Bearish intraday (di bawah VWAP)' : 'Netral (di sekitar VWAP)';
-  const setupOk = aboveVwap && (breakout || higherHigh);
-  const confirmation = `${check(volumeRising)} RVOL ≥ ${RVOL_RISING_X}× · ${check(aboveVwap)} bertahan > VWAP · ${check(breakout || higherHigh)} breakout/Higher High`;
+  // LONG confirmation = reclaim VWAP + hold + bullish price action + volume (§5) — price > VWAP alone is never BUY.
+  const setupOk = aboveVwap && holdsVwap && (breakout || higherHigh);
+  const confirmation = `${check(aboveVwap)} reclaim VWAP · ${check(holdsVwap)} hold > VWAP ${VWAP_HOLD_BARS} menit · ${check(breakout || higherHigh)} breakout/Higher High · ${check(buyVolume)} RVOL ≥ ${RVOL_RISING_X}× + up-tick dominan`;
   const targetText = target != null
     ? `${rp(target)} (resistance terdekat di atas entry ${rp(entryRef)}${target === roundToTick(priorSessionHigh) ? ' — high sesi' : ''})${target2 != null ? ` · berikutnya ${rp(target2)}` : ''}`
     : `${NA} — tidak ada resistance di atas level entry ${rp(entryRef)}`;
@@ -252,7 +306,7 @@ export function buildIntradayModeReview({ bars, lastClose, lastPrice, resistance
     };
   }
 
-  if (setupOk && volumeRising && gateOk) {
+  if (setupOk && buyVolume && gateOk) {
     return {
       mode: 'INTRADAY', decision: 'BUY', headline: { label: 'Trend', value: trend }, data,
       fields: fields(
@@ -260,18 +314,19 @@ export function buildIntradayModeReview({ bars, lastClose, lastPrice, resistance
         `${rp(stop)} (di bawah VWAP / low ${INTRADAY_WINDOW} menit)`,
         `${gateText} · data intraday tertunda, konfirmasi di chart.`,
       ),
-      reason: 'Harga > VWAP + breakout/Higher High + volume meningkat + Risk Gate valid → BUY.',
+      reason: 'Reclaim & hold VWAP + breakout/Higher High + volume beli meningkat + Risk Gate valid → BUY.',
       missing: [],
       levels,
     };
   }
 
   const pending = [
-    !aboveVwap && 'harga > VWAP',
+    !aboveVwap && `reclaim VWAP ${rp(vwap)}`,
+    aboveVwap && !holdsVwap && `hold > VWAP ${VWAP_HOLD_BARS} menit`,
     !(breakout || higherHigh) && `breakout di atas ${rp(priorSessionHigh)} / Higher High`,
-    !volumeRising && `RVOL ≥ ${RVOL_RISING_X}×`,
+    !buyVolume && `RVOL ≥ ${RVOL_RISING_X}× dengan up-tick dominan`,
     extended && `pullback ke area VWAP ${rp(vwap)}`,
-    !extended && setupOk && volumeRising && !gateOk && 'Risk Gate (target/R/R/risiko) valid',
+    !extended && setupOk && buyVolume && !gateOk && 'Risk Gate (target/R/R/risiko) valid',
   ].filter(Boolean);
   return {
     mode: 'INTRADAY', decision: 'WAIT', headline: { label: 'Trend', value: trend }, data,
@@ -417,11 +472,16 @@ export function buildSwingModeReview(input: SwingModeInput): ModeReview {
   // Below EMA20 the plan only starts once EMA20 is reclaimed — so EMA20 is the entry trigger and TP1/TP2 must sit above it
   // (a resistance between price and EMA20 is a first hurdle, not a target).
   const trigger = price < ema20 ? ema20 : price;
-  const targets = levelsAbove.filter((r) => r > trigger);
+  const targets = pickTargets(levelsAbove, trigger);
   const tp1 = targets[0] ?? null;
   const tp2 = targets[1] ?? null;
+  // Pending breakout path: its first target is the resistance ABOVE the breakout level, never one below it (§3).
+  const breakoutTp = breakoutLevel != null ? (pickTargets(levelsAbove, breakoutLevel, 1)[0] ?? null) : null;
   const { riskPct, rr } = riskReward(trigger, sl, tp1);
-  const levels: PlanLevels = { side: 'LONG', entry: roundToTick(trigger), tp1, tp2, sl };
+  const levels: PlanLevels = {
+    side: 'LONG', entry: roundToTick(trigger), tp1, tp2, tp3: targets[2] ?? null, sl,
+    breakout: setup === 'breakout' && breakoutLevel != null ? roundToTick(breakoutLevel) : null,
+  };
   const gateOk = !extended && tp1 != null && rr != null && rr >= SWING_MIN_RR && riskPct > 0 && riskPct <= SWING_MAX_RISK_PCT && aboveEma200 !== false;
 
   const confirmation = `${check(volumeOk)} RVOL ≥ ${minRvol}× + candle hijau · ${macd == null ? `MACD ${NA}` : `${check(macd > 0)} MACD hist > 0`} · ${rsi == null ? `RSI ${NA}` : `${check(!rsiOverbought)} RSI < ${RSI_OVERBOUGHT}`}`;
@@ -468,7 +528,7 @@ export function buildSwingModeReview(input: SwingModeInput): ModeReview {
   const pending = [
     !stacked && (price < ema20 ? `close > EMA20 ${rp(ema20)}${ema20 > ema50 ? '' : ' + EMA20 > EMA50'}` : 'harga > EMA20 > EMA50'),
     aboveEma200 === false && 'harga > EMA200',
-    stacked && setup == null && `pullback ke ${rp(pullbackRef)}${breakoutLevel != null ? ` atau breakout > ${rp(breakoutLevel)}` : ''}`,
+    stacked && setup == null && `pullback ke ${rp(pullbackRef)}${breakoutLevel != null ? ` atau breakout > ${rp(breakoutLevel)} (target ${breakoutTp != null ? rp(breakoutTp) : `${NA} — tidak ada resistance di atasnya`})` : ''}`,
     !volumeOk && `RVOL ≥ ${minRvol}× + candle hijau`,
     !macdOk && 'MACD hist > 0',
     rsiOverbought && `RSI turun < ${RSI_OVERBOUGHT}`,

@@ -42,6 +42,9 @@ import {
   ModeField,
   ModeReview,
   NA,
+  pickTargets,
+  PlanQaCheck,
+  planQaChecks,
   validatePlanLevels,
 } from '@/domain/analysis/tradingModesReview';
 import { ema, lastValid } from '@/domain/indicators/movingAverages';
@@ -156,14 +159,48 @@ function pricePosition(price: number, low: number, high: number): string {
   return `Tengah range (${pctTxt})`;
 }
 
-function momentumOf(rsi: number, macdHist: number, rvol: number): Momentum {
-  const r = finite(rsi) ? rsi : 50;
-  const m = finite(macdHist) ? macdHist : 0;
-  const v = finite(rvol) ? rvol : 1;
-  if (r >= 55 && m > 0 && v >= 1.2) return 'Strong';
-  if (r < 45 && m < 0) return 'Weak';
-  return 'Normal';
+interface MomentumFactor { label: string; vote: 1 | 0 | -1 | null; text: string }
+
+/**
+ * Momentum = Price vs VWAP + EMA structure + candle + MACD + RSI + RVOL (features_rule_engine.md §7) — never one indicator.
+ * RVOL carries no direction by itself (§6): high RVOL only votes with the candle (green = konfirmasi, red = tekanan jual).
+ * Strong needs ≥ 4 net bullish votes with no red candle; Weak = net ≤ −2. Missing inputs are skipped, not guessed.
+ */
+function momentumOf(i: {
+  price: number; vwap: number | null; ema20: number; ema50: number;
+  candle: 'green' | 'red' | 'doji'; macdHist: number; rsi: number; rvol: number;
+}): { momentum: Momentum; score: number; factors: MomentumFactor[] } {
+  const highRvol = finite(i.rvol) && i.rvol >= 1.2;
+  const factors: MomentumFactor[] = [
+    i.vwap != null
+      ? { label: 'VWAP', vote: i.price > i.vwap ? 1 : i.price < i.vwap ? -1 : 0, text: i.price > i.vwap ? 'harga > VWAP' : i.price < i.vwap ? 'harga < VWAP' : 'harga = VWAP' }
+      : { label: 'VWAP', vote: null, text: NO_DATA },
+    valid(i.ema20) && valid(i.ema50)
+      ? (i.price > i.ema20 && i.ema20 > i.ema50 ? { label: 'EMA', vote: 1, text: 'harga > EMA20 > EMA50' }
+        : i.price < i.ema20 && i.ema20 < i.ema50 ? { label: 'EMA', vote: -1, text: 'harga < EMA20 < EMA50' }
+          : { label: 'EMA', vote: 0, text: 'EMA campur' })
+      : { label: 'EMA', vote: null, text: NO_DATA },
+    { label: 'Candle', vote: i.candle === 'green' ? 1 : i.candle === 'red' ? -1 : 0, text: i.candle === 'green' ? 'hijau' : i.candle === 'red' ? 'merah' : 'doji' },
+    finite(i.macdHist)
+      ? { label: 'MACD', vote: i.macdHist > 0 ? 1 : i.macdHist < 0 ? -1 : 0, text: `hist ${fmtNum(i.macdHist, 2)}` }
+      : { label: 'MACD', vote: null, text: NO_DATA },
+    finite(i.rsi)
+      ? { label: 'RSI', vote: i.rsi >= 55 ? 1 : i.rsi <= 45 ? -1 : 0, text: fmtNum(i.rsi, 1) }
+      : { label: 'RSI', vote: null, text: NO_DATA },
+    !finite(i.rvol) ? { label: 'RVOL', vote: null, text: NO_DATA }
+      : !highRvol ? { label: 'RVOL', vote: 0, text: `${fmtMultiple(i.rvol, 2)} — aktivitas normal` }
+        : i.candle === 'green' ? { label: 'RVOL', vote: 1, text: `${fmtMultiple(i.rvol, 2)} + candle hijau — konfirmasi positif` }
+          : i.candle === 'red' ? { label: 'RVOL', vote: -1, text: `${fmtMultiple(i.rvol, 2)} + candle merah — tekanan jual` }
+            : { label: 'RVOL', vote: 0, text: `${fmtMultiple(i.rvol, 2)} + doji — aktivitas tinggi, arah belum jelas` },
+  ];
+  const score = factors.reduce((sum, f) => sum + (f.vote ?? 0), 0);
+  const momentum: Momentum = score >= 4 && i.candle !== 'red' ? 'Strong' : score <= -2 ? 'Weak' : 'Normal';
+  return { momentum, score, factors };
 }
+
+/** Compact QA line: "✓ Entry < TP1 · ✗ SL < Entry · – TP2 < TP3". */
+const qaText = (checks: PlanQaCheck[]) =>
+  (checks.length === 0 ? NO_DATA : checks.map((c) => `${c.ok == null ? '–' : c.ok ? '✓' : '✗'} ${c.label}`).join(' · '));
 
 const changeSignal = (c: FundamentalAccelerationResult['change']): AccelSignal =>
   (c === 'POSITIF' ? 'green' : c === 'NEGATIF' ? 'red' : c === 'NETRAL' ? 'yellow' : 'na');
@@ -358,7 +395,11 @@ export function Trading1MinutesReport({
     const health = HEALTH_SIGNAL[pillars.health.verdict];
     const valuation = VALUATION_SIGNAL[pillars.valuation.verdict];
     const trend = trendEma.trend;
-    const momentum = momentumOf(indicators.rsi14, indicators.macdHistogram, volume.relativeVolume);
+    const momentumRead = momentumOf({
+      price, vwap, ema20, ema50: trendEma.ema50, candle: priceAction.lastCandleColor,
+      macdHist: indicators.macdHistogram, rsi: indicators.rsi14, rvol: volume.relativeVolume,
+    });
+    const momentum = momentumRead.momentum;
     const intradayStatus = toTradeStatus(intradayReview);
     const swingStatus = toTradeStatus(swingReview);
     const baseInvestStatus = toInvestStatus(investingReview.decision);
@@ -374,9 +415,11 @@ export function Trading1MinutesReport({
     // TP1/TP2 = resistance di atas level konfirmasi tertinggi. Target never sits at/below the entry trigger.
     const emaReclaim = valid(ema20) && ema20 > price ? ema20 : null;
     const keyEntry = Math.max(resistance ?? 0, emaReclaim ?? 0) || null;
-    const keyTargets = valid(keyEntry) ? resistances.filter((r) => valid(r) && r > keyEntry) : [];
+    // Targets: validated resistances strictly above the trigger, de-duplicated, never padded (§1–2).
+    const keyTargets = valid(keyEntry) ? pickTargets(resistances, keyEntry) : [];
     const keyTp1 = keyTargets[0] ?? null;
     const keyTp2 = keyTargets[1] ?? null;
+    const keyTp3 = keyTargets[2] ?? null;
 
     const accZone = valid(pillars.valuation.accumulationLow) && valid(pillars.valuation.accumulationHigh)
       ? `${fmtRp(pillars.valuation.accumulationLow)} – ${fmtRp(pillars.valuation.accumulationHigh)}`
@@ -398,7 +441,13 @@ export function Trading1MinutesReport({
       ? (Math.round(deepLow) === Math.round(deepHigh) ? fmtRp(deepHigh) : `${fmtRp(deepLow)} – ${fmtRp(deepHigh)}`)
       : NO_DATA;
     const deepSl = longValid ? long.sl : null;
-    const keyErrors = validatePlanLevels({ side: 'LONG', entry: keyEntry, tp1: keyTp1, tp2: keyTp2, sl: deepSl ?? support });
+    const keyLevels = { side: 'LONG' as const, entry: keyEntry, tp1: keyTp1, tp2: keyTp2, tp3: keyTp3, sl: deepSl ?? support, breakout: resistance };
+    const keyErrors = validatePlanLevels(keyLevels);
+    const qa: Array<{ name: string; checks: PlanQaCheck[] }> = [
+      { name: '⚡ Intraday', checks: planQaChecks(intradayReview.levels) },
+      { name: '📈 Swing', checks: planQaChecks(swingReview.levels) },
+      { name: '🎯 Key Level', checks: planQaChecks(keyLevels) },
+    ];
     const fundamentalBroken = health.signal === 'red' || baseInvestStatus === 'AVOID';
     const entries: EntryType[] = [
       {
@@ -428,7 +477,7 @@ export function Trading1MinutesReport({
         basis: 'Technical breakout — bukan konfirmasi fundamental rerating',
         invalidation: valid(resistance) ? `Close kembali < ${fmtRp(resistance)} (false breakout).` : NO_DATA,
         note: keyErrors.length > 0 ? `INVALID PLAN — ${keyErrors.join(' · ')}.`
-          : valid(keyTp1) ? `Target ${fmtRp(keyTp1)}${valid(keyTp2) ? ` → ${fmtRp(keyTp2)}` : ''} (di atas level ${fmtRp(keyEntry)}).`
+          : valid(keyTp1) ? `Target ${[keyTp1, keyTp2, keyTp3].filter(valid).map(fmtRp).join(' → ')} (resistance di atas level ${fmtRp(keyEntry)}).`
             : valid(keyEntry) ? `Target ${NO_DATA} — tidak ada resistance di atas ${fmtRp(keyEntry)}.` : null,
         tone: 'positive',
       },
@@ -468,11 +517,11 @@ export function Trading1MinutesReport({
     const conclusion = `${ticker} ${attractive ? 'menarik' : 'tidak menarik'} karena ${reasons}${growthUnproven ? ' (growth ekstrem perlu dibuktikan sustainable)' : ''}, tetapi entry teknikal hanya valid jika ${trigger}.`;
 
     return {
-      outlook, health, valuation, trend, momentum, intradayStatus, swingStatus, investStatus, growthNote,
+      outlook, health, valuation, trend, momentum, momentumRead, qa, keyTp3, intradayStatus, swingStatus, investStatus, growthNote,
       support, resistance, long, longValid, emaReclaim, keyEntry, keyTp1, keyTp2, keyErrors, intradayErrors, swingErrors,
       accZone, entries, businessShort, riskGate, conclusion,
     };
-  }, [fundamentals, pillars, trendEma, indicators, volume, intradayReview, swingReview, investingReview, supports, resistances, price, tradingPlan, vwap, ticker, ema20]);
+  }, [fundamentals, pillars, trendEma, indicators, volume, priceAction, intradayReview, swingReview, investingReview, supports, resistances, price, tradingPlan, vwap, ticker, ema20]);
 
   const fundamentalChanges = pillars.health.summary || NO_DATA;
   const { fundamentalRows, intradayPlan, swingPlan, investingPlan } = useMemo(() => {
@@ -499,7 +548,8 @@ export function Trading1MinutesReport({
     const swingPlan: Array<[string, string, Tone?]> = [
       ['Entry', fieldText(findField(swingReview, 'Entry')), 'positive'],
       ['TP1', fieldText(findField(swingReview, 'TP1'))],
-      ['TP2', fieldText(findField(swingReview, 'TP2'))],
+      ...(valid(swingReview.levels?.tp2) ? [['TP2', fieldText(findField(swingReview, 'TP2'))] as [string, string]] : []),
+      ...(valid(swingReview.levels?.tp3) ? [['TP3', `${fmtRp(swingReview.levels!.tp3!)} (resistance ketiga)`] as [string, string]] : []),
       ['SL', fieldText(findField(swingReview, 'SL/Invalidation')), 'negative'],
       ['Invalidation', swingInvalidation, 'negative'],
       ['Catalyst', `${NO_DATA} — cek tab Berita & Aksi Korporasi.`],
@@ -579,7 +629,7 @@ export function Trading1MinutesReport({
         `• Support: ${rpOr(report.support)} · Resistance: ${rpOr(report.resistance)}`,
         `• VWAP: ${vwap != null ? fmtRp(vwap) : NO_DATA}`,
         `• Price Action: ${priceAction.patternLabel}`,
-        `→ Trend: ${TREND_LABEL[report.trend]} · Momentum: ${report.momentum}`,
+        `→ Trend: ${TREND_LABEL[report.trend]} · Momentum: ${report.momentum} (skor ${report.momentumRead.score}: ${report.momentumRead.factors.map((f) => `${f.label} ${f.text}`).join(', ')})`,
       ].join('\n'),
       [
         '7️⃣ TRADING PLAN',
@@ -603,7 +653,7 @@ export function Trading1MinutesReport({
         `Support: ${rpOr(report.support)}`,
         `Resistance (breakout trigger): ${rpOr(report.resistance)}`,
         ...(report.emaReclaim != null ? [`Konfirmasi (reclaim EMA20): ${fmtRp(report.emaReclaim)}`] : []),
-        `TP1: ${rpOr(report.keyTp1)} · TP2: ${rpOr(report.keyTp2)}`,
+        `TP1: ${rpOr(report.keyTp1)}${valid(report.keyTp2) ? ` · TP2: ${fmtRp(report.keyTp2)}` : ''}${valid(report.keyTp3) ? ` · TP3: ${fmtRp(report.keyTp3)}` : ''}`,
         ...(report.keyErrors.length > 0 ? [`Status: INVALID PLAN — ${report.keyErrors.join(' · ')}`] : []),
         '',
         ...report.entries.flatMap((e) => [
@@ -614,6 +664,8 @@ export function Trading1MinutesReport({
           ...(e.note ? [e.note] : []),
           '',
         ]),
+        `✅ FINAL QA VALIDATOR:\n${report.qa.map((q) => `${q.name}: ${qaText(q.checks)}`).join('\n')}`,
+        '',
         `🚨 RISK GATE:\nJangan entry jika ${report.riskGate}.`,
         '',
         `KESIMPULAN 1 KALIMAT:\n"${report.conclusion}"`,
@@ -781,6 +833,7 @@ export function Trading1MinutesReport({
                 valid(ema9) && valid(ema20)
                   ? (price > ema9 && ema9 > ema20 ? 'Harga > EMA9 > EMA20 — momentum jangka pendek naik.' : price < ema9 && ema9 < ema20 ? 'Harga < EMA9 < EMA20 — momentum jangka pendek turun.' : 'EMA9/20 campur — jangka pendek konsolidasi.')
                   : null,
+                `Momentum ${report.momentum} (skor ${report.momentumRead.score >= 0 ? '+' : ''}${report.momentumRead.score}) — ${report.momentumRead.factors.map((f) => `${f.label}: ${f.text}`).join(' · ')}.`,
                 indicators.rsiNote,
                 indicators.macdNote,
                 ...volume.notes.slice(0, 1),
@@ -841,7 +894,8 @@ export function Trading1MinutesReport({
               ['Resistance (breakout trigger)', rpOr(report.resistance)],
               ...(report.emaReclaim != null ? [['Konfirmasi (reclaim EMA20)', fmtRp(report.emaReclaim)] as [string, string]] : []),
               ['TP1', rpOr(report.keyTp1)],
-              ['TP2', rpOr(report.keyTp2)],
+              ...(valid(report.keyTp2) ? [['TP2', fmtRp(report.keyTp2)] as [string, string]] : []),
+              ...(valid(report.keyTp3) ? [['TP3', fmtRp(report.keyTp3)] as [string, string]] : []),
               ...(report.keyErrors.length > 0 ? [['Status', `INVALID PLAN — ${report.keyErrors.join(' · ')}`] as [string, string]] : []),
             ]} />
             <p className="mt-3 mb-2 text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Entry berdasarkan tipe — label berbeda, jangan dicampur</p>
@@ -858,6 +912,31 @@ export function Trading1MinutesReport({
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="rounded-lg border border-(--sv-border) bg-(--sv-surface) p-3 text-sm">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">✅ Final QA Validator</p>
+            <div className="space-y-2">
+              {report.qa.map((q) => (
+                <div key={q.name} className="flex flex-col gap-1 sm:flex-row sm:gap-3">
+                  <span className="shrink-0 font-medium text-(--sv-text) sm:w-28">{q.name}</span>
+                  {q.checks.length === 0 ? (
+                    <span className="text-xs text-(--sv-muted)">Tidak ada plan (NO TRADE / {NO_DATA})</span>
+                  ) : (
+                    <ul className="flex flex-wrap gap-1.5">
+                      {q.checks.map((c) => (
+                        <li key={c.label}>
+                          <Badge tone={c.ok == null ? 'neutral' : c.ok ? 'positive' : 'negative'}>
+                            {c.ok == null ? '–' : c.ok ? '✓' : '✗'} {c.label}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-(--sv-muted)">✗ = INVALID PLAN (tidak boleh dieksekusi) · – = level tidak tersedia, tidak dikarang.</p>
           </div>
 
           <div className="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-sm text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/5 dark:text-rose-200">
