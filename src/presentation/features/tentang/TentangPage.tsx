@@ -24,7 +24,7 @@ const SECTIONS = [
       <>
         Setiap kali Screener dibuka, sistem memindai hampir 1.000 saham di BEI menggunakan data{' '}
         <strong>akhir hari (EOD — End of Day)</strong>, bukan data real-time. Setiap saham diberi
-        skor berdasarkan preset yang dipilih (Day Trading, Swing Hunter, atau Fundamental), lalu
+        skor berdasarkan preset yang dipilih (Day Trading, Swing Trading, atau Fundamental), lalu
         diurutkan agar Anda bisa fokus pada kandidat dengan setup paling relevan untuk gaya trading
         Anda.
       </>

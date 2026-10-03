@@ -6,7 +6,14 @@
  */
 
 export type JournalStatus = 'open' | 'tp_hit' | 'sl_hit' | 'sideways';
-export type JournalPresetId = 'dayTrading' | 'swingHunter' | null;
+export type JournalPresetId = 'dayTrading' | 'swingTrading' | null;
+
+/** Entries saved before the Swing Hunter → Swing Trading rename still carry 'swingHunter'. */
+export function normalizeJournalPresetId(id: string | null | undefined): JournalPresetId {
+  if (id === 'swingHunter' || id === 'swingTrading') return 'swingTrading';
+  if (id === 'dayTrading') return 'dayTrading';
+  return null;
+}
 
 export interface JournalEntry {
   id: string;

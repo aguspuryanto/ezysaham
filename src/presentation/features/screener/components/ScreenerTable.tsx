@@ -44,12 +44,12 @@ import {
   VolumeBadge,
 } from './ScreenerBadges';
 
-export type ScreenerSortKey = 'ticker' | 'change' | 'price' | 'volume' | 'fundamental' | 'upside';
+export type ScreenerSortKey = 'ticker' | 'change' | 'price' | 'volume' | 'fundamental' | 'upside' | 'score';
 export interface ScreenerSort { key: ScreenerSortKey; dir: 'asc' | 'desc' }
 /** Sort keys that need a row's verdict (lazy) rather than StockSummary. */
 export const VERDICT_SORT_KEYS: ScreenerSortKey[] = ['fundamental', 'upside'];
 
-interface RowActions {
+export interface RowActions {
   isWatchlisted: (ticker: string) => boolean;
   onToggleWatchlist: (ticker: string) => void;
   isCompareSelected: (ticker: string) => boolean;
@@ -61,7 +61,7 @@ const upsideClass = (n: number | null) =>
 const pctTxt = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2).replace('.', ',')}%`;
 
 // ── Header ───────────────────────────────────────────────────────────────────
-function Th({ children, className, sortKey, sort, onSort, tip, align = 'left' }: {
+export function Th({ children, className, sortKey, sort, onSort, tip, align = 'left' }: {
   children: React.ReactNode; className?: string; sortKey?: ScreenerSortKey; sort?: ScreenerSort; onSort?: (k: ScreenerSortKey) => void;
   tip?: { term: string; text: string }; align?: 'left' | 'right';
 }) {
@@ -136,7 +136,7 @@ function InsightButton({ v, reasons }: { v?: ScreenerVerdict; reasons: string[] 
   );
 }
 
-function ActionsMenu({ ticker, actions }: { ticker: string; actions: RowActions }) {
+export function ActionsMenu({ ticker, actions }: { ticker: string; actions: RowActions }) {
   const watch = actions.isWatchlisted(ticker);
   const compare = actions.isCompareSelected(ticker);
   const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-(--sv-text) hover:bg-(--sv-bg)';
@@ -166,7 +166,7 @@ function ActionsMenu({ ticker, actions }: { ticker: string; actions: RowActions 
   );
 }
 
-function WatchStar({ ticker, actions }: { ticker: string; actions: RowActions }) {
+export function WatchStar({ ticker, actions }: { ticker: string; actions: RowActions }) {
   const active = actions.isWatchlisted(ticker);
   return (
     <button

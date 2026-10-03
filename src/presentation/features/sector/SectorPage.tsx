@@ -58,6 +58,7 @@ function sortValue(s: StockSummary, key: ScreenerSortKey, v?: ScreenerVerdict): 
     case 'volume': return s.volume;
     case 'fundamental': return v ? v.fundamentalScore.composite : null;
     case 'upside': return v?.valuation.upsidePct ?? null;
+    case 'score': return null; // Day Trading-only column
   }
 }
 

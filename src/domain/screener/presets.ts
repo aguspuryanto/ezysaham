@@ -9,11 +9,40 @@ import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { computeDataFreshness, DataFreshness } from '@/domain/analysis/dataFreshness';
 import { computeBandarScore, BandarScoreResult } from '@/domain/analysis/bandarScore';
 import { formatCompact } from '@/lib/format';
+import {
+  computeDayTradingSetup,
+  DayTradingSetup,
+  DT_MAX_GAP_UP_PCT,
+  DT_MIN_ATR_PCT,
+  DT_MIN_RVOL,
+  DT_MIN_UPSIDE_PCT,
+  DT_PRICE_MAX,
+  DT_PRICE_MIN,
+  DT_RSI_MAX,
+  DT_RSI_MIN,
+  DT_SCORE_SETUP,
+  DT_SCORE_WATCH,
+} from './dayTrading';
+import {
+  computeSwingTradingSetup,
+  SwingTradingSetup,
+  SW_BREAKOUT_RVOL,
+  SW_HISTORY_RANGE,
+  SW_MAX_EMA18_DISTANCE_PCT,
+  SW_MAX_GAP_PCT,
+  SW_MIN_RR,
+  SW_MIN_RVOL,
+  SW_MIN_UPSIDE_PCT,
+  SW_RSI_MAX,
+  SW_RSI_MIN,
+  SW_SCORE_BUY,
+  SW_SCORE_WAIT,
+} from './swingTrading';
 
 /** IDX board lot size: 1 lot = 100 shares. */
 export const LOT_SIZE = 100;
 
-export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingHunter' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector' | 'swingTrend' | 'swingMomentum' | 'fundamentalQuality' | 'highGrowth' | 'corePortofolio';
+export type ScreenerPresetId = 'ara' | 'bpjs' | 'momentum' | 'breakout' | 'tradingPlan' | 'swingTrading' | 'araHunter' | 'smartMoneyHunter' | 'dayTrading' | 'fundamental' | 'bandarDetector' | 'swingTrend' | 'swingMomentum' | 'fundamentalQuality' | 'highGrowth' | 'corePortofolio';
 
 // ── Breakout Hunter scoring (8 dimensions) ─────────────────────────────────────
 export interface BreakoutScores {
@@ -104,6 +133,10 @@ export interface PresetEvaluation {
   highGrowthScore?: HighGrowthScore;
   /** Only present for the Bandar Detector preset */
   bandarScore?: BandarScoreResult;
+  /** Only present for the Day Trading preset */
+  dayTrading?: DayTradingSetup;
+  /** Only present for the Swing Trading preset */
+  swingTrading?: SwingTradingSetup;
   /** Relative volume (volume hari ini / volume MA20) — diisi oleh preset yang menghitungnya */
   relativeVolume?: number;
   /** Usia data OHLCV terakhir. Tier "stale" berarti data 3+ hari bursa lalu — jangan dipakai untuk keputusan Day Trading/ARA hari ini. */
@@ -228,6 +261,8 @@ export interface ScreenerPreset {
   evaluate: (s: StockSummary, bars: OHLCVBar[], fundamentals?: FundamentalDetail | null, asOf?: Date) => PresetEvaluation;
   /** Set to false to skip the per-ticker OHLCV fetch entirely (preset only needs summary fields). Defaults to true. */
   needsHistory?: boolean;
+  /** Yahoo range for the per-ticker OHLCV fetch (e.g. '1y' when EMA200 is needed). Defaults to the repository default ('6mo'). */
+  historyRange?: string;
   /** Set to true to fetch per-ticker Yahoo Finance fundamentals (dividend, debt/equity, current ratio) for shortlisted candidates. Defaults to false. */
   needsFundamentals?: boolean;
 }
@@ -961,10 +996,6 @@ const tradingPlanPreset: ScreenerPreset = {
   },
 };
 
-// ── Swing Hunter ──────────────────────────────────────────────────────────────
-// Target: 5–15% | Holding: 3–10 hari
-// Filter: EMA20 > EMA50, ADX > 25, RSI 55–70, MACD Bullish, RVOL > 1.5, Nilai > 20 M
-
 /** Wilder's Average True Range helper, used by ADX. */
 function wilderATR(bars: OHLCVBar[], period: number): number[] {
   const trs: number[] = [];
@@ -1018,42 +1049,38 @@ function calcADX(bars: OHLCVBar[], period = 14): number {
   return dxArr.slice(-period).reduce((a, b) => a + b, 0) / period;
 }
 
-const swingHunterPreset: ScreenerPreset = {
-  id: 'swingHunter',
-  label: 'Swing Hunter',
-  description: 'Mendeteksi setup swing trading berkualitas tinggi dengan probabilitas tertinggi untuk pengguna umum. Target 5–15% dalam 3–10 hari trading.',
-  criteria: [
-    'EMA20 > EMA50 — trend naik terkonfirmasi',
-    'ADX > 25 — tren cukup kuat',
-    'RSI 55–70 — momentum naik, belum overbought',
-    'MACD Bullish — MACD Line > Signal Line',
-    'RVOL > 1.5 — volume di atas rata-rata',
-    'Nilai transaksi > Rp 20 miliar',
-  ],
-  coarseFilter: (s) => s.value > 20_000_000_000 && s.percentChange1D > -5,
-  evaluate: (s, bars, _fundamentals, asOf) => {
-    const closes = bars.map((b) => b.close);
-    const ema20 = lastValid(ema(closes, 20));
-    const ema50 = lastValid(ema(closes, 50));
-    const { macdLine, signalLine } = macd(bars);
-    const macdLast = lastValid(macdLine);
-    const signalLast = lastValid(signalLine);
-    const rsiLast = lastValid(rsi(bars, 14));
-    const rvol = relativeVolume(bars, 20);
-    const adx = calcADX(bars, 14);
+// ── Swing Trading ─────────────────────────────────────────────────────────────
+// Spec: docs/features_swingtrading.md — logika & scoring ada di ./swingTrading.ts.
+// Menggantikan preset "Swing Hunter" (id lama 'swingHunter'). Lolos screener = SWING BUY SETUP
+// atau SWING WAIT; NO TRADE disaring.
 
-    const result = verdict([
-      [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
-      [!Number.isNaN(adx) && adx > 25, `ADX > 25 (${Number.isNaN(adx) ? 'N/A' : adx.toFixed(1)})`],
-      [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, `RSI 55–70 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
-      [!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast, 'MACD Bullish'],
-      [!Number.isNaN(rvol) && rvol > 1.5, `RVOL > 1.5 (${Number.isNaN(rvol) ? 'N/A' : rvol.toFixed(2)})`],
-      [s.value > 20_000_000_000, 'Nilai transaksi > Rp 20 miliar'],
-    ]);
+const swingTradingPreset: ScreenerPreset = {
+  id: 'swingTrading',
+  label: 'Swing Trading',
+  description: 'Setup swing berkualitas dari data EOD — breakout, breakout-retest, atau pullback sehat dengan trend + momentum + volume + risk/reward yang jelas. Target 5–15% dalam 3–10 hari bursa. Entry hanya setelah trigger valid.',
+  criteria: [
+    'Harga > EMA200 · EMA8 > EMA18 · Harga > EMA8/18',
+    `RSI ${SW_RSI_MIN}–${SW_RSI_MAX} · RVOL ≥ ${SW_MIN_RVOL}x (breakout ≥ ${SW_BREAKOUT_RVOL}x)`,
+    'Return 1W & momentum 1M positif · Avg Value 20D ≥ Rp10 M',
+    'Setup: breakout, breakout-retest, atau pullback sehat',
+    `Upside ke resistance ≥ ${SW_MIN_UPSIDE_PCT}% · R:R ≥ 1:${SW_MIN_RR}`,
+    `Hindari parabolik, gap > ${SW_MAX_GAP_PCT}%, atau > ${SW_MAX_EMA18_DISTANCE_PCT}% di atas EMA18`,
+    'Fundamental (ROE) hanya quality filter, bukan alasan entry',
+    'Skor: Trend 25% · Momentum 25% · Volume 20% · Setup/Price Action 20% · Risk/Reward 10%',
+    `🟢 BUY SETUP skor ≥ ${SW_SCORE_BUY} + trigger valid · 🟡 WAIT ${SW_SCORE_WAIT}–${SW_SCORE_BUY - 1} / trigger belum terpenuhi · 🔴 NO TRADE disaring`,
+  ],
+  coarseFilter: (s) => s.value > 2_000_000_000 && s.percentChange1D > -5 && s.percentChange1D < 20,
+  historyRange: SW_HISTORY_RANGE,
+  evaluate: (s, bars, _fundamentals, asOf) => {
+    const swingTrading = computeSwingTradingSetup(s, bars, asOf ?? new Date());
+    const checks = [...swingTrading.riskChecks, ...swingTrading.setupChecks];
     return {
-      ...result,
-      relativeVolume: Number.isNaN(rvol) ? undefined : rvol,
-      freshness: computeDataFreshness(bars, asOf ?? new Date()) ?? undefined,
+      passed: swingTrading.status !== 'NO_TRADE',
+      reasons: checks.filter((c) => c.ok && !c.missing).map((c) => c.label),
+      failed: checks.filter((c) => !c.ok).map((c) => c.label),
+      swingTrading,
+      relativeVolume: swingTrading.rvol ?? undefined,
+      freshness: swingTrading.freshness ?? undefined,
     };
   },
 };
@@ -1213,67 +1240,41 @@ const bandarDetectorPreset: ScreenerPreset = {
 };
 
 // ── Day Trading ──────────────────────────────────────────────────────────────
-// Target: 3–8% | Holding: 1–3 hari
-// Timeframe: H1, H4 (disimulasikan dari data daily EOD)
-// Buy ketika: EMA20 > EMA50, RSI 55–70, MACD Golden Cross, Volume meningkat
+// Spec: docs/features_daytrading.md — logika & scoring ada di ./dayTrading.ts.
+// Lolos screener = status DAY TRADE SETUP atau WATCH; NO TRADE disaring.
 
 const dayTradingPreset: ScreenerPreset = {
   id: 'dayTrading',
   label: 'Day Trading',
-  description: 'Setup day trading dengan konfirmasi multi-indikator. Target 3–8% dalam 1–3 hari. Gunakan pada timeframe H1/H4 untuk entry presisi.',
+  description: 'Kandidat day trading BEI dari data EOD: trend, momentum, volume, likuiditas & risk/reward. Status DAY TRADE SETUP / WATCH — entry hanya jika trigger (break high) terpenuhi, bukan kondisi realtime.',
   criteria: [
-    'EMA20 > EMA50 — trend intraday naik',
-    'RSI 55–70 — momentum bullish, belum overbought',
-    'MACD Golden Cross — histogram baru positif (momentum fresh)',
-    'Volume meningkat — volume hari ini > rata-rata 5 hari',
-    'Close > EMA20 — harga di atas tren jangka pendek',
-    'Nilai transaksi > Rp 10 miliar (likuiditas cukup)',
+    `Harga Rp${DT_PRICE_MIN}–Rp${DT_PRICE_MAX.toLocaleString('id-ID')} · Avg Value 20D ≥ Rp5 M`,
+    'Price > EMA20 · EMA9 > EMA20',
+    `RSI ${DT_RSI_MIN}–${DT_RSI_MAX} · RVOL ≥ ${DT_MIN_RVOL}x`,
+    'Return 1D > 0% · Return 1W > 0%',
+    'Candle bullish, close ≥ 70% range',
+    `ATR% ≥ ${DT_MIN_ATR_PCT}% · Upside ke resistance ≥ ${DT_MIN_UPSIDE_PCT}%`,
+    `Hindari gap-up > ${DT_MAX_GAP_UP_PCT}% & kondisi parabolik`,
+    'Skor: Trend 25% · Momentum 25% · Volume 20% · Liquidity 15% · Risk/Reward 15%',
+    `🟢 SETUP skor ≥ ${DT_SCORE_SETUP} + setup valid · 🟡 WATCH ${DT_SCORE_WATCH}–${DT_SCORE_SETUP - 1} / trigger belum valid · 🔴 NO TRADE disaring`,
   ],
   coarseFilter: (s) =>
-    s.value > 10_000_000_000 &&
-    s.percentChange1D > -3 &&
-    s.percentChange1D < 10,
+    s.lastClose >= DT_PRICE_MIN &&
+    s.lastClose <= DT_PRICE_MAX &&
+    s.value > 1_000_000_000 &&
+    s.percentChange1D > 0 &&
+    s.percentChange1D < 25,
   evaluate: (s, bars, _fundamentals, asOf) => {
-    const closes = bars.map((b) => b.close);
-    const volumes = bars.map((b) => b.volume);
-
-    const ema20 = lastValid(ema(closes, 20));
-    const ema50 = lastValid(ema(closes, 50));
-    const rsiLast = lastValid(rsi(bars, 14));
-
-    const { macdLine, signalLine, histogram } = macd(bars);
-    const macdLast = lastValid(macdLine);
-    const signalLast = lastValid(signalLine);
-    const histLast = lastValid(histogram);
-    const prevHist = histogram[histogram.length - 2] ?? NaN;
-
-    // MACD Golden Cross: histogram baru berubah dari negatif/nol ke positif
-    const macdGoldenCross =
-      !Number.isNaN(histLast) && !Number.isNaN(prevHist) &&
-      histLast > 0 && prevHist <= 0;
-    // Atau setidaknya MACD bullish (MACD line > Signal line)
-    const macdBullish =
-      macdGoldenCross ||
-      (!Number.isNaN(macdLast) && !Number.isNaN(signalLast) && macdLast > signalLast);
-
-    // Volume meningkat: hari ini > rata-rata 5 hari terakhir
-    const volMa5 = lastValid(sma(volumes, 5));
-    const volIncreasing = !Number.isNaN(volMa5) && volMa5 > 0 && s.volume > volMa5;
-
-    // RVOL approx: volume hari ini vs MA5 volume
-    const rvolApprox = !Number.isNaN(volMa5) && volMa5 > 0 ? s.volume / volMa5 : NaN;
-    const freshness = computeDataFreshness(bars, asOf ?? new Date());
-
-    const result = verdict([
-      [!Number.isNaN(ema20) && !Number.isNaN(ema50) && ema20 > ema50, 'EMA20 > EMA50'],
-      [!Number.isNaN(ema20) && s.lastClose > ema20, `Close > EMA20 (${Number.isNaN(ema20) ? 'N/A' : ema20.toFixed(0)})`],
-      [!Number.isNaN(rsiLast) && rsiLast >= 55 && rsiLast <= 70, `RSI 55–70 (${Number.isNaN(rsiLast) ? 'N/A' : rsiLast.toFixed(1)})`],
-      [macdBullish, macdGoldenCross ? 'MACD Golden Cross ✓' : 'MACD Bullish (MACD > Signal)'],
-      [volIncreasing, `Volume meningkat (${Number.isNaN(volMa5) ? 'N/A' : (s.volume / volMa5).toFixed(2)}x MA5)`],
-      [s.value > 10_000_000_000, 'Nilai transaksi > Rp 10 miliar'],
-      [freshness?.tier !== 'stale', freshness ? `Data segar (H-${freshness.ageInTradingDays})` : 'Data tidak tersedia'],
-    ]);
-    return { ...result, relativeVolume: Number.isNaN(rvolApprox) ? undefined : rvolApprox, freshness: freshness ?? undefined };
+    const dayTrading = computeDayTradingSetup(s, bars, asOf ?? new Date());
+    const checks = [...dayTrading.riskChecks, ...dayTrading.setupChecks];
+    return {
+      passed: dayTrading.status !== 'NO_TRADE',
+      reasons: checks.filter((c) => c.ok).map((c) => c.label),
+      failed: checks.filter((c) => !c.ok).map((c) => c.label),
+      dayTrading,
+      relativeVolume: dayTrading.rvol ?? undefined,
+      freshness: dayTrading.freshness ?? undefined,
+    };
   },
 };
 
@@ -1924,7 +1925,7 @@ const corePortofolioPreset: ScreenerPreset = {
 };
 
 // ── Quick score (universal "Skor AI" fallback) ────────────────────────────────
-// Presets without a dedicated composite score (all/dayTrading/swingHunter) still
+// Presets without a dedicated composite score (all) still
 // need something to show in a "Skor AI" column. Reuses the same building blocks
 // as FundamentalScore/CorePortofolioScore/HighGrowthScore (profitability from
 // ROE, valuation from PER/PBV, quality gate from free float & liquidity) — no
@@ -1963,7 +1964,7 @@ export const SCREENER_PRESETS: Record<ScreenerPresetId, ScreenerPreset> = {
   momentum: momentumPreset,
   breakout: breakoutPreset,
   tradingPlan: tradingPlanPreset,
-  swingHunter: swingHunterPreset,
+  swingTrading: swingTradingPreset,
   araHunter: araHunterPreset,
   smartMoneyHunter: smartMoneyHunterPreset,
   dayTrading: dayTradingPreset,
@@ -1982,7 +1983,7 @@ export const SCREENER_PRESET_LIST: ScreenerPreset[] = [
   momentumPreset,
   breakoutPreset,
   tradingPlanPreset,
-  swingHunterPreset,
+  swingTradingPreset,
   araHunterPreset,
   smartMoneyHunterPreset,
   dayTradingPreset,

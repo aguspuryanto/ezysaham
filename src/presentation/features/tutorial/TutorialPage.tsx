@@ -10,7 +10,7 @@ const STEPS = [
       <>
         Di halaman Screener, pilih salah satu tab preset sesuai gaya Anda: <strong>Semua</strong> (tanpa
         filter khusus), <strong>Day Trading</strong> (fokus momentum & likuiditas harian),{' '}
-        <strong>Swing Hunter</strong> (tren jangka menengah beberapa hari–minggu), atau{' '}
+        <strong>Swing Trading</strong> (tren jangka menengah beberapa hari–minggu), atau{' '}
         <strong>Fundamental</strong> (kualitas keuangan perusahaan, cocok untuk investasi jangka panjang).
         Belum yakin istilahnya? Lihat penjelasan lengkap di{' '}
         <Link href="/panduan" className="font-bold underline underline-offset-2">

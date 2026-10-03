@@ -5,7 +5,7 @@
  * which only grades manually-added entries H+1 using daily high/low.
  */
 
-export type BacktestPresetId = 'dayTrading' | 'swingHunter';
+export type BacktestPresetId = 'dayTrading' | 'swingTrading';
 export type BacktestSignalStatus = 'tp_hit' | 'sl_hit' | 'timeout';
 
 export interface BacktestSignal {

@@ -9,7 +9,7 @@ import { useBacktest } from './hooks/useBacktest';
 
 const PRESET_OPTIONS: Array<{ id: BacktestPresetId; label: string }> = [
   { id: 'dayTrading', label: 'Day Trading' },
-  { id: 'swingHunter', label: 'Swing Hunter' },
+  { id: 'swingTrading', label: 'Swing Trading' },
 ];
 
 const RANGE_OPTIONS = ['6mo', '1y', '2y'];

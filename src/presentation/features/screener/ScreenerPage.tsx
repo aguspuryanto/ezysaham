@@ -20,14 +20,16 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStockFundamentals, getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
 import { computeScreenerVerdict, ScreenerVerdict } from '@/domain/analysis/screenerVerdict';
-import { computeStockAnalysis } from '@/domain/analysis/stockAnalysisEngine';
 import { NewJournalEntryInput } from '@/domain/models/JournalEntry';
 import { StockSummary } from '@/domain/models/Stock';
 import { ScreenerPresetId, SCREENER_PRESETS } from '@/domain/screener/presets';
+import { DAY_TRADING_STATUS_LABEL } from '@/domain/screener/dayTrading';
+import { SWING_SETUP_LABEL, SWING_STATUS_LABEL } from '@/domain/screener/swingTrading';
 import { mapWithConcurrency } from '@/lib/concurrency';
 import { cn } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useJournal } from '@/presentation/features/journal/hooks/useJournal';
+import { DayTradingTable } from './components/DayTradingTable';
 import { GainerLoserPanel } from './components/GainerLoserPanel';
 import { MarketSummary, useMarketSeries } from './components/MarketSummary';
 import { InfoTip } from './components/Popover';
@@ -37,6 +39,7 @@ import { ScreenerHeader } from './components/ScreenerHeader';
 import { ScreenerNav } from './components/ScreenerNav';
 import { ScreenerPagination, ScreenerSort, ScreenerSortKey, ScreenerTable, VERDICT_SORT_KEYS } from './components/ScreenerTable';
 import { ScreenerTabItem, ScreenerTabs } from './components/ScreenerTabs';
+import { SwingTradingTable } from './components/SwingTradingTable';
 import { ValuationSummary } from './components/ValuationSummary';
 import { screenerInter } from './fonts';
 import { useWatchlist } from './hooks/useWatchlist';
@@ -48,7 +51,9 @@ import {
   ScreenerFilterState,
 } from './screenerFilters';
 
-const JOURNAL_PRESETS: ScreenerPresetId[] = ['dayTrading', 'swingHunter'];
+const JOURNAL_PRESETS: ScreenerPresetId[] = ['dayTrading', 'swingTrading'];
+/** Presets with their own setup table + composite score (default sort: score desc). */
+const SETUP_PRESETS: ScreenerPresetId[] = ['dayTrading', 'swingTrading'];
 const JOURNAL_TOP_N = 5;
 
 const HISTORY_CONCURRENCY = 6;
@@ -63,13 +68,15 @@ type ScanStatus = 'idle' | 'loading-summary' | 'scanning' | 'done' | 'error';
 const FILTER_ITEMS: ScreenerTabItem[] = [
   { id: 'all', label: 'Semua', icon: LayoutGrid },
   { id: 'dayTrading', label: 'Day Trading', icon: Zap },
-  { id: 'swingHunter', label: 'Swing Hunter', icon: Crosshair },
+  { id: 'swingTrading', label: 'Swing Trading', icon: Crosshair },
   { id: 'fundamental', label: 'Fundamental', icon: Building2 },
   { id: 'highGrowth', label: 'High Growth', icon: Rocket },
   { id: 'corePortofolio', label: 'Core Portofolio', icon: ShieldCheck },
 ];
 
 const DEFAULT_SORT: ScreenerSort = { key: 'change', dir: 'desc' };
+/** Day/Swing Trading rank by their own composite score; other tabs have no `score` column. */
+const SETUP_SORT: ScreenerSort = { key: 'score', dir: 'desc' };
 
 interface SavedScreener {
   filterId: FilterId;
@@ -82,6 +89,8 @@ function readSavedScreener(): SavedScreener | null {
     const raw = window.localStorage.getItem(SAVED_SCREENER_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<SavedScreener>;
+    // Saved before the Swing Hunter → Swing Trading rename.
+    if ((parsed.filterId as string) === 'swingHunter') parsed.filterId = 'swingTrading';
     const filterId = FILTER_ITEMS.some((f) => f.id === parsed.filterId) ? (parsed.filterId as FilterId) : 'all';
     return { filterId, filters: { ...DEFAULT_FILTERS, ...parsed.filters }, sort: parsed.sort ?? DEFAULT_SORT };
   } catch {
@@ -97,6 +106,7 @@ function sortValue(r: ScreenerResult, key: ScreenerSortKey, v?: ScreenerVerdict)
     case 'volume': return r.summary.volume;
     case 'fundamental': return v ? v.fundamentalScore.composite : null;
     case 'upside': return v?.valuation.upsidePct ?? null;
+    case 'score': return r.evaluation.dayTrading?.scores.total ?? r.evaluation.swingTrading?.scores.total ?? null;
   }
 }
 
@@ -207,7 +217,7 @@ export function ScreenerPage() {
     let checked = 0;
     const evaluated = await mapWithConcurrency(shortlist, HISTORY_CONCURRENCY, async (summary) => {
       const [bars, fundamentals] = await Promise.all([
-        needsHistory ? getStockHistory(summary.ticker) : Promise.resolve([]),
+        needsHistory ? getStockHistory(summary.ticker, activePreset.historyRange) : Promise.resolve([]),
         needsFundamentals ? getStockFundamentals(summary.ticker) : Promise.resolve(null),
       ]);
       checked += 1;
@@ -230,6 +240,7 @@ export function ScreenerPage() {
 
   const handleSelectFilter = useCallback((id: string) => {
     setFilterId(id as FilterId);
+    setSort((prev) => (SETUP_PRESETS.includes(id as ScreenerPresetId) ? SETUP_SORT : prev.key === 'score' ? DEFAULT_SORT : prev));
     setPage(1);
   }, []);
 
@@ -316,7 +327,14 @@ export function ScreenerPage() {
     [sortedRows, currentPage],
   );
 
-  const verdictTargets = needAllVerdicts ? baseRows : pageRows;
+  // The Day/Swing Trading tables don't show verdict columns — only fetch verdicts there when an advanced filter needs them.
+  const isDayTrading = filterId === 'dayTrading';
+  const isSwingTrading = filterId === 'swingTrading';
+  const isSetupTab = isDayTrading || isSwingTrading;
+  const verdictTargets = useMemo(
+    () => (needAllVerdicts ? baseRows : isSetupTab ? [] : pageRows),
+    [needAllVerdicts, baseRows, isSetupTab, pageRows],
+  );
   const verdictProgress = needAllVerdicts
     ? { done: baseRows.filter((r) => verdictByTicker[r.summary.ticker]).length, total: baseRows.length }
     : null;
@@ -370,39 +388,64 @@ export function ScreenerPage() {
 
   const handleCreateJurnal = useCallback(async () => {
     if (!JOURNAL_PRESETS.includes(filterId as ScreenerPresetId)) return;
-    const presetId = filterId as 'dayTrading' | 'swingHunter';
+    const presetId = filterId as 'dayTrading' | 'swingTrading';
     setCreatingJurnal(true);
     setJurnalMessage(null);
     try {
-      const top5 = [...results]
-        .sort((a, b) => b.summary.percentChange1D - a.summary.percentChange1D)
-        .slice(0, JOURNAL_TOP_N);
-
       const inputs: NewJournalEntryInput[] = [];
-      for (const result of top5) {
-        const bars = await getStockHistory(result.summary.ticker);
-        if (bars.length === 0) continue;
-        const analysis = computeStockAnalysis(result.summary, bars);
-        const scenario =
-          analysis.tradingPlan.recommendedBias === 'bearish'
-            ? analysis.tradingPlan.bearish
-            : analysis.tradingPlan.bullish;
-        inputs.push({
-          ticker: result.summary.ticker,
-          presetId,
-          entry: scenario.entry,
-          tp1: scenario.tp1,
-          tp2: scenario.tp2,
-          sl: scenario.sl,
-          riskRewardPlanned: scenario.riskRewardRatio,
-          reasonBuy: result.evaluation.reasons.join(', '),
-          reasonAvoid: analysis.conclusion.watchOut,
-        });
-      }
 
-      if (inputs.length === 0) {
-        setJurnalMessage({ type: 'error', text: 'Gagal mengambil data historis untuk kandidat teratas.' });
-        return;
+      if (presetId === 'dayTrading') {
+        // Day Trading: only DAY TRADE SETUP rows (never WATCH), ranked by score, using the
+        // preset's own trigger/TP/SL plan.
+        const setups = results
+          .filter((r) => r.evaluation.dayTrading?.status === 'SETUP')
+          .sort((a, b) => (b.evaluation.dayTrading?.scores.total ?? 0) - (a.evaluation.dayTrading?.scores.total ?? 0))
+          .slice(0, JOURNAL_TOP_N);
+        for (const { summary, evaluation } of setups) {
+          const dt = evaluation.dayTrading!;
+          if (dt.entryTrigger == null || dt.tp == null || dt.sl == null || dt.riskReward == null) continue;
+          inputs.push({
+            ticker: summary.ticker,
+            presetId,
+            entry: dt.entryTrigger,
+            tp1: dt.tp,
+            tp2: dt.tp,
+            sl: dt.sl,
+            riskRewardPlanned: dt.riskReward,
+            reasonBuy: `${DAY_TRADING_STATUS_LABEL[dt.status]} (skor ${dt.scores.total}) — ${evaluation.reasons.join(', ')}`,
+            reasonAvoid: 'Entry hanya jika trigger (break high) terpenuhi. Jangan kejar harga, risiko maks 1% modal, tanpa averaging down.',
+          });
+        }
+        if (inputs.length === 0) {
+          setJurnalMessage({ type: 'error', text: 'Belum ada saham berstatus DAY TRADE SETUP — kandidat WATCH tidak dimasukkan ke Jurnal.' });
+          return;
+        }
+      } else {
+        // Swing Trading: only SWING BUY SETUP rows (never WAIT), ranked by score, using the
+        // preset's own trigger/TP1/TP2/SL plan.
+        const setups = results
+          .filter((r) => r.evaluation.swingTrading?.status === 'BUY')
+          .sort((a, b) => (b.evaluation.swingTrading?.scores.total ?? 0) - (a.evaluation.swingTrading?.scores.total ?? 0))
+          .slice(0, JOURNAL_TOP_N);
+        for (const { summary, evaluation } of setups) {
+          const sw = evaluation.swingTrading!;
+          if (sw.entryTrigger == null || sw.tp1 == null || sw.sl == null || sw.riskReward == null) continue;
+          inputs.push({
+            ticker: summary.ticker,
+            presetId,
+            entry: sw.entryTrigger,
+            tp1: sw.tp1,
+            tp2: sw.tp2 ?? sw.tp1,
+            sl: sw.sl,
+            riskRewardPlanned: sw.riskReward,
+            reasonBuy: `${SWING_STATUS_LABEL[sw.status]} — ${SWING_SETUP_LABEL[sw.setupType]} (skor ${sw.scores.total}). ${sw.conclusion.why}`,
+            reasonAvoid: `${sw.conclusion.reasonsNotToEnter} Batas entry ${sw.maxEntry?.toLocaleString('id-ID') ?? '-'} — jangan kejar.`,
+          });
+        }
+        if (inputs.length === 0) {
+          setJurnalMessage({ type: 'error', text: 'Belum ada saham berstatus SWING BUY SETUP — kandidat SWING WAIT tidak dimasukkan ke Jurnal.' });
+          return;
+        }
       }
 
       const res = await journal.addEntries(inputs);
@@ -492,7 +535,7 @@ export function ScreenerPage() {
                     type="button"
                     onClick={handleCreateJurnal}
                     disabled={creatingJurnal}
-                    title={`Simpan top ${JOURNAL_TOP_N} saham (berdasarkan perubahan) ke Jurnal`}
+                    title={`Simpan top ${JOURNAL_TOP_N} saham berstatus ${isDayTrading ? 'DAY TRADE SETUP' : 'SWING BUY SETUP'} (berdasarkan skor) ke Jurnal`}
                     className={btnSecondary}
                   >
                     {creatingJurnal ? <Loader2 className="size-4 animate-spin" /> : <NotebookPen className="size-4" strokeWidth={2} />}
@@ -597,7 +640,47 @@ export function ScreenerPage() {
               </div>
             )}
 
-            {status !== 'error' && (
+            {status !== 'error' && isDayTrading && (
+              <DayTradingTable
+                rows={pageRows}
+                startIndex={(currentPage - 1) * PAGE_SIZE}
+                loading={isBusy}
+                sort={sort}
+                onSort={handleSort}
+                emptyHint={
+                  watchlistOnly && watchlist.tickers.length === 0
+                    ? 'Watchlist Anda masih kosong — tandai saham dengan ikon bintang.'
+                    : 'Tidak ada saham berstatus DAY TRADE SETUP / WATCH dari data EOD terakhir. Jangan memaksakan entry.'
+                }
+                onResetFilters={anyFilter ? () => { resetFilters(); setQuery(''); } : undefined}
+                isWatchlisted={watchlist.has}
+                onToggleWatchlist={watchlist.toggle}
+                isCompareSelected={isCompareSelected}
+                onToggleCompare={toggleCompare}
+              />
+            )}
+
+            {status !== 'error' && isSwingTrading && (
+              <SwingTradingTable
+                rows={pageRows}
+                startIndex={(currentPage - 1) * PAGE_SIZE}
+                loading={isBusy}
+                sort={sort}
+                onSort={handleSort}
+                emptyHint={
+                  watchlistOnly && watchlist.tickers.length === 0
+                    ? 'Watchlist Anda masih kosong — tandai saham dengan ikon bintang.'
+                    : 'Tidak ada saham berstatus SWING BUY SETUP / SWING WAIT dari data EOD terakhir. Tidak ada setup = tidak entry.'
+                }
+                onResetFilters={anyFilter ? () => { resetFilters(); setQuery(''); } : undefined}
+                isWatchlisted={watchlist.has}
+                onToggleWatchlist={watchlist.toggle}
+                isCompareSelected={isCompareSelected}
+                onToggleCompare={toggleCompare}
+              />
+            )}
+
+            {status !== 'error' && !isSetupTab && (
               <ScreenerTable
                 rows={pageRows}
                 startIndex={(currentPage - 1) * PAGE_SIZE}

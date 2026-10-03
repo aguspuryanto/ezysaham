@@ -244,7 +244,7 @@ export function JournalPage() {
             {!initialLoading && entries.length === 0 ? (
               <JournalEmptyState
                 title="Belum ada entri jurnal"
-                hint="Tambahkan rencana dari Screener (Day Trading / Swing Hunter → Create Jurnal) atau tombol Buat Trading Plan di Detail Emiten."
+                hint="Tambahkan rencana dari Screener (Day Trading / Swing Trading → Create Jurnal) atau tombol Buat Trading Plan di Detail Emiten."
                 action={{ label: 'Buka Screener', href: '/screener' }}
               />
             ) : !initialLoading && visible.length === 0 ? (

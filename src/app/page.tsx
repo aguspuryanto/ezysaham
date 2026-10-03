@@ -19,7 +19,7 @@ export default function Home() {
             <p className="text-sm text-slate-400 leading-relaxed">
               EzySaham AI adalah alat bantu screening saham BEI/IDX yang menerjemahkan data harga, volume, berita, dan skor fundamental
               menjadi rekomendasi sederhana (BUY, WATCHLIST, AVOID) — tanpa Anda perlu memahami istilah teknikal seperti RSI atau MACD.
-              Setiap saham dianalisis lewat beberapa gaya trading (Day Trading, Swing Hunter, Fundamental, Bandar Detector) dan diberi
+              Setiap saham dianalisis lewat beberapa gaya trading (Day Trading, Swing Trading, Fundamental, Bandar Detector) dan diberi
               skor otomatis beserta alasannya.
             </p>
             <p className="text-sm text-slate-400 leading-relaxed">

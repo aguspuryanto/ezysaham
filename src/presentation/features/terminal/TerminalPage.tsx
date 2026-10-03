@@ -109,7 +109,7 @@ export function TerminalPage() {
     let checked = 0;
     const evaluated = await mapWithConcurrency(shortlist, HISTORY_CONCURRENCY, async (summary) => {
       const [bars, fundamentals] = await Promise.all([
-        needsHistory ? getStockHistory(summary.ticker) : Promise.resolve([]),
+        needsHistory ? getStockHistory(summary.ticker, activePreset.historyRange) : Promise.resolve([]),
         needsFundamentals ? getStockFundamentals(summary.ticker) : Promise.resolve(null),
       ]);
       checked += 1;

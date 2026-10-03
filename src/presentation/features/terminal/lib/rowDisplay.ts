@@ -1,5 +1,7 @@
 import { StockSummary } from '@/domain/models/Stock';
+import { DAY_TRADING_STATUS_LABEL } from '@/domain/screener/dayTrading';
 import { PresetEvaluation, computeQuickScore } from '@/domain/screener/presets';
+import { SWING_SETUP_LABEL, SWING_STATUS_LABEL } from '@/domain/screener/swingTrading';
 
 export type SignalTone = 'emerald' | 'blue' | 'amber' | 'gray' | 'crimson';
 
@@ -59,9 +61,10 @@ function toneAndLabel(status: string): { tone: SignalTone; label: string } {
 /**
  * "Skor AI" + "Sinyal & Algoritma AI" for one row — reuses whichever composite
  * score/status the active preset's evaluate() already produced (Breakout,
- * TradingPlan, ARA, Fundamental, CorePortofolio, HighGrowth, Bandar); falls
+ * TradingPlan, ARA, Fundamental, CorePortofolio, HighGrowth, Bandar, Day/Swing
+ * Trading); falls
  * back to the universal QuickScore (from StockSummary alone) for presets that
- * don't compute a composite (Semua/Day Trading/Swing Hunter). Every label here
+ * don't compute a composite (Semua). Every label here
  * is real domain vocabulary already used elsewhere in the app — nothing here
  * invents new signal names.
  */
@@ -91,6 +94,16 @@ export function getRowDisplay(summary: StockSummary, evaluation: PresetEvaluatio
   if (evaluation.highGrowthScore) {
     const { tone, label } = toneAndLabel(evaluation.highGrowthScore.status);
     return { scoreComposite: evaluation.highGrowthScore.composite, scoreStatus: evaluation.highGrowthScore.status, signalLabel: label, signalSub: fallbackSub, signalTone: tone };
+  }
+  if (evaluation.dayTrading) {
+    const dt = evaluation.dayTrading;
+    const tone: SignalTone = dt.status === 'SETUP' ? 'emerald' : dt.status === 'WATCH' ? 'amber' : 'crimson';
+    return { scoreComposite: dt.scores.total, scoreStatus: dt.status, signalLabel: DAY_TRADING_STATUS_LABEL[dt.status], signalSub: fallbackSub, signalTone: tone };
+  }
+  if (evaluation.swingTrading) {
+    const sw = evaluation.swingTrading;
+    const tone: SignalTone = sw.status === 'BUY' ? 'emerald' : sw.status === 'WAIT' ? 'amber' : 'crimson';
+    return { scoreComposite: sw.scores.total, scoreStatus: sw.status, signalLabel: SWING_STATUS_LABEL[sw.status], signalSub: SWING_SETUP_LABEL[sw.setupType], signalTone: tone };
   }
   if (evaluation.bandarScore) {
     const { tone, label } = toneAndLabel(evaluation.bandarScore.classification.label);

@@ -9,7 +9,7 @@
  */
 import { get, put } from '@vercel/blob';
 import { fetchYahooDailyBars } from '@/data/external/yahooFinance';
-import { JournalEntry, NewJournalEntryInput } from '@/domain/models/JournalEntry';
+import { JournalEntry, NewJournalEntryInput, normalizeJournalPresetId } from '@/domain/models/JournalEntry';
 
 const JOURNAL_PATHNAME = 'journal/entries.json';
 
@@ -18,7 +18,8 @@ async function readJournal(): Promise<JournalEntry[]> {
   if (!result || !result.stream) return [];
   const text = await new Response(result.stream).text();
   if (!text) return [];
-  return JSON.parse(text) as JournalEntry[];
+  const entries = JSON.parse(text) as JournalEntry[];
+  return entries.map((e) => ({ ...e, presetId: normalizeJournalPresetId(e.presetId) }));
 }
 
 async function writeJournal(entries: JournalEntry[]): Promise<void> {

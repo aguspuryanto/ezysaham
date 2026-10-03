@@ -7,7 +7,7 @@ import { cn } from '@/lib/format';
 const ROW_1: FilterChipItem[] = [
   { id: 'all', label: 'Semua Saham', icon: LayoutGrid },
   { id: 'dayTrading', label: 'Day Trading', icon: Zap },
-  { id: 'swingHunter', label: 'Swing Hunter', icon: Crosshair },
+  { id: 'swingTrading', label: 'Swing Trading', icon: Crosshair },
   { id: 'fundamental', label: 'Fundamental', icon: Building2 },
   { id: 'highGrowth', label: 'High Growth', icon: Rocket },
   { id: 'corePortofolio', label: 'Core Portofolio', icon: ShieldCheck },

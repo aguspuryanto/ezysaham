@@ -39,7 +39,7 @@ function buildHistoricalSummary(ticker: string, bars: OHLCVBar[], i: number): St
     low: bar.low,
     volume: bar.volume,
     // Proxy for daily transaction value (close * volume) — not the true VWAP-based
-    // figure, but close enough for the liquidity gates in dayTrading/swingHunter.
+    // figure, but close enough for the liquidity gates in dayTrading/swingTrading.
     value: bar.close * bar.volume,
     frequency: 0,
     capitalization: 0,
