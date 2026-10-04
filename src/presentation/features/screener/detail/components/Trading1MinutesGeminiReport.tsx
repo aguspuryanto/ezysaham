@@ -3,9 +3,13 @@
 /**
  * Trading1MinutesGeminiReport.tsx
  *
- * "EzySaham AI" momentum vs speculation report (features_momentum.md) for the detail page's `.sv-theme`.
- * Four sections: Deteksi Momentum & Price Action · Anomali & Aksi Spekulasi · Valuasi & Value Trap ·
- * Actionable Trading Plan (BUY / WAIT / AVOID + Entry / TP1–TP3 / SL / Risk Gate) + kesimpulan 1 kalimat.
+ * "EzySaham AI" momentum vs speculation report for the detail page's `.sv-theme`, following the decision
+ * hierarchy in docs/features_1menit_analisa_gemini.md:
+ *   Final decision + separate scores (Fundamental · Valuation · Momentum · Liquidity · Risk)
+ *   → Decision hierarchy (Data → Liquidity → Risk → Trend → Momentum → Entry, valuation = context)
+ *   → 1️⃣ Momentum & price action · 2️⃣ Anomali & spekulasi · 3️⃣ Valuasi (konteks) · 4️⃣ Trading plan
+ *   → kesimpulan + consistency check.
+ * AVOID shows no setup / entry / TP / SL — only reasons and the conditions for the status to change.
  * All verdicts come from the deterministic engine in momentumSpeculation.ts; this file only lays them out.
  */
 
@@ -18,9 +22,12 @@ import {
   buildMomentumReport,
   Check,
   fmtIdrValue,
+  GateStatus,
   MAX_RISK_PER_TRADE_PCT,
   MomentumSignal,
   MomentumStatus,
+  ScoreItem,
+  SETUP_LABEL,
 } from '@/domain/analysis/momentumSpeculation';
 import { atr } from '@/domain/indicators/atr';
 import { ema, lastValid } from '@/domain/indicators/movingAverages';
@@ -39,10 +46,13 @@ const EMOJI: Record<MomentumSignal, string> = { green: '🟢', yellow: '🟡', r
 const TONE: Record<MomentumSignal, Tone> = { green: 'positive', yellow: 'warning', red: 'negative', na: 'neutral' };
 const STATUS_TONE: Record<MomentumStatus, Tone> = { BUY: 'positive', WAIT: 'warning', AVOID: 'negative' };
 const STATUS_EMOJI: Record<MomentumStatus, string> = { BUY: '🟢', WAIT: '🟡', AVOID: '🔴' };
+const GATE_TONE: Record<GateStatus, Tone> = { PASS: 'positive', FAIL: 'negative', PENDING: 'warning', SKIPPED: 'neutral' };
+const GATE_EMOJI: Record<GateStatus, string> = { PASS: '✅', FAIL: '❌', PENDING: '⏳', SKIPPED: '⏭️' };
 
 const num = (n: number | null | undefined): number | null => (n != null && Number.isFinite(n) ? n : null);
 const pos = (n: number | null | undefined): number | null => (n != null && Number.isFinite(n) && n > 0 ? n : null);
 const rpOr = (n: number | null | undefined) => (pos(n) != null ? fmtRp(n) : '—');
+const scoreTxt = (s: ScoreItem) => (s.value == null ? s.label : `${s.value}/100 · ${s.label}`);
 
 // ─── Layout primitives ──────────────────────────────────────────────────────────
 
@@ -162,21 +172,56 @@ export function Trading1MinutesGeminiReport({
     resistances: supportResistance.resistances.map((r) => r.price),
   }), [bars, price, summary, ema9, trendEma, vwap, volume, indicators, atr14, fundamentals, pillars, supportResistance]);
 
-  const { candle, plan } = report;
+  const { candle, plan, scores } = report;
+  const hasLevels = plan.planState !== 'none';
   const entryZone = plan.entryLow != null && plan.entryHigh != null
     ? (plan.entryLow === plan.entryHigh ? fmtRp(plan.entryLow) : `${fmtRp(plan.entryLow)} – ${fmtRp(plan.entryHigh)}`)
     : '—';
+  const scoreTiles = useMemo((): Array<[string, ScoreItem]> => [
+    ['Fundamental', scores.fundamental],
+    ['Valuasi', scores.valuation],
+    ['Momentum', scores.momentum],
+    ['Likuiditas', scores.liquidity],
+    ['Risiko', scores.risk],
+  ], [scores]);
 
   const getShareText = useCallback(() => {
     const checks = (cs: Check[]) => cs.map((c) => `• ${EMOJI[c.signal]} ${c.label}: ${c.value} — ${c.note}`);
+    const planLines = plan.planState === 'none'
+      ? [
+        `Status: ${STATUS_EMOJI[plan.status]} ${plan.status} — ${plan.statusReason}`,
+        'Setup: TIDAK ADA — Entry/TP/SL/R:R tidak dihitung.',
+        ...(plan.conditions.length ? ['Status bisa berubah bila:', ...plan.conditions.map((c) => `• ${c}`)] : []),
+      ]
+      : [
+        `Status: ${STATUS_EMOJI[plan.status]} ${plan.status} — ${plan.statusReason}`,
+        plan.planState === 'conditional' ? `${SETUP_LABEL[plan.setup]} (RENCANA BERSYARAT — bukan sinyal BUY)` : `Setup: ${SETUP_LABEL[plan.setup]}`,
+        `Area Entry: ${entryZone}`,
+        `Trigger: ${plan.entryTrigger ?? '—'}`,
+        ...plan.targets.map((t) => `${t.label}: ${fmtRp(t.price)} (${fmtPct(t.gainPct, 1)}) — ${t.basis}`),
+        `SL: ${rpOr(plan.sl)}${plan.riskPct != null ? ` (−${fmtNum(plan.riskPct, 1)}%)` : ''}${plan.slBasis ? ` — ${plan.slBasis}` : ''}`,
+        ...(plan.riskReward != null ? [`R:R: 1:${fmtNum(plan.riskReward, 1)}`] : []),
+        ...(plan.conditions.length ? ['Konfirmasi yang belum terpenuhi:', ...plan.conditions.map((c) => `• ${c}`)] : []),
+        '',
+        '🚨 RISK GATE:',
+        ...plan.riskGate.map((g) => `• ${g}`),
+        ...plan.sizing.map((s) => `• Modal ${fmtIdrValue(s.capital)} → risiko maks ${fmtIdrValue(s.maxLoss)} → maks ${s.maxLot != null ? `${fmtNum(s.maxLot)} lot` : '—'}`),
+      ];
     return [
       `⚡ ${ticker} — MOMENTUM vs SPEKULASI (EzySaham AI)`,
+      `KEPUTUSAN: ${STATUS_EMOJI[plan.status]} ${plan.status}`,
+      ['SKOR', ...scoreTiles.map(([l, s]) => `• ${l}: ${scoreTxt(s)}`)].join('\n'),
+      [
+        'DECISION HIERARCHY',
+        ...report.gates.map((g) => `• ${GATE_EMOJI[g.status]} ${g.label} — ${g.status}: ${g.reason}`),
+        `• ℹ️ Valuation Context — ${report.valuationLabel} (konteks, tidak mengubah keputusan)`,
+      ].join('\n'),
       [
         '1️⃣ DETEKSI MOMENTUM & PRICE ACTION',
         `• ${candle.emoji} Candle: ${candle.pattern} — ${candle.note}`,
         `• ${EMOJI[report.rvolCheck.signal]} RVOL: ${report.rvolCheck.value} — ${report.rvolCheck.note}`,
         ...checks(report.positionChecks),
-        `→ ${EMOJI[report.momentumSignal]} ${report.momentumLabel} (skor ${report.momentumScore}/${report.momentumMax})`,
+        `→ ${EMOJI[report.momentumSignal]} ${scoreTxt(scores.momentum)}`,
       ].join('\n'),
       [
         '2️⃣ ANOMALI & AKSI SPEKULASI',
@@ -186,30 +231,17 @@ export function Trading1MinutesGeminiReport({
         ...report.hotMoney.flags.map((f) => `  ⚡ ${f}`),
       ].join('\n'),
       [
-        '3️⃣ VALUASI & RISIKO VALUE TRAP',
+        '3️⃣ VALUASI & RISIKO VALUE TRAP (konteks)',
         ...checks(report.valuationChecks),
         `→ ${EMOJI[report.valuationSignal]} ${report.valuationLabel}`,
         ...report.valuationWarnings.map((w) => `• ${w}`),
       ].join('\n'),
-      [
-        '4️⃣ ACTIONABLE TRADING PLAN',
-        `Status: ${STATUS_EMOJI[plan.status]} ${plan.status} — ${plan.statusReason}`,
-        `Setup: ${plan.setup}`,
-        `Area Entry: ${entryZone}`,
-        `Trigger: ${plan.entryTrigger}`,
-        ...plan.targets.map((t) => `${t.label}: ${fmtRp(t.price)} (${fmtPct(t.gainPct, 1)}) — ${t.basis}`),
-        `SL: ${rpOr(plan.sl)}${plan.riskPct != null ? ` (−${fmtNum(plan.riskPct, 1)}%)` : ''} — ${plan.slBasis}`,
-        ...(plan.riskReward != null ? [`R:R: 1:${fmtNum(plan.riskReward, 1)}`] : []),
-        ...(plan.validationErrors.length ? [`INVALID PLAN: ${plan.validationErrors.join(' · ')}`] : []),
-        '',
-        '🚨 RISK GATE:',
-        ...plan.riskGate.map((g) => `• ${g}`),
-        ...plan.sizing.map((s) => `• Modal ${fmtIdrValue(s.capital)} → risiko maks ${fmtIdrValue(s.maxLoss)} → maks ${s.maxLot != null ? `${fmtNum(s.maxLot)} lot` : '—'}`),
-      ].join('\n'),
+      ['4️⃣ TRADING PLAN', ...planLines].join('\n'),
+      ['VALIDASI KONSISTENSI', ...report.consistency.map((c) => `• ${c.passed ? '✅' : '❌'} ${c.label}`)].join('\n'),
       `KESIMPULAN: ${report.conclusion}`,
       '⚠️ Analisa otomatis berbasis data EOD + intraday tertunda. Edukasi, bukan ajakan jual/beli.',
     ].join('\n\n');
-  }, [ticker, candle, report, plan, entryZone]);
+  }, [ticker, candle, report, plan, scores, entryZone, scoreTiles]);
 
   return (
     <Card aria-labelledby="momentum-report-title">
@@ -224,26 +256,53 @@ export function Trading1MinutesGeminiReport({
           </p>
         )}
 
-        {/* Verdict strip */}
-        <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
-          {([
-            ['Status', `${STATUS_EMOJI[plan.status]} ${plan.status}`, STATUS_TONE[plan.status]],
-            ['Momentum', `${EMOJI[report.momentumSignal]} ${report.momentumLabel}`, TONE[report.momentumSignal]],
-            ['Hot money', `${EMOJI[report.hotMoney.signal]} ${report.hotMoney.level}`, TONE[report.hotMoney.signal]],
-            ['Valuasi', `${EMOJI[report.valuationSignal]} ${report.valuationLabel}`, TONE[report.valuationSignal]],
-          ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
+        {/* Final decision + separate scores */}
+        <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-(--sv-border) bg-(--sv-surface) px-3 py-2">
+            <span className="font-semibold text-(--sv-text)">Keputusan Final</span>
+            <Badge tone={STATUS_TONE[plan.status]} className="text-sm">{STATUS_EMOJI[plan.status]} {plan.status}</Badge>
+          </div>
+          {scoreTiles.map(([label, s]) => (
             <div key={label} className="flex items-center justify-between gap-2 rounded-lg bg-(--sv-surface) px-3 py-2">
-              <span className="text-(--sv-muted)">{label}</span>
-              <Badge tone={tone}>{value}</Badge>
+              <span className="text-(--sv-muted)">
+                {label}
+                {label === 'Risiko' && <span className="text-[10px]"> (makin tinggi makin berisiko)</span>}
+              </span>
+              <Badge tone={TONE[s.signal]}>{EMOJI[s.signal]} {scoreTxt(s)}</Badge>
             </div>
           ))}
         </div>
+
+        {/* Decision hierarchy */}
+        <Section n="🧭" title="Decision Hierarchy" verdict={<Badge tone={STATUS_TONE[plan.status]}>{STATUS_EMOJI[plan.status]} {plan.status}</Badge>}>
+          <ol className="divide-y divide-(--sv-border)/70 text-sm">
+            {report.gates.map((g, idx) => (
+              <li key={g.key} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:gap-3">
+                <span className="flex shrink-0 items-center gap-2 sm:w-60">
+                  <span className="w-4 text-xs tabular-nums text-(--sv-muted)">{idx + 1}</span>
+                  <span className="font-medium text-(--sv-text)">{g.label}</span>
+                  <Badge tone={GATE_TONE[g.status]}>{GATE_EMOJI[g.status]} {g.status}</Badge>
+                </span>
+                <span className="min-w-0 flex-1 text-(--sv-muted)">{g.reason}</span>
+              </li>
+            ))}
+            <li className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:gap-3">
+              <span className="flex shrink-0 items-center gap-2 sm:w-60">
+                <span className="w-4 text-xs tabular-nums text-(--sv-muted)">{report.gates.length + 1}</span>
+                <span className="font-medium text-(--sv-text)">Valuation Context</span>
+                <Badge tone="info">ℹ️ INFO</Badge>
+              </span>
+              <span className="min-w-0 flex-1 text-(--sv-muted)">{report.valuationLabel} — konteks saja, tidak bisa mengoverride gate di atas.</span>
+            </li>
+          </ol>
+          <p className="text-xs text-(--sv-muted)">BUY = semua gate PASS · WAIT = belum cukup konfirmasi, risiko masih acceptable · AVOID = ada gate wajib yang FAIL.</p>
+        </Section>
 
         {/* 1️⃣ MOMENTUM & PRICE ACTION */}
         <Section
           n="1️⃣"
           title="Deteksi Momentum & Price Action"
-          verdict={<Signal signal={report.momentumSignal}>{report.momentumLabel} · {report.momentumScore >= 0 ? '+' : ''}{report.momentumScore}/{report.momentumMax}</Signal>}
+          verdict={<Signal signal={report.momentumSignal}>{scoreTxt(scores.momentum)}</Signal>}
         >
           <div className="rounded-lg bg-(--sv-surface) p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -285,8 +344,8 @@ export function Trading1MinutesGeminiReport({
           )}
         </Section>
 
-        {/* 3️⃣ VALUASI & VALUE TRAP */}
-        <Section n="3️⃣" title="Valuasi & Risiko Value Trap" verdict={<Signal signal={report.valuationSignal}>{report.valuationLabel}</Signal>}>
+        {/* 3️⃣ VALUASI & VALUE TRAP — context only */}
+        <Section n="3️⃣" title="Valuasi & Risiko Value Trap (konteks)" verdict={<Signal signal={report.valuationSignal}>{report.valuationLabel}</Signal>}>
           <CheckList checks={report.valuationChecks} />
           {report.valuationWarnings.length > 0 ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/5 dark:text-rose-200">
@@ -296,6 +355,7 @@ export function Trading1MinutesGeminiReport({
           ) : (
             <p className="text-sm text-(--sv-muted)">🟢 Tidak ada ketidaksesuaian mencolok antara momentum dan valuasi.</p>
           )}
+          <p className="text-xs text-(--sv-muted)">Valuasi murah / nilai wajar tinggi tidak pernah mengoverride Liquidity, Risk, atau Technical Gate.</p>
         </Section>
 
         {/* 4️⃣ TRADING PLAN */}
@@ -305,59 +365,107 @@ export function Trading1MinutesGeminiReport({
           verdict={<Badge tone={STATUS_TONE[plan.status]}>{STATUS_EMOJI[plan.status]} {plan.status}</Badge>}
         >
           <p className="text-sm text-(--sv-text)"><strong>{plan.status}</strong> — {plan.statusReason}.</p>
-          <div className="grid gap-2 text-sm sm:grid-cols-2">
-            <div className="rounded-lg border border-(--sv-border) bg-(--sv-surface) p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">{plan.setup}</p>
-              <p className="mt-1 text-base font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{entryZone}</p>
-              <p className="mt-1 text-xs text-(--sv-muted)">{plan.entryTrigger}</p>
-            </div>
-            <div className="rounded-lg border border-(--sv-border) bg-(--sv-surface) p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Stop Loss</p>
-              <p className="mt-1 text-base font-semibold tabular-nums text-rose-600 dark:text-rose-400">
-                {rpOr(plan.sl)}{plan.riskPct != null && <span className="ml-1 text-xs font-medium">(−{fmtNum(plan.riskPct, 1)}%)</span>}
+
+          {!hasLevels ? (
+            <div
+              className={cn(
+                'rounded-lg border p-3 text-sm',
+                plan.status === 'AVOID'
+                  ? 'border-rose-200 bg-rose-50/60 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/5 dark:text-rose-200'
+                  : 'border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/5 dark:text-amber-200',
+              )}
+            >
+              <p className="font-semibold">
+                {plan.status === 'AVOID'
+                  ? 'Tidak ada setup aktif — Entry, TP, SL, R:R dan ukuran posisi tidak dihitung.'
+                  : 'Belum ada setup valid — Entry, TP, SL dan R:R belum dihitung.'}
               </p>
-              <p className="mt-1 text-xs text-(--sv-muted)">{plan.slBasis}</p>
+              {plan.conditions.length > 0 && (
+                <>
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide">Status bisa berubah bila</p>
+                  <Bullets items={plan.conditions} className="mt-1" />
+                </>
+              )}
             </div>
-          </div>
-
-          {plan.targets.length > 0 && (
-            <div className="grid gap-2 text-sm sm:grid-cols-3">
-              {plan.targets.map((t) => (
-                <div key={t.label} className="rounded-lg bg-(--sv-surface) px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-(--sv-muted)">🎯 {t.label}</span>
-                    <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{fmtPct(t.gainPct, 1)}</span>
-                  </div>
-                  <p className="font-semibold tabular-nums text-(--sv-text)">{fmtRp(t.price)}</p>
-                  <p className="text-[11px] text-(--sv-muted)">{t.basis}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          {plan.riskReward != null && (
-            <p className="text-xs text-(--sv-muted)">Risk : Reward (ke TP1) = <strong className="text-(--sv-text)">1 : {fmtNum(plan.riskReward, 1)}</strong></p>
-          )}
-          {plan.validationErrors.length > 0 && (
-            <p className="text-xs font-medium text-rose-600 dark:text-rose-400">INVALID PLAN — {plan.validationErrors.join(' · ')}. Plan tidak boleh dieksekusi.</p>
-          )}
-
-          <div className="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/5 dark:text-rose-200">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide">🚨 Risk Gate</p>
-            <Bullets items={plan.riskGate} />
-            <div className="mt-2 grid gap-1 text-xs sm:grid-cols-2">
-              {plan.sizing.map((s) => (
-                <p key={s.capital}>
-                  Modal {fmtIdrValue(s.capital)} → risiko maks {fmtIdrValue(s.maxLoss)} ({MAX_RISK_PER_TRADE_PCT}%) → <strong>maks {s.maxLot != null ? `${fmtNum(s.maxLot)} lot` : '—'}</strong>
+          ) : (
+            <>
+              {plan.planState === 'conditional' && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/5 dark:text-amber-200">
+                  ⚠️ Rencana bersyarat — &quot;Buy Area&quot; ≠ BUY. Level di bawah baru boleh dieksekusi setelah semua konfirmasi terpenuhi.
                 </p>
-              ))}
-            </div>
-          </div>
+              )}
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <div className="rounded-lg border border-(--sv-border) bg-(--sv-surface) p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">{SETUP_LABEL[plan.setup]}</p>
+                  <p className="mt-1 text-base font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{entryZone}</p>
+                  <p className="mt-1 text-xs text-(--sv-muted)">{plan.entryTrigger}</p>
+                </div>
+                <div className="rounded-lg border border-(--sv-border) bg-(--sv-surface) p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Stop Loss</p>
+                  <p className="mt-1 text-base font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+                    {rpOr(plan.sl)}{plan.riskPct != null && <span className="ml-1 text-xs font-medium">(−{fmtNum(plan.riskPct, 1)}%)</span>}
+                  </p>
+                  <p className="mt-1 text-xs text-(--sv-muted)">{plan.slBasis}</p>
+                </div>
+              </div>
+
+              {plan.targets.length > 0 && (
+                <div className="grid gap-2 text-sm sm:grid-cols-3">
+                  {plan.targets.map((t) => (
+                    <div key={t.label} className="rounded-lg bg-(--sv-surface) px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-(--sv-muted)">🎯 {t.label}</span>
+                        <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{fmtPct(t.gainPct, 1)}</span>
+                      </div>
+                      <p className="font-semibold tabular-nums text-(--sv-text)">{fmtRp(t.price)}</p>
+                      <p className="text-[11px] text-(--sv-muted)">{t.basis}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {plan.riskReward != null && (
+                <p className="text-xs text-(--sv-muted)">Risk : Reward (ke TP1) = <strong className="text-(--sv-text)">1 : {fmtNum(plan.riskReward, 1)}</strong></p>
+              )}
+
+              <div className="rounded-lg bg-(--sv-surface) p-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Konfirmasi wajib sebelum BUY</p>
+                <ul className="grid gap-1 text-sm sm:grid-cols-2">
+                  {plan.confirmations.map((c) => (
+                    <li key={c.label} className={cn('flex items-start gap-2', !c.ok && 'text-(--sv-muted)')}>
+                      <span>{c.ok ? '✅' : '⏳'}</span>{c.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/5 dark:text-rose-200">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide">🚨 Risk Gate</p>
+                <Bullets items={plan.riskGate} />
+                <div className="mt-2 grid gap-1 text-xs sm:grid-cols-2">
+                  {plan.sizing.map((s) => (
+                    <p key={s.capital}>
+                      Modal {fmtIdrValue(s.capital)} → risiko maks {fmtIdrValue(s.maxLoss)} ({MAX_RISK_PER_TRADE_PCT}%) → <strong>maks {s.maxLot != null ? `${fmtNum(s.maxLot)} lot` : '—'}</strong>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </Section>
 
         <div className="rounded-lg border border-(--sv-primary)/30 bg-(--sv-surface) p-3 text-sm">
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Kesimpulan</p>
           <p className="font-medium leading-relaxed text-(--sv-text)">{report.conclusion}</p>
         </div>
+
+        <details className="rounded-lg bg-(--sv-surface) px-3 py-2 text-xs text-(--sv-muted)">
+          <summary className="cursor-pointer font-semibold">
+            Validasi konsistensi · {report.consistency.every((c) => c.passed) ? '✅ semua lolos' : `❌ ${report.consistency.filter((c) => !c.passed).length} gagal`}
+          </summary>
+          <ul className="mt-2 space-y-0.5">
+            {report.consistency.map((c) => <li key={c.label}>{c.passed ? '✅' : '❌'} {c.label}</li>)}
+          </ul>
+        </details>
 
         <p className="text-xs leading-relaxed text-(--sv-muted)">
           Candlestick dibaca dari candle harian terakhir; VWAP dari feed 1 menit (kuotasi tertunda). Target adalah proyeksi, bukan janji profit.
@@ -372,7 +480,7 @@ export function Trading1MinutesGeminiReportSkeleton() {
   return (
     <Card as="div" className="space-y-4 p-4">
       <Skeleton className="h-5 w-72" />
-      {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-40" />)}
+      {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-40" />)}
     </Card>
   );
 }

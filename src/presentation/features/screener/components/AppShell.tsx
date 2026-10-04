@@ -80,7 +80,7 @@ export function AppShell({ query, onQueryChange, onSubmitQuery, lastUpdatedAt = 
               <X className="size-4" strokeWidth={2} />
             </button>
           </div>
-          <ScreenerNav watchlistOnly={false} watchlistCount={watchlist.tickers.length} onToggleWatchlist={() => router.push('/screener')} />
+          <ScreenerNav watchlistCount={watchlist.tickers.length} />
           <p className="mt-auto text-[11px] text-(--sv-muted)">© {new Date().getFullYear()} {SITE_NAME} · Data EOD, bukan prediksi harga.</p>
         </aside>
 

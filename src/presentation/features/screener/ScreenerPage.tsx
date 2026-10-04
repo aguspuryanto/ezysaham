@@ -6,7 +6,6 @@ import {
   BookmarkCheck,
   Building2,
   Crosshair,
-  GitCompare,
   LayoutGrid,
   Loader2,
   NotebookPen,
@@ -19,7 +18,6 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStockFundamentals, getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
-import { computeScreenerVerdict, ScreenerVerdict } from '@/domain/analysis/screenerVerdict';
 import { NewJournalEntryInput } from '@/domain/models/JournalEntry';
 import { StockSummary } from '@/domain/models/Stock';
 import { ScreenerPresetId, SCREENER_PRESETS } from '@/domain/screener/presets';
@@ -29,6 +27,7 @@ import { mapWithConcurrency } from '@/lib/concurrency';
 import { cn } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
 import { useJournal } from '@/presentation/features/journal/hooks/useJournal';
+import { CompareBar, useCompareSelection } from './components/CompareBar';
 import { DayTradingTable } from './components/DayTradingTable';
 import { GainerLoserPanel } from './components/GainerLoserPanel';
 import { MarketSummary, useMarketSeries } from './components/MarketSummary';
@@ -42,6 +41,7 @@ import { ScreenerTabItem, ScreenerTabs } from './components/ScreenerTabs';
 import { SwingTradingTable } from './components/SwingTradingTable';
 import { ValuationSummary } from './components/ValuationSummary';
 import { screenerInter } from './fonts';
+import { useScreenerVerdicts } from './hooks/useScreenerVerdicts';
 import { useWatchlist } from './hooks/useWatchlist';
 import {
   DEFAULT_FILTERS,
@@ -50,6 +50,7 @@ import {
   matchesBasicFilters,
   ScreenerFilterState,
 } from './screenerFilters';
+import { nextSort, sortScreenerRows } from './screenerSort';
 
 const JOURNAL_PRESETS: ScreenerPresetId[] = ['dayTrading', 'swingTrading'];
 /** Presets with their own setup table + composite score (default sort: score desc). */
@@ -58,8 +59,6 @@ const JOURNAL_TOP_N = 5;
 
 const HISTORY_CONCURRENCY = 6;
 const PAGE_SIZE = 25;
-/** Verdicts are committed to state in chunks so progress shows while a full-list analysis runs. */
-const VERDICT_CHUNK = 24;
 const SAVED_SCREENER_KEY = 'ezysaham.screener.saved.v1';
 
 type FilterId = 'all' | ScreenerPresetId;
@@ -98,18 +97,6 @@ function readSavedScreener(): SavedScreener | null {
   }
 }
 
-function sortValue(r: ScreenerResult, key: ScreenerSortKey, v?: ScreenerVerdict): number | string | null {
-  switch (key) {
-    case 'ticker': return r.summary.ticker;
-    case 'change': return r.summary.percentChange1D;
-    case 'price': return r.summary.lastClose;
-    case 'volume': return r.summary.volume;
-    case 'fundamental': return v ? v.fundamentalScore.composite : null;
-    case 'upside': return v?.valuation.upsidePct ?? null;
-    case 'score': return r.evaluation.dayTrading?.scores.total ?? r.evaluation.swingTrading?.scores.total ?? null;
-  }
-}
-
 export function ScreenerPage() {
   const [summaries, setSummaries] = useState<StockSummary[] | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
@@ -120,29 +107,18 @@ export function ScreenerPage() {
   const [query, setQuery] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [creatingJurnal, setCreatingJurnal] = useState(false);
   const [jurnalMessage, setJurnalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [verdictByTicker, setVerdictByTicker] = useState<Record<string, ScreenerVerdict>>({});
   const [filters, setFilters] = useState<ScreenerFilterState>(DEFAULT_FILTERS);
   const [draftFilters, setDraftFilters] = useState<ScreenerFilterState>(DEFAULT_FILTERS);
-  const [watchlistOnly, setWatchlistOnly] = useState(false);
   const [sort, setSort] = useState<ScreenerSort>(DEFAULT_SORT);
   const [page, setPage] = useState(1);
   const [savedFlash, setSavedFlash] = useState(false);
-  const verdictAttemptedRef = useRef<Set<string>>(new Set());
   const watchlist = useWatchlist();
+  const compare = useCompareSelection();
+  const { verdictByTicker, load: loadVerdicts, reset: resetVerdicts } = useScreenerVerdicts();
   const journal = useJournal();
   const market = useMarketSeries();
-
-  const toggleCompare = useCallback((ticker: string) => {
-    setCompareSelection((prev) => {
-      if (prev.includes(ticker)) return prev.filter((t) => t !== ticker);
-      if (prev.length >= 2) return [prev[1], ticker]; // drop the oldest, keep the newest 2
-      return [...prev, ticker];
-    });
-  }, []);
-  const isCompareSelected = useCallback((ticker: string) => compareSelection.includes(ticker), [compareSelection]);
 
   // Mobile/tablet sidebar drawer: lock body scroll and allow Escape to close while open.
   useEffect(() => {
@@ -250,7 +226,7 @@ export function ScreenerPage() {
   }, []);
 
   const handleSort = useCallback((key: ScreenerSortKey) => {
-    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'ticker' ? 'asc' : 'desc' }));
+    setSort((prev) => nextSort(prev, key));
     setPage(1);
   }, []);
 
@@ -263,16 +239,14 @@ export function ScreenerPage() {
   const resetFilters = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
     setDraftFilters(DEFAULT_FILTERS);
-    setWatchlistOnly(false);
     setPage(1);
   }, []);
 
   const handleRefresh = useCallback(() => {
-    verdictAttemptedRef.current = new Set();
-    setVerdictByTicker({});
+    resetVerdicts();
     setPage(1);
     loadSummaries(false);
-  }, [loadSummaries]);
+  }, [loadSummaries, resetVerdicts]);
 
   const handleSaveScreener = useCallback(() => {
     try {
@@ -290,17 +264,15 @@ export function ScreenerPage() {
     [summaries],
   );
 
-  // Rows matching everything readable from StockSummary alone (search, basic filters, watchlist).
-  const isWatchlisted = watchlist.has;
+  // Rows matching everything readable from StockSummary alone (search, basic filters).
   const baseRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return results.filter((r) => {
       const s = r.summary;
       if (q && !(s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q) || s.sector?.toLowerCase().includes(q))) return false;
-      if (watchlistOnly && !isWatchlisted(s.ticker)) return false;
       return matchesBasicFilters(s, filters);
     });
-  }, [results, query, filters, watchlistOnly, isWatchlisted]);
+  }, [results, query, filters]);
 
   const advancedActive = hasAdvancedFilters(filters);
   // Advanced filters and verdict-based sorts need every candidate's verdict, not just the visible page.
@@ -308,16 +280,7 @@ export function ScreenerPage() {
 
   const sortedRows = useMemo(() => {
     const rows = advancedActive ? baseRows.filter((r) => matchesAdvancedFilters(verdictByTicker[r.summary.ticker], filters)) : baseRows;
-    const mul = sort.dir === 'asc' ? 1 : -1;
-    return [...rows].sort((a, b) => {
-      const va = sortValue(a, sort.key, verdictByTicker[a.summary.ticker]);
-      const vb = sortValue(b, sort.key, verdictByTicker[b.summary.ticker]);
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1; // not analyzed yet → always last
-      if (vb == null) return -1;
-      if (typeof va === 'string' && typeof vb === 'string') return mul * va.localeCompare(vb);
-      return mul * ((va as number) - (vb as number));
-    });
+    return sortScreenerRows(rows, sort, verdictByTicker);
   }, [baseRows, advancedActive, verdictByTicker, filters, sort]);
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
@@ -339,38 +302,8 @@ export function ScreenerPage() {
     ? { done: baseRows.filter((r) => verdictByTicker[r.summary.ticker]).length, total: baseRows.length }
     : null;
 
-  // Lazily computes each target row's verdict (Market Phase / Trend / Fundamental / Momentum /
-  // Volume / Fair Value / Risk) — needs a per-ticker history + fundamentals fetch, so it only runs
-  // for rows on screen unless an advanced filter/sort needs the whole list.
-  useEffect(() => {
-    const pending = verdictTargets.filter((r) => !verdictAttemptedRef.current.has(r.summary.ticker));
-    if (pending.length === 0) return;
-
-    let cancelled = false;
-    (async () => {
-      for (let i = 0; i < pending.length && !cancelled; i += VERDICT_CHUNK) {
-        const chunk = pending.slice(i, i + VERDICT_CHUNK).filter((r) => !verdictAttemptedRef.current.has(r.summary.ticker));
-        chunk.forEach((r) => verdictAttemptedRef.current.add(r.summary.ticker));
-        const entries = await mapWithConcurrency(chunk, HISTORY_CONCURRENCY, async ({ summary }) => {
-          const [bars, fundamentals] = await Promise.all([
-            getStockHistory(summary.ticker),
-            getStockFundamentals(summary.ticker),
-          ]);
-          return [summary.ticker, computeScreenerVerdict(summary, bars, fundamentals)] as const;
-        });
-        // Results are valid regardless of cancellation — commit them so nothing is fetched twice.
-        setVerdictByTicker((prev) => {
-          const next = { ...prev };
-          for (const [ticker, verdict] of entries) next[ticker] = verdict;
-          return next;
-        });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [verdictTargets]);
+  // Verdicts need a per-ticker fetch, so only rows on screen get one unless an advanced filter/sort needs the whole list.
+  useEffect(() => loadVerdicts(verdictTargets), [loadVerdicts, verdictTargets]);
 
   const activeFilterInfo = useMemo(() => {
     if (filterId === 'all') {
@@ -384,7 +317,7 @@ export function ScreenerPage() {
   const progressPct = progress.total > 0 ? Math.round((progress.checked / progress.total) * 100) : 0;
   const canCreateJurnal = JOURNAL_PRESETS.includes(filterId as ScreenerPresetId) && results.length > 0;
   const filtersDirty = JSON.stringify(draftFilters) !== JSON.stringify(filters);
-  const anyFilter = watchlistOnly || JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS) || query.trim() !== '';
+  const anyFilter = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS) || query.trim() !== '';
 
   const handleCreateJurnal = useCallback(async () => {
     if (!JOURNAL_PRESETS.includes(filterId as ScreenerPresetId)) return;
@@ -495,11 +428,7 @@ export function ScreenerPage() {
               <X className="size-4" strokeWidth={2} />
             </button>
           </div>
-          <ScreenerNav
-            watchlistOnly={watchlistOnly}
-            watchlistCount={watchlist.tickers.length}
-            onToggleWatchlist={() => { setWatchlistOnly((w) => !w); setPage(1); setDrawerOpen(false); }}
-          />
+          <ScreenerNav watchlistCount={watchlist.tickers.length} />
           <div className="border-t border-(--sv-border) pt-5">
             <ScreenerFilters
               draft={draftFilters}
@@ -647,16 +576,12 @@ export function ScreenerPage() {
                 loading={isBusy}
                 sort={sort}
                 onSort={handleSort}
-                emptyHint={
-                  watchlistOnly && watchlist.tickers.length === 0
-                    ? 'Watchlist Anda masih kosong — tandai saham dengan ikon bintang.'
-                    : 'Tidak ada saham berstatus DAY TRADE SETUP / WATCH dari data EOD terakhir. Jangan memaksakan entry.'
-                }
+                emptyHint="Tidak ada saham berstatus DAY TRADE SETUP / WATCH dari data EOD terakhir. Jangan memaksakan entry."
                 onResetFilters={anyFilter ? () => { resetFilters(); setQuery(''); } : undefined}
                 isWatchlisted={watchlist.has}
                 onToggleWatchlist={watchlist.toggle}
-                isCompareSelected={isCompareSelected}
-                onToggleCompare={toggleCompare}
+                isCompareSelected={compare.isSelected}
+                onToggleCompare={compare.toggle}
               />
             )}
 
@@ -667,16 +592,12 @@ export function ScreenerPage() {
                 loading={isBusy}
                 sort={sort}
                 onSort={handleSort}
-                emptyHint={
-                  watchlistOnly && watchlist.tickers.length === 0
-                    ? 'Watchlist Anda masih kosong — tandai saham dengan ikon bintang.'
-                    : 'Tidak ada saham berstatus SWING BUY SETUP / SWING WAIT dari data EOD terakhir. Tidak ada setup = tidak entry.'
-                }
+                emptyHint="Tidak ada saham berstatus SWING BUY SETUP / SWING WAIT dari data EOD terakhir. Tidak ada setup = tidak entry."
                 onResetFilters={anyFilter ? () => { resetFilters(); setQuery(''); } : undefined}
                 isWatchlisted={watchlist.has}
                 onToggleWatchlist={watchlist.toggle}
-                isCompareSelected={isCompareSelected}
-                onToggleCompare={toggleCompare}
+                isCompareSelected={compare.isSelected}
+                onToggleCompare={compare.toggle}
               />
             )}
 
@@ -689,17 +610,15 @@ export function ScreenerPage() {
                 sort={sort}
                 onSort={handleSort}
                 emptyHint={
-                  watchlistOnly && watchlist.tickers.length === 0
-                    ? 'Watchlist Anda masih kosong — tandai saham dengan ikon bintang.'
-                    : verdictProgress && verdictProgress.done < verdictProgress.total
+                  verdictProgress && verdictProgress.done < verdictProgress.total
                       ? 'Masih menganalisis kandidat — hasil akan muncul saat data selesai dihitung.'
                       : 'Coba longgarkan filter, ganti tab preset, atau ubah kata kunci pencarian.'
                 }
                 onResetFilters={anyFilter ? () => { resetFilters(); setQuery(''); } : undefined}
                 isWatchlisted={watchlist.has}
                 onToggleWatchlist={watchlist.toggle}
-                isCompareSelected={isCompareSelected}
-                onToggleCompare={toggleCompare}
+                isCompareSelected={compare.isSelected}
+                onToggleCompare={compare.toggle}
               />
             )}
 
@@ -710,34 +629,7 @@ export function ScreenerPage() {
         </main>
       </div>
 
-      {compareSelection.length > 0 && (
-        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
-          <div className="flex items-center gap-3 rounded-xl border border-(--sv-border) bg-(--sv-surface) px-4 py-2.5 shadow-lg">
-            <GitCompare className="size-4 shrink-0 text-(--sv-primary)" strokeWidth={2} />
-            <span className="text-sm font-medium text-(--sv-text)">
-              {compareSelection.length === 2
-                ? `${compareSelection[0]} vs ${compareSelection[1]}`
-                : `${compareSelection[0]} dipilih — pilih 1 saham lagi`}
-            </span>
-            {compareSelection.length === 2 && (
-              <Link
-                href={`/compare?a=${compareSelection[0]}&b=${compareSelection[1]}`}
-                className="rounded-lg bg-(--sv-primary) px-3 py-1.5 text-sm font-semibold text-(--sv-primary-fg)"
-              >
-                Bandingkan →
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={() => setCompareSelection([])}
-              aria-label="Batalkan pilihan bandingkan"
-              className="flex size-7 shrink-0 items-center justify-center rounded-md text-(--sv-muted) hover:text-rose-500"
-            >
-              <X className="size-4" strokeWidth={2} />
-            </button>
-          </div>
-        </div>
-      )}
+      <CompareBar selection={compare.selection} onClear={compare.clear} />
     </div>
   );
 }

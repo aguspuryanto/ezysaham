@@ -10,7 +10,6 @@
 
 import { ChevronRight, CircleDot, Home, LayoutGrid, MinusCircle, RefreshCw, ScanSearch, TrendingDown, TrendingUp, X, XCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import type { JournalEntryEditableFields } from '@/data/repositories/JournalRepository';
 import { JournalEntry, JournalStatus } from '@/domain/models/JournalEntry';
@@ -47,7 +46,6 @@ function StatTile({ label, children, hint }: { label: string; children: ReactNod
 }
 
 export function JournalPage() {
-  const router = useRouter();
   const market = useMarketSeries();
   const watchlist = useWatchlist();
   const { entries, loading, refresh, removeEntry, updateEntry } = useJournal();
@@ -153,7 +151,7 @@ export function JournalPage() {
               <X className="size-4" strokeWidth={2} />
             </button>
           </div>
-          <ScreenerNav watchlistOnly={false} watchlistCount={watchlist.tickers.length} onToggleWatchlist={() => router.push('/screener')} />
+          <ScreenerNav watchlistCount={watchlist.tickers.length} />
           <p className="mt-auto text-[11px] text-(--sv-muted)">© {new Date().getFullYear()} {SITE_NAME} · Data EOD, bukan prediksi harga.</p>
         </aside>
 

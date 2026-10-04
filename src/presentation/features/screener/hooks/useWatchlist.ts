@@ -6,6 +6,8 @@ const STORAGE_KEY = 'stockpilot:watchlist';
 
 export function useWatchlist() {
   const [tickers, setTickers] = useState<string[]>([]);
+  /** False until localStorage has been read — lets pages tell "still loading" from "empty". */
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     Promise.resolve().then(() => {
@@ -15,6 +17,7 @@ export function useWatchlist() {
       } catch {
         // localStorage unavailable (private mode, disabled storage) — watchlist just won't persist.
       }
+      setReady(true);
     });
   }, []);
 
@@ -32,5 +35,5 @@ export function useWatchlist() {
 
   const has = useCallback((ticker: string) => tickers.includes(ticker), [tickers]);
 
-  return { tickers, toggle, has };
+  return { tickers, ready, toggle, has };
 }

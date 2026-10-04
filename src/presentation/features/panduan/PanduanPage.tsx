@@ -10,7 +10,6 @@
 
 import { BookOpen, Building2, ChevronRight, Home, Landmark, LineChart, LucideIcon, PieChart, Radar, ScanSearch, SearchX, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Fragment, ReactNode, useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/format';
 import { SITE_NAME } from '@/lib/site';
@@ -67,7 +66,6 @@ function TermCard({ item, q, category }: { item: GlossaryTerm; q: string; catego
 }
 
 export function PanduanPage() {
-  const router = useRouter();
   const market = useMarketSeries();
   const watchlist = useWatchlist();
   const [activeCategory, setActiveCategory] = useState(GLOSSARY[0].key);
@@ -128,7 +126,7 @@ export function PanduanPage() {
               <X className="size-4" strokeWidth={2} />
             </button>
           </div>
-          <ScreenerNav watchlistOnly={false} watchlistCount={watchlist.tickers.length} onToggleWatchlist={() => router.push('/screener')} />
+          <ScreenerNav watchlistCount={watchlist.tickers.length} />
           <p className="mt-auto text-[11px] text-(--sv-muted)">© {new Date().getFullYear()} {SITE_NAME} · Data EOD, bukan prediksi harga.</p>
         </aside>
 

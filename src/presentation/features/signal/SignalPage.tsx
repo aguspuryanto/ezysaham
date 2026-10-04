@@ -9,7 +9,6 @@
  */
 
 import { AlertCircle, Clock, Flame, Loader2, RefreshCw, Sparkles, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { todayWib } from '@/data/repositories/SignalRepository';
 import { potentialTargetOf, SignalFilterState, StockSignal } from '@/domain/models/Signal';
@@ -47,7 +46,6 @@ function matches(s: StockSignal, f: SignalFilterState): boolean {
 }
 
 export function SignalPage() {
-  const router = useRouter();
   const market = useMarketSeries();
   const watchlist = useWatchlist();
   const [today] = useState(todayWib);
@@ -133,7 +131,7 @@ export function SignalPage() {
               <X className="size-4" strokeWidth={2} />
             </button>
           </div>
-          <ScreenerNav watchlistOnly={false} watchlistCount={watchlist.tickers.length} onToggleWatchlist={() => router.push('/screener')} />
+          <ScreenerNav watchlistCount={watchlist.tickers.length} />
           <p className="mt-auto text-[11px] text-(--sv-muted)">© {new Date().getFullYear()} {SITE_NAME} · Data EOD, bukan prediksi harga.</p>
         </aside>
 
