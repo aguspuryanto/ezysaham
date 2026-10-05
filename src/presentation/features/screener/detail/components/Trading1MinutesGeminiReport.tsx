@@ -9,6 +9,9 @@
  *   → Decision hierarchy (Data → Liquidity → Risk → Trend → Momentum → Entry, valuation = context)
  *   → 1️⃣ Momentum & price action · 2️⃣ Anomali & spekulasi · 3️⃣ Valuasi (konteks) · 4️⃣ Trading plan
  *   → kesimpulan + consistency check.
+ * Decision Engine v2 (docs/features_upgrade_decision_engine.md): separate Fundamental / Market / Execution
+ * risk, Avg-20D-based Liquidity Gate (Today | Avg 20D | RVOL | status) and independent Trading / Swing /
+ * Investing decisions, each with Why? · Why not now? · What changes the status?
  * AVOID shows no setup / entry / TP / SL — only reasons and the conditions for the status to change.
  * All verdicts come from the deterministic engine in momentumSpeculation.ts; this file only lays them out.
  */
@@ -17,15 +20,20 @@ import { Loader2, Zap } from 'lucide-react';
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { getStockIntraday } from '@/data/repositories/StockRepository';
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
-import { buildFundamentalPillars } from '@/domain/analysis/fundamentalPillars';
+import { buildFundamentalPillars, isFinancial } from '@/domain/analysis/fundamentalPillars';
 import {
   buildMomentumReport,
   Check,
   fmtIdrValue,
   GateStatus,
+  HorizonDecision,
+  InvestingStatus,
+  LIQUIDITY_STATUS_LABEL,
   MAX_RISK_PER_TRADE_PCT,
   MomentumSignal,
   MomentumStatus,
+  RiskItem,
+  RiskLevel,
   ScoreItem,
   SETUP_LABEL,
 } from '@/domain/analysis/momentumSpeculation';
@@ -48,6 +56,15 @@ const STATUS_TONE: Record<MomentumStatus, Tone> = { BUY: 'positive', WAIT: 'warn
 const STATUS_EMOJI: Record<MomentumStatus, string> = { BUY: '🟢', WAIT: '🟡', AVOID: '🔴' };
 const GATE_TONE: Record<GateStatus, Tone> = { PASS: 'positive', FAIL: 'negative', PENDING: 'warning', SKIPPED: 'neutral' };
 const GATE_EMOJI: Record<GateStatus, string> = { PASS: '✅', FAIL: '❌', PENDING: '⏳', SKIPPED: '⏭️' };
+const INVEST_TONE: Record<InvestingStatus, Tone> = { ACCUMULATE: 'positive', HOLD: 'info', WATCH: 'warning', AVOID: 'negative' };
+const INVEST_EMOJI: Record<InvestingStatus, string> = { ACCUMULATE: '🟢', HOLD: '🔵', WATCH: '🟡', AVOID: '🔴' };
+const RISK_TONE: Record<RiskLevel, Tone> = { LOW: 'positive', MEDIUM: 'warning', HIGH: 'negative', NA: 'neutral' };
+const RISK_EMOJI: Record<RiskLevel, string> = { LOW: '🟢', MEDIUM: '🟡', HIGH: '🔴', NA: '⚪' };
+const riskTxt = (l: RiskLevel) => (l === 'NA' ? 'N/A' : l);
+
+type AnyDecision = HorizonDecision<MomentumStatus> | HorizonDecision<InvestingStatus>;
+const decisionTone = (d: AnyDecision): Tone => (d.status in INVEST_TONE ? INVEST_TONE[d.status as InvestingStatus] : STATUS_TONE[d.status as MomentumStatus]);
+const decisionEmoji = (d: AnyDecision): string => (d.status in INVEST_EMOJI ? INVEST_EMOJI[d.status as InvestingStatus] : STATUS_EMOJI[d.status as MomentumStatus]);
 
 const num = (n: number | null | undefined): number | null => (n != null && Number.isFinite(n) ? n : null);
 const pos = (n: number | null | undefined): number | null => (n != null && Number.isFinite(n) && n > 0 ? n : null);
@@ -99,6 +116,55 @@ function Bullets({ items, className }: { items: string[]; className?: string }) 
 
 function Signal({ signal, children }: { signal: MomentumSignal; children: ReactNode }) {
   return <Badge tone={TONE[signal]}>{EMOJI[signal]} {children}</Badge>;
+}
+
+function Stat({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg bg-(--sv-surface) px-3 py-2">
+      <span className="text-(--sv-muted)">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function DecisionCard({ d }: { d: AnyDecision }) {
+  return (
+    <div className="space-y-2 rounded-lg border border-(--sv-border) bg-(--sv-surface) p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-semibold text-(--sv-text)">{d.label}</span>
+        <Badge tone={decisionTone(d)}>{decisionEmoji(d)} {d.status}</Badge>
+      </div>
+      <p className="text-[11px] text-(--sv-muted)">Fokus: {d.focus}</p>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Kenapa status ini?</p>
+        <p className="text-(--sv-text)">{d.why}</p>
+      </div>
+      {d.whyNotNow && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Kenapa belum BUY sekarang?</p>
+          <p className="text-(--sv-muted)">{d.whyNotNow}</p>
+        </div>
+      )}
+      {d.changes.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Status berubah bila</p>
+          <Bullets items={d.changes} className="text-(--sv-muted)" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RiskCard({ title, item }: { title: string; item: RiskItem }) {
+  return (
+    <div className="space-y-1.5 rounded-lg bg-(--sv-surface) p-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-(--sv-text)">{title}</span>
+        <Badge tone={RISK_TONE[item.level]}>{RISK_EMOJI[item.level]} {riskTxt(item.level)}</Badge>
+      </div>
+      <Bullets items={item.reasons} className="text-xs text-(--sv-muted)" />
+    </div>
+  );
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────────
@@ -166,13 +232,21 @@ export function Trading1MinutesGeminiReport({
     roe: summary.roe !== 0 ? num(summary.roe) : null,
     revenueGrowth: num(fundamentals?.revenueGrowth),
     earningsGrowth: num(fundamentals?.earningsGrowth),
+    debtToEquity: num(fundamentals?.debtToEquity),
+    currentRatio: num(fundamentals?.currentRatio),
+    netMargin: num(fundamentals?.netMargin),
+    isFinancial: isFinancial(summary),
+    healthVerdict: pillars.health.verdict,
     valuationVerdict: pillars.valuation.verdict,
     fairValue: pillars.valuation.fairValue,
+    accumulationLow: pillars.valuation.accumulationLow,
+    accumulationHigh: pillars.valuation.accumulationHigh,
     supports: supportResistance.supports.map((s) => s.price),
     resistances: supportResistance.resistances.map((r) => r.price),
   }), [bars, price, summary, ema9, trendEma, vwap, volume, indicators, atr14, fundamentals, pillars, supportResistance]);
 
-  const { candle, plan, scores } = report;
+  const { candle, plan, scores, risk, liquidityView: liq, decisions } = report;
+  const horizons = useMemo((): AnyDecision[] => [decisions.trading, decisions.swing, decisions.investing], [decisions]);
   const hasLevels = plan.planState !== 'none';
   const entryZone = plan.entryLow != null && plan.entryHigh != null
     ? (plan.entryLow === plan.entryHigh ? fmtRp(plan.entryLow) : `${fmtRp(plan.entryLow)} – ${fmtRp(plan.entryHigh)}`)
@@ -207,12 +281,31 @@ export function Trading1MinutesGeminiReport({
         ...plan.riskGate.map((g) => `• ${g}`),
         ...plan.sizing.map((s) => `• Modal ${fmtIdrValue(s.capital)} → risiko maks ${fmtIdrValue(s.maxLoss)} → maks ${s.maxLot != null ? `${fmtNum(s.maxLot)} lot` : '—'}`),
       ];
+    const decisionLines = (d: AnyDecision) => [
+      `• ${d.label}: ${decisionEmoji(d)} ${d.status}`,
+      `  Kenapa: ${d.why}`,
+      ...(d.whyNotNow ? [`  Kenapa belum BUY: ${d.whyNotNow}`] : []),
+      ...(d.changes.length ? [`  Berubah bila: ${d.changes.join(' | ')}`] : []),
+    ];
     return [
-      `⚡ ${ticker} — MOMENTUM vs SPEKULASI (EzySaham AI)`,
-      `KEPUTUSAN: ${STATUS_EMOJI[plan.status]} ${plan.status}`,
+      `⚡ ${ticker} — MOMENTUM vs SPEKULASI (EzySaham AI · Decision Engine v2)`,
+      ['KEPUTUSAN PER HORIZON', ...horizons.flatMap(decisionLines)].join('\n'),
+      [
+        'RISIKO',
+        `• Fundamental Risk: ${riskTxt(risk.fundamental.level)} — ${risk.fundamental.reasons.join('; ')}`,
+        `• Market Risk: ${riskTxt(risk.market.level)} — ${risk.market.reasons.join('; ')}`,
+        `• Execution Risk: ${riskTxt(risk.execution.level)} — ${risk.execution.reasons.join('; ')}`,
+        `• Trading Risk: ${riskTxt(risk.trading)} · Final Risk: ${riskTxt(risk.final)}`,
+      ].join('\n'),
+      [
+        'LIKUIDITAS',
+        `Today Value ${fmtIdrValue(liq.todayValue)} | Avg 20D Value ${fmtIdrValue(liq.avgValue20D)} | RVOL ${liq.rvol != null ? `${fmtNum(liq.rvol, 2)}x` : '—'} | Liquidity Gate ${GATE_EMOJI[liq.gate]} ${LIQUIDITY_STATUS_LABEL[liq.status]}`,
+        liq.note,
+      ].join('\n'),
+      ['BISNIS vs BELI SEKARANG', `• Bisnis: ${report.businessVerdict}`, `• Sekarang: ${report.buyNowVerdict}`].join('\n'),
       ['SKOR', ...scoreTiles.map(([l, s]) => `• ${l}: ${scoreTxt(s)}`)].join('\n'),
       [
-        'DECISION HIERARCHY',
+        'DECISION HIERARCHY (TRADING)',
         ...report.gates.map((g) => `• ${GATE_EMOJI[g.status]} ${g.label} — ${g.status}: ${g.reason}`),
         `• ℹ️ Valuation Context — ${report.valuationLabel} (konteks, tidak mengubah keputusan)`,
       ].join('\n'),
@@ -241,7 +334,7 @@ export function Trading1MinutesGeminiReport({
       `KESIMPULAN: ${report.conclusion}`,
       '⚠️ Analisa otomatis berbasis data EOD + intraday tertunda. Edukasi, bukan ajakan jual/beli.',
     ].join('\n\n');
-  }, [ticker, candle, report, plan, scores, entryZone, scoreTiles]);
+  }, [ticker, candle, report, plan, scores, entryZone, scoreTiles, horizons, risk, liq]);
 
   return (
     <Card aria-labelledby="momentum-report-title">
@@ -256,12 +349,37 @@ export function Trading1MinutesGeminiReport({
           </p>
         )}
 
-        {/* Final decision + separate scores */}
-        <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-(--sv-border) bg-(--sv-surface) px-3 py-2">
-            <span className="font-semibold text-(--sv-text)">Keputusan Final</span>
-            <Badge tone={STATUS_TONE[plan.status]} className="text-sm">{STATUS_EMOJI[plan.status]} {plan.status}</Badge>
-          </div>
+        {/* Decision per horizon — independent */}
+        <div className="grid gap-2 text-sm sm:grid-cols-3">
+          {horizons.map((d) => (
+            <div key={d.label} className="flex items-center justify-between gap-2 rounded-lg border border-(--sv-border) bg-(--sv-surface) px-3 py-2">
+              <span className="font-semibold text-(--sv-text)">{d.label}</span>
+              <Badge tone={decisionTone(d)} className="text-sm">{decisionEmoji(d)} {d.status}</Badge>
+            </div>
+          ))}
+        </div>
+
+        {/* Liquidity: Today | Avg 20D | RVOL | Gate */}
+        <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+          <Stat label="Today Value"><span className="font-semibold tabular-nums text-(--sv-text)">{fmtIdrValue(liq.todayValue)}</span></Stat>
+          <Stat label="Avg 20D Value"><span className="font-semibold tabular-nums text-(--sv-text)">{fmtIdrValue(liq.avgValue20D)}</span></Stat>
+          <Stat label="RVOL"><span className="font-semibold tabular-nums text-(--sv-text)">{liq.rvol != null ? `${fmtNum(liq.rvol, 2)}x` : '—'}</span></Stat>
+          <Stat label="Liquidity Gate">
+            <Badge tone={GATE_TONE[liq.gate]}>{GATE_EMOJI[liq.gate]} {LIQUIDITY_STATUS_LABEL[liq.status]}</Badge>
+          </Stat>
+        </div>
+
+        {/* Risk split */}
+        <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-5">
+          <Stat label="Fundamental Risk"><Badge tone={RISK_TONE[risk.fundamental.level]}>{RISK_EMOJI[risk.fundamental.level]} {riskTxt(risk.fundamental.level)}</Badge></Stat>
+          <Stat label="Market Risk"><Badge tone={RISK_TONE[risk.market.level]}>{RISK_EMOJI[risk.market.level]} {riskTxt(risk.market.level)}</Badge></Stat>
+          <Stat label="Execution Risk"><Badge tone={RISK_TONE[risk.execution.level]}>{RISK_EMOJI[risk.execution.level]} {riskTxt(risk.execution.level)}</Badge></Stat>
+          <Stat label="Trading Risk"><Badge tone={RISK_TONE[risk.trading]}>{RISK_EMOJI[risk.trading]} {riskTxt(risk.trading)}</Badge></Stat>
+          <Stat label="Final Risk"><Badge tone={RISK_TONE[risk.final]}>{RISK_EMOJI[risk.final]} {riskTxt(risk.final)}</Badge></Stat>
+        </div>
+
+        {/* Separate scores */}
+        <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-5">
           {scoreTiles.map(([label, s]) => (
             <div key={label} className="flex items-center justify-between gap-2 rounded-lg bg-(--sv-surface) px-3 py-2">
               <span className="text-(--sv-muted)">
@@ -273,8 +391,38 @@ export function Trading1MinutesGeminiReport({
           ))}
         </div>
 
-        {/* Decision hierarchy */}
-        <Section n="🧭" title="Decision Hierarchy" verdict={<Badge tone={STATUS_TONE[plan.status]}>{STATUS_EMOJI[plan.status]} {plan.status}</Badge>}>
+        {/* Decisions per horizon — why / why not now / what changes */}
+        <Section n="🎯" title="Keputusan per Horizon">
+          <div className="grid gap-2 lg:grid-cols-3">
+            {horizons.map((d) => <DecisionCard key={d.label} d={d} />)}
+          </div>
+          <div className="grid gap-2 text-sm sm:grid-cols-2">
+            <div className="rounded-lg bg-(--sv-surface) p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">🏢 Bisnisnya bagus?</p>
+              <p className="mt-1 text-(--sv-text)">{report.businessVerdict}</p>
+            </div>
+            <div className="rounded-lg bg-(--sv-surface) p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">🛒 Layak dibeli sekarang?</p>
+              <p className="mt-1 text-(--sv-text)">{report.buyNowVerdict}</p>
+            </div>
+          </div>
+          <p className="text-xs text-(--sv-muted)">&quot;Fundamentally worth buying&quot; ≠ &quot;worth buying now&quot; — fundamental bagus tidak menurunkan Trading/Execution Risk.</p>
+        </Section>
+
+        {/* Risk split detail */}
+        <Section n="🛡️" title="Risiko Terpisah" verdict={<Badge tone={RISK_TONE[risk.final]}>Final Risk {RISK_EMOJI[risk.final]} {riskTxt(risk.final)}</Badge>}>
+          <div className="grid gap-2 lg:grid-cols-3">
+            <RiskCard title="Fundamental Risk" item={risk.fundamental} />
+            <RiskCard title="Market Risk" item={risk.market} />
+            <RiskCard title="Execution Risk" item={risk.execution} />
+          </div>
+          <p className="text-xs text-(--sv-muted)">
+            Trading Risk = terburuk dari Market & Execution ({riskTxt(risk.trading)}) · Final Risk = terburuk dari ketiganya ({riskTxt(risk.final)}). Data kosong dihitung minimal MEDIUM.
+          </p>
+        </Section>
+
+        {/* Decision hierarchy (Trading) */}
+        <Section n="🧭" title="Decision Hierarchy — Trading" verdict={<Badge tone={STATUS_TONE[plan.status]}>{STATUS_EMOJI[plan.status]} {plan.status}</Badge>}>
           <ol className="divide-y divide-(--sv-border)/70 text-sm">
             {report.gates.map((g, idx) => (
               <li key={g.key} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:gap-3">
@@ -392,6 +540,7 @@ export function Trading1MinutesGeminiReport({
               {plan.planState === 'conditional' && (
                 <p className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/5 dark:text-amber-200">
                   ⚠️ Rencana bersyarat — &quot;Buy Area&quot; ≠ BUY. Level di bawah baru boleh dieksekusi setelah semua konfirmasi terpenuhi.
+                  {decisions.swing.status === 'BUY' && ' Untuk horizon Swing (5–15 hari) setup ini sudah valid — Trading masih menunggu konfirmasi intraday.'}
                 </p>
               )}
               <div className="grid gap-2 text-sm sm:grid-cols-2">

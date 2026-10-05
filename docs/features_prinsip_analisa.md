@@ -159,3 +159,11 @@ Artinya:
 - Trend searah ✅
 - Namun harga belum terlalu tinggi dari support ✅
 - Risiko masuk akal ✅
+
+--------------------------------------------------------------------------------
+
+# 8. "Perusahaan bagus dan murah" vs "Saham bagus dibeli sekarang"
+
+"Perusahaan bagus dan murah" tidak sama dengan "saham bagus dibeli sekarang."
+
+--------------------------------------------------------------------------------

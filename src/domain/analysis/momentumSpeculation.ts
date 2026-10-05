@@ -16,11 +16,19 @@
  * A "buy area" is a conditional plan, not a BUY. Scores are kept separate (fundamental, valuation,
  * momentum, liquidity, risk) and a final consistency check validates the output.
  *
+ * Decision Engine v2 (docs/features_upgrade_decision_engine.md), on top of the same Risk Gate:
+ *   1. Risk is split — Fundamental Risk · Market Risk · Execution Risk. A strong business never lowers
+ *      Trading/Execution Risk; Final Risk is the worst of the three.
+ *   2. Liquidity Gate uses Avg Transaction Value 20D as baseline. Today's value alone is only
+ *      LIQUIDITY RECOVERY / WATCH; a temporary PASS needs today ≥ threshold + RVOL ≥ 1.5x + follow-through.
+ *   3. Independent decisions per horizon — Trading 1–5D, Swing 5–15D (BUY/WAIT/AVOID) and Investing
+ *      (ACCUMULATE/HOLD/WATCH/AVOID). "Fundamentally worth buying" ≠ "worth buying now".
+ *
  * Pure & deterministic: every verdict is derived from the numbers passed in. A missing input yields
  * `null` / an "na" signal — never a guessed value. Price levels shown as orders snap to valid IDX ticks.
  */
 
-import { roundToTick } from '@/domain/analysis/idxTick';
+import { idxTickSize, roundToTick } from '@/domain/analysis/idxTick';
 import { pickTargets, PlanLevels, validatePlanLevels } from '@/domain/analysis/tradingModesReview';
 import { OHLCVBar } from '@/domain/models/History';
 
@@ -51,6 +59,20 @@ export const MAX_EXTENSION_EMA20_PCT = 15;
 export const MIN_RISK_REWARD = 1.5;
 /** Bars needed for EMA 50 / candle context to mean anything. */
 const MIN_BARS = 50;
+/** One tick at/above this % of price means a wide effective spread (hard to exit). */
+const WIDE_TICK_PCT = 1;
+
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'NA';
+export type LiquidityStatus = 'LIQUID' | 'TEMPORARY_PASS' | 'RECOVERY_WATCH' | 'THIN' | 'NA';
+export type InvestingStatus = 'ACCUMULATE' | 'HOLD' | 'WATCH' | 'AVOID';
+
+export const LIQUIDITY_STATUS_LABEL: Record<LiquidityStatus, string> = {
+  LIQUID: 'LIQUID',
+  TEMPORARY_PASS: 'PASS SEMENTARA',
+  RECOVERY_WATCH: 'LIQUIDITY RECOVERY / WATCH',
+  THIN: 'TIPIS',
+  NA: 'Tidak tersedia',
+};
 
 export interface MomentumInput {
   bars: OHLCVBar[];
@@ -81,9 +103,21 @@ export interface MomentumInput {
   roe: number | null;
   revenueGrowth: number | null;
   earningsGrowth: number | null;
+  /** % — total debt / equity (100 = 1×). Not meaningful for financials. */
+  debtToEquity: number | null;
+  currentRatio: number | null;
+  /** % — net profit margin. */
+  netMargin: number | null;
+  /** Banks / insurers: DER & current ratio are not scored. */
+  isFinancial: boolean;
+  /** From fundamentalPillars: SEHAT · CUKUP · LEMAH · DATA_KURANG. */
+  healthVerdict: string;
   /** From fundamentalPillars: UNDERVALUED · WAJAR · PREMIUM · OVERVALUED · TIDAK_DAPAT_DINILAI. */
   valuationVerdict: string;
   fairValue: number | null;
+  /** Valuation-based accumulation zone (fundamentalPillars) — investing context only. */
+  accumulationLow: number | null;
+  accumulationHigh: number | null;
   /** Ascending supports below / resistances above, as produced by the analysis engine. */
   supports: number[];
   resistances: number[];
@@ -167,6 +201,8 @@ export interface MomentumPlan {
   riskPct: number | null;
   rewardPct: number | null;
   riskReward: number | null;
+  /** Price currently inside the entry zone (breakout: just above the trigger, not chased). */
+  inZone: boolean;
   validationErrors: string[];
   /** Mandatory entry confirmations (only evaluated when no gate before ENTRY failed). */
   confirmations: Array<{ label: string; ok: boolean }>;
@@ -182,9 +218,59 @@ export interface ConsistencyCheck {
   passed: boolean;
 }
 
+export interface RiskItem {
+  level: RiskLevel;
+  reasons: string[];
+}
+
+export interface RiskBreakdown {
+  fundamental: RiskItem;
+  market: RiskItem;
+  execution: RiskItem;
+  /** Worst of Market & Execution — what a trader actually carries. Fundamentals never lower it. */
+  trading: RiskLevel;
+  /** Worst of all three. */
+  final: RiskLevel;
+}
+
+export interface LiquidityView {
+  todayValue: number | null;
+  avgValue20D: number | null;
+  rvol: number | null;
+  /** Previous session also ≥ threshold and price holding at/above yesterday's close. null = unknown. */
+  followThrough: boolean | null;
+  status: LiquidityStatus;
+  gate: GateStatus;
+  note: string;
+}
+
+export interface HorizonDecision<S extends string> {
+  label: string;
+  focus: string;
+  status: S;
+  /** 1. Why this status? */
+  why: string;
+  /** 2. Why not BUY now? — null when it is a buy (BUY / ACCUMULATE). */
+  whyNotNow: string | null;
+  /** 3. What condition changes the status? */
+  changes: string[];
+}
+
+export interface HorizonDecisions {
+  trading: HorizonDecision<MomentumStatus>;
+  swing: HorizonDecision<MomentumStatus>;
+  investing: HorizonDecision<InvestingStatus>;
+}
+
 export interface MomentumReport {
   gates: Gate[];
   scores: MomentumScores;
+  risk: RiskBreakdown;
+  liquidityView: LiquidityView;
+  decisions: HorizonDecisions;
+  /** "Bisnisnya bagus" vs "sahamnya layak dibeli sekarang". */
+  businessVerdict: string;
+  buyNowVerdict: string;
   // §1
   candle: CandleRead;
   rvolCheck: Check;
@@ -217,6 +303,18 @@ const n1 = (n: number, dec = 1) => n.toLocaleString('id-ID', { minimumFractionDi
 const rp = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`;
 const sgn = (n: number, dec = 1) => `${n > 0 ? '+' : ''}${n1(n, dec)}%`;
 const clamp100 = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+const RISK_RANK: Record<RiskLevel, number> = { LOW: 0, NA: 1, MEDIUM: 1, HIGH: 2 };
+/** Worst level wins; unknown (NA) counts as MEDIUM — missing data is never "low risk". */
+const worstRisk = (...levels: RiskLevel[]): RiskLevel => {
+  const r = Math.max(...levels.map((l) => RISK_RANK[l]));
+  return r === 2 ? 'HIGH' : r === 1 ? 'MEDIUM' : 'LOW';
+};
+/** Average daily traded value (close × volume) over the last `period` bars; null if history is short. */
+function avgTradedValue(bars: OHLCVBar[], period = 20): number | null {
+  const win = bars.slice(-period).filter((b) => b.close > 0 && b.volume >= 0);
+  if (win.length < period) return null;
+  return win.reduce((s, b) => s + b.close * b.volume, 0) / win.length;
+}
 
 /** "Rp 1,2 M" (miliar) / "Rp 350 jt" / "Rp 2,1 T" — Indonesian money units, as used by traders. */
 export function fmtIdrValue(n: number | null | undefined): string {
@@ -397,20 +495,42 @@ export function buildMomentumReport(i: MomentumInput): MomentumReport {
           ? { signal: 'red' as const, label: `${fundamentalLabel} — pergerakan rawan spekulatif`, reasons: driverReasons }
           : { signal: 'yellow' as const, label: `${fundamentalLabel} — ${strongRun ? 'harga sudah lari / valuasi mahal' : 'belum ada pendorong yang dominan'}`, reasons: driverReasons };
 
-  // Liquidity: the larger of today's value and the 20-day average value, so one quiet session doesn't flag a liquid stock.
-  const avgValue = ok(i.volumeMa20) ? i.volumeMa20 * price : null;
-  const liqValue = ok(i.tradedValue) || ok(avgValue) ? Math.max(i.tradedValue ?? 0, avgValue ?? 0) : null;
-  const liquidity: Check = !ok(liqValue)
-    ? { label: 'Nilai transaksi', value: '—', signal: 'na', note: 'Nilai transaksi tidak tersedia.' }
+  // Liquidity v2: Avg Transaction Value 20D is the baseline — one busy session never makes a thin stock liquid.
+  const todayValue = ok(i.tradedValue) ? i.tradedValue : null;
+  const avgValue20D = avgTradedValue(i.bars, 20) ?? (ok(i.volumeMa20) ? i.volumeMa20 * price : null);
+  /** Baseline used for scoring / hot-money flags: the 20D average, today's value only when no history. */
+  const liqValue = avgValue20D ?? todayValue;
+  const prevBar = i.bars[i.bars.length - 2];
+  const followThrough = prevBar && prevBar.close > 0
+    ? prevBar.close * prevBar.volume >= MIN_LIQUID_VALUE && price >= prevBar.close
+    : null;
+  const todayLiquid = todayValue != null && todayValue >= MIN_LIQUID_VALUE;
+  const liquidityStatus: LiquidityStatus = avgValue20D == null && todayValue == null ? 'NA'
+    : avgValue20D != null && avgValue20D >= MIN_LIQUID_VALUE ? 'LIQUID'
+      : todayLiquid && ok(i.rvol) && i.rvol >= RVOL_ANOMALY && followThrough === true ? 'TEMPORARY_PASS'
+        : todayLiquid ? 'RECOVERY_WATCH'
+          : 'THIN';
+  const liqTxt = `hari ini ${fmtIdrValue(todayValue)} · Avg 20D ${fmtIdrValue(avgValue20D)}`;
+  const liquidityView: LiquidityView = {
+    todayValue, avgValue20D, rvol: ok(i.rvol) ? i.rvol : null, followThrough, status: liquidityStatus,
+    gate: liquidityStatus === 'LIQUID' || liquidityStatus === 'TEMPORARY_PASS' ? 'PASS' : liquidityStatus === 'RECOVERY_WATCH' ? 'PENDING' : 'FAIL',
+    note: liquidityStatus === 'NA' ? 'Nilai transaksi tidak tersedia — likuiditas tidak bisa diverifikasi.'
+      : liquidityStatus === 'LIQUID'
+        ? (avgValue20D! >= GOOD_LIQUID_VALUE ? 'Avg 20D memadai — keluar-masuk posisi relatif mudah.' : `Avg 20D ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)} tetapi < ${fmtIdrValue(GOOD_LIQUID_VALUE)} — cukup untuk trading kecil, batasi ukuran posisi.`)
+        : liquidityStatus === 'TEMPORARY_PASS'
+          ? `PASS sementara: baseline Avg 20D masih < ${fmtIdrValue(MIN_LIQUID_VALUE)}, tetapi hari ini ≥ threshold + RVOL ≥ ${n1(RVOL_ANOMALY)}x + follow-through. Bisa hilang bila volume kembali sepi.`
+          : liquidityStatus === 'RECOVERY_WATCH'
+            ? `Hari ini ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)} tetapi Avg 20D masih tipis — baru pemulihan likuiditas, belum PASS${ok(i.rvol) && i.rvol < RVOL_ANOMALY ? ` (RVOL < ${n1(RVOL_ANOMALY)}x)` : ''}${followThrough === false ? ' (belum ada follow-through)' : ''}.`
+            : `Avg 20D & transaksi hari ini < ${fmtIdrValue(MIN_LIQUID_VALUE)} — mudah digerakkan (digoreng), spread lebar, sulit keluar saat panik.`,
+  };
+  const liquidity: Check = liquidityStatus === 'NA'
+    ? { label: 'Nilai transaksi', value: '—', signal: 'na', note: liquidityView.note }
     : {
       label: 'Nilai transaksi',
-      value: `${fmtIdrValue(i.tradedValue)} hari ini${avgValue != null ? ` · rata-rata 20H ≈ ${fmtIdrValue(avgValue)}` : ''}`,
-      signal: liqValue < MIN_LIQUID_VALUE ? 'red' : liqValue < GOOD_LIQUID_VALUE ? 'yellow' : 'green',
-      note: liqValue < MIN_LIQUID_VALUE
-        ? '🔴 Likuiditas tipis (< Rp 1 M) — mudah digerakkan (digoreng), spread lebar, sulit keluar saat panik.'
-        : liqValue < GOOD_LIQUID_VALUE
-          ? '🟡 Likuiditas cukup untuk trading kecil — batasi ukuran posisi.'
-          : '🟢 Likuiditas memadai — keluar-masuk posisi relatif mudah.',
+      value: `${liqTxt} · ${LIQUIDITY_STATUS_LABEL[liquidityStatus]}`,
+      signal: liquidityStatus === 'THIN' ? 'red'
+        : liquidityStatus === 'LIQUID' && avgValue20D! >= GOOD_LIQUID_VALUE ? 'green' : 'yellow',
+      note: liquidityView.note,
     };
 
   const hotFlags = [
@@ -478,8 +598,64 @@ export function buildMomentumReport(i: MomentumInput): MomentumReport {
     fundamental: { value: fundamentalValue, label: fundamentalLabel, signal: fundamentalLabel === 'Fundamental Solid' ? 'green' : fundamentalLabel === 'Fundamental Mixed' ? 'yellow' : fundamentalLabel === 'Fundamental Lemah' ? 'red' : 'na' },
     valuation: { value: valuationValue, label: valuationLabel, signal: valuationSignal },
     momentum: { value: momentumValue, label: momentumLabel, signal: momentumSignal },
-    liquidity: { value: liquidityValue, label: liquidity.signal === 'red' ? 'Tipis' : liquidity.signal === 'yellow' ? 'Cukup' : liquidity.signal === 'green' ? 'Memadai' : 'Tidak tersedia', signal: liquidity.signal },
+    liquidity: { value: liquidityValue, label: liquidityStatus === 'LIQUID' ? (liquidity.signal === 'green' ? 'Memadai' : 'Cukup') : LIQUIDITY_STATUS_LABEL[liquidityStatus], signal: liquidity.signal },
     risk: { value: riskValue, label: riskValue >= 60 ? 'Risiko Tinggi' : riskValue >= 35 ? 'Risiko Sedang' : 'Risiko Rendah', signal: riskValue >= 60 ? 'red' : riskValue >= 35 ? 'yellow' : 'green' },
+  };
+
+  // ── Risk split (v2): fundamental ≠ market ≠ execution ──
+  const level = (pts: number, high: number, medium: number): RiskLevel => (pts >= high ? 'HIGH' : pts >= medium ? 'MEDIUM' : 'LOW');
+
+  const fr: Array<[number, string]> = [];
+  if (lossMaking) fr.push([3, 'Perusahaan rugi (PER / ROE negatif)']);
+  if (finite(eg) && eg < 0) fr.push([1, `Laba turun ${sgn(eg)} YoY`]);
+  if (finite(rg) && rg < 0) fr.push([1, `Pendapatan turun ${sgn(rg)} YoY`]);
+  if (!lossMaking && finite(i.roe) && i.roe < 5) fr.push([1, `ROE rendah ${n1(i.roe)}%`]);
+  if (!i.isFinancial && finite(i.debtToEquity)) {
+    if (i.debtToEquity > 200) fr.push([2, `Utang berat (DER ${n1(i.debtToEquity / 100, 2)}×)`]);
+    else if (i.debtToEquity > 100) fr.push([1, `Utang cukup tinggi (DER ${n1(i.debtToEquity / 100, 2)}×)`]);
+  }
+  if (!i.isFinancial && finite(i.currentRatio) && i.currentRatio < 1) fr.push([1, `Current ratio ${n1(i.currentRatio, 2)}× (< 1)`]);
+  if (!lossMaking && finite(i.netMargin) && i.netMargin < 5) fr.push([1, `Margin bersih tipis ${n1(i.netMargin)}%`]);
+  const fundamentalRisk: RiskItem = !fundamentalsKnown || i.healthVerdict === 'DATA_KURANG'
+    ? { level: 'NA', reasons: ['Data fundamental belum cukup — risiko bisnis tidak bisa dinilai.'] }
+    : {
+      level: i.healthVerdict === 'LEMAH' ? 'HIGH' : level(fr.reduce((s, [p]) => s + p, 0), 3, 1),
+      reasons: fr.length ? [...fr.map(([, r]) => r), 'Arus kas tidak tersedia di data — belum dinilai.'] : ['Laba, ROE, utang & margin tidak menunjukkan red flag (arus kas belum dinilai).'],
+    };
+
+  const mr: Array<[number, string]> = [];
+  if (emaStack === 'bearish') mr.push([2, 'Trend turun (EMA tersusun turun)']);
+  else if (emaStack === 'mixed') mr.push([1, 'Trend belum jelas (EMA campur)']);
+  if (ext20 != null && ext20 >= MAX_EXTENSION_EMA20_PCT) mr.push([3, `Overextended ${sgn(ext20)} di atas EMA 20`]);
+  else if (ext20 != null && ext20 >= 10) mr.push([2, `Overextended ${sgn(ext20)} di atas EMA 20`]);
+  else if (ext20 != null && ext20 >= 5) mr.push([1, `Agak jauh dari EMA 20 (${sgn(ext20)})`]);
+  if (atrPct != null && atrPct >= 5) mr.push([2, `Volatilitas tinggi (ATR ${n1(atrPct)}% dari harga)`]);
+  else if (atrPct != null && atrPct >= 3) mr.push([1, `Volatilitas sedang (ATR ${n1(atrPct)}%)`]);
+  if (finite(i.rsi14) && i.rsi14 >= 75) mr.push([1, `RSI ${n1(i.rsi14)} — overbought`]);
+  if (momentumSignal === 'red') mr.push([1, 'Momentum lemah']);
+  const speculative = [ok(i.rvol) && i.rvol >= 3, finite(i.change1D) && i.change1D >= 7, finite(i.change1M) && i.change1M >= 30].filter(Boolean).length;
+  if (speculative > 0) mr.push([speculative, 'Lonjakan harga / volume spekulatif']);
+  const marketRisk: RiskItem = emaStack === 'na' && atrPct == null
+    ? { level: 'NA', reasons: ['EMA / ATR tidak tersedia — risiko pasar tidak bisa dinilai.'] }
+    : { level: level(mr.reduce((s, [p]) => s + p, 0), 4, 2), reasons: mr.length ? mr.map(([, r]) => r) : ['Trend, volatilitas & momentum dalam batas normal.'] };
+
+  const er: Array<[number, string]> = [];
+  if (liquidityStatus === 'THIN' || liquidityStatus === 'NA') er.push([9, liquidityView.note]);
+  else if (liquidityStatus === 'RECOVERY_WATCH') er.push([9, 'Likuiditas baru pulih — Avg 20D masih di bawah threshold.']);
+  else if (liquidityStatus === 'TEMPORARY_PASS') er.push([1, 'Likuiditas hanya PASS sementara — baseline 20D masih tipis.']);
+  else if (avgValue20D! < GOOD_LIQUID_VALUE) er.push([1, `Avg 20D ${fmtIdrValue(avgValue20D)} < ${fmtIdrValue(GOOD_LIQUID_VALUE)} — batasi ukuran posisi.`]);
+  if (ok(i.freeFloat) && i.freeFloat < 7.5) er.push([2, `Free float sangat rendah ${n1(i.freeFloat)}%`]);
+  else if (ok(i.freeFloat) && i.freeFloat < 15) er.push([1, `Free float rendah ${n1(i.freeFloat)}%`]);
+  const tickPct = price > 0 ? (idxTickSize(price) / price) * 100 : null;
+  if (tickPct != null && tickPct >= WIDE_TICK_PCT) er.push([1, `1 tick = ${n1(tickPct)}% harga — spread efektif lebar`]);
+  const executionRisk: RiskItem = { level: level(er.reduce((s, [p]) => s + p, 0), 2, 1), reasons: er.length ? er.map(([, r]) => r) : ['Avg 20D besar, free float memadai — mudah keluar-masuk.'] };
+
+  const risk: RiskBreakdown = {
+    fundamental: fundamentalRisk,
+    market: marketRisk,
+    execution: executionRisk,
+    trading: worstRisk(marketRisk.level, executionRisk.level),
+    final: worstRisk(fundamentalRisk.level, marketRisk.level, executionRisk.level),
   };
 
   // ── Gates, in hierarchy order ──
@@ -497,19 +673,26 @@ export function buildMomentumReport(i: MomentumInput): MomentumReport {
     ? { key: 'data', label: 'Data Quality', status: 'FAIL', reason: `Data inti tidak tersedia: ${missingCore.join(', ')}.`, condition: 'Data harga, EMA 20/50 dan nilai transaksi tersedia lengkap.' }
     : { key: 'data', label: 'Data Quality', status: 'PASS', reason: `Data EOD lengkap${ok(i.vwap) ? ' + VWAP intraday' : ' (VWAP intraday tidak tersedia — tidak dipakai)'}.`, condition: null });
 
-  gates.push(!ok(liqValue)
-    ? { key: 'liquidity', label: 'Liquidity Gate', status: 'FAIL', reason: 'Nilai transaksi tidak tersedia — likuiditas tidak bisa diverifikasi.', condition: `Nilai transaksi terverifikasi ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)}/hari.` }
-    : liqValue < MIN_LIQUID_VALUE
-      ? { key: 'liquidity', label: 'Liquidity Gate', status: 'FAIL', reason: `Nilai transaksi ${fmtIdrValue(liqValue)} < ${fmtIdrValue(MIN_LIQUID_VALUE)} — rawan digoreng, sulit keluar.`, condition: `Nilai transaksi harian (atau rata-rata 20H) naik ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)}.` }
-      : { key: 'liquidity', label: 'Liquidity Gate', status: 'PASS', reason: `Nilai transaksi ${fmtIdrValue(liqValue)} ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)}.`, condition: null });
+  const liqCondition = `Avg Transaction Value 20D ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)} — atau sementara: hari ini ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)} + RVOL ≥ ${n1(RVOL_ANOMALY)}x + follow-through.`;
+  gates.push(liquidityStatus === 'NA'
+    ? { key: 'liquidity', label: 'Liquidity Gate', status: 'FAIL', reason: liquidityView.note, condition: `Nilai transaksi terverifikasi; ${liqCondition}` }
+    : liquidityStatus === 'THIN'
+      ? { key: 'liquidity', label: 'Liquidity Gate', status: 'FAIL', reason: `Likuiditas tipis (${liqTxt}) < ${fmtIdrValue(MIN_LIQUID_VALUE)} — rawan digoreng, sulit keluar.`, condition: liqCondition }
+      : liquidityStatus === 'RECOVERY_WATCH'
+        ? { key: 'liquidity', label: 'Liquidity Gate', status: 'PENDING', reason: `LIQUIDITY RECOVERY / WATCH (${liqTxt}) — transaksi 1 hari belum cukup untuk PASS.`, condition: liqCondition }
+        : { key: 'liquidity', label: 'Liquidity Gate', status: 'PASS', reason: liquidityStatus === 'TEMPORARY_PASS' ? `PASS sementara (${liqTxt}, RVOL ${n1(i.rvol!, 2)}x + follow-through).` : `Avg 20D ${fmtIdrValue(avgValue20D)} ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)} (hari ini ${fmtIdrValue(todayValue)}).`, condition: null });
 
+  // Risk Gate (unchanged principle) + v2: Execution Risk HIGH never allows a Trading BUY.
   const pumpOnWeak = hotLevel === 'TINGGI' && driver.signal === 'red';
   const parabolic = ext20 != null && ext20 >= MAX_EXTENSION_EMA20_PCT;
+  const executionBlocks = executionRisk.level === 'HIGH' && liquidityView.gate === 'PASS';
   gates.push(pumpOnWeak
     ? { key: 'risk', label: 'Risk Gate', status: 'FAIL', reason: `Hot money TINGGI (${hotFlags.length} tanda) tanpa dukungan fundamental.`, condition: 'Tanda spekulasi mereda (RVOL normal, harga kembali dekat EMA 20) atau fundamental membaik.' }
     : parabolic
       ? { key: 'risk', label: 'Risk Gate', status: 'FAIL', reason: `Harga ${sgn(ext20!)} di atas EMA 20 — parabolik, risiko koreksi tajam.`, condition: `Harga terkoreksi ke < ${MAX_EXTENSION_EMA20_PCT}% di atas EMA 20 (idealnya retest EMA 9–20).` }
-      : { key: 'risk', label: 'Risk Gate', status: 'PASS', reason: hotLevel === 'RENDAH' ? 'Tidak ada tanda spekulasi berlebihan.' : `Hot money ${hotLevel} — masih dalam batas, kelola posisi lebih kecil.`, condition: null });
+      : executionBlocks
+        ? { key: 'risk', label: 'Risk Gate', status: 'PENDING', reason: `Execution Risk HIGH — ${executionRisk.reasons.join('; ')}.`, condition: 'Execution risk turun ke MEDIUM/LOW (Avg 20D lebih besar, free float / spread memadai).' }
+        : { key: 'risk', label: 'Risk Gate', status: 'PASS', reason: hotLevel === 'RENDAH' ? 'Tidak ada tanda spekulasi berlebihan.' : `Hot money ${hotLevel} — masih dalam batas, kelola posisi lebih kecil.`, condition: null });
 
   const trendFail = emaStack === 'bearish' || (momentumSignal === 'red' && ok(i.ema50) && price < i.ema50);
   const trendUp = ok(i.ema20) && ok(i.ema50) && price > i.ema20 && i.ema20 > i.ema50;
@@ -537,12 +720,130 @@ export function buildMomentumReport(i: MomentumInput): MomentumReport {
   const hasLevels = planOut.entryLow != null || planOut.sl != null || planOut.targets.length > 0 || planOut.riskReward != null || planOut.sizing.length > 0;
   const volumeClaimed = /Breakout Candle|Bullish Pin Bar|Bullish Marubozu$|Candle Hijau Kuat/.test(candle.pattern);
   const anyFail = gates.some((g) => g.status === 'FAIL');
+
+  // ── Decisions per horizon (v2) — each judged independently ──
+  const notPass = (g: Gate) => g.status !== 'PASS' && g.status !== 'SKIPPED';
+  const trading: HorizonDecision<MomentumStatus> = {
+    label: 'Trading (1–5 hari)',
+    focus: 'Likuiditas + execution risk + momentum + trend + konfirmasi entry',
+    status: planOut.status,
+    why: planOut.status === 'BUY' ? `${planOut.statusReason}; Trading Risk ${risk.trading}.` : `${planOut.statusReason}.`,
+    whyNotNow: planOut.status === 'BUY' ? null
+      : gates.filter(notPass).map((g) => `${g.label}: ${g.reason.replace(/\.$/, '')}`).join(' · ') || null,
+    changes: planOut.status === 'BUY' ? [] : planOut.conditions,
+  };
+
+  // Swing 5–15D: liquidity must hold on the 20D baseline (a temporary pass is not enough to hold for weeks);
+  // trend + momentum + a pullback/breakout setup with R:R. A broken trend / thin liquidity is only WAIT when
+  // the business is sound (it can recover inside the horizon) — otherwise AVOID.
+  const dataGate = gates.find((g) => g.key === 'data')!;
+  const riskGate = gates.find((g) => g.key === 'risk')!;
+  const swingSetupOk = planOut.setup !== 'NONE' && planOut.sl != null && planOut.riskReward != null
+    && planOut.riskReward >= MIN_RISK_REWARD && planOut.riskPct != null && planOut.riskPct <= MAX_SL_DISTANCE_PCT;
+  const swingGates: Array<{ label: string; status: GateStatus; reason: string; condition: string | null }> = [
+    { label: 'Data Quality', status: dataGate.status, reason: dataGate.reason, condition: dataGate.condition },
+    liquidityStatus === 'LIQUID'
+      ? { label: 'Liquidity', status: 'PASS', reason: `Avg 20D ${fmtIdrValue(avgValue20D)} ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)}.`, condition: null }
+      : liquidityStatus === 'TEMPORARY_PASS' || liquidityStatus === 'RECOVERY_WATCH'
+        ? { label: 'Liquidity', status: 'PENDING', reason: `${LIQUIDITY_STATUS_LABEL[liquidityStatus]} — baseline Avg 20D belum cukup untuk hold 5–15 hari.`, condition: `Avg 20D naik ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)}.` }
+        : { label: 'Liquidity', status: 'FAIL', reason: liquidityView.note, condition: `Avg 20D naik ≥ ${fmtIdrValue(MIN_LIQUID_VALUE)}.` },
+    riskGate.status === 'FAIL'
+      ? { label: 'Risk', status: 'FAIL', reason: riskGate.reason, condition: riskGate.condition }
+      : risk.trading === 'HIGH'
+        ? { label: 'Risk', status: 'PENDING', reason: `Trading Risk HIGH (Market ${risk.market.level} · Execution ${risk.execution.level}).`, condition: 'Market & execution risk turun ke MEDIUM/LOW.' }
+        : { label: 'Risk', status: 'PASS', reason: `Market ${risk.market.level} · Execution ${risk.execution.level}.`, condition: null },
+    trendFail
+      ? { label: 'Trend', status: 'FAIL', reason: 'Trend turun — harga di bawah EMA 20/50.', condition: 'Harga kembali di atas EMA 20 & EMA 50 (EMA 20 > EMA 50) — konfirmasi reversal.' }
+      : trendUp
+        ? { label: 'Trend', status: 'PASS', reason: 'Harga > EMA 20 > EMA 50.', condition: null }
+        : { label: 'Trend', status: 'PENDING', reason: 'Trend sideways / belum tersusun.', condition: 'Harga bertahan di atas EMA 20 dengan EMA 20 > EMA 50.' },
+    momentumSignal !== 'red' && momentumSignal !== 'na' && !veryLowVolume && candle.signal !== 'red'
+      ? { label: 'Momentum', status: 'PASS', reason: `${momentumLabel}, candle tidak bearish.`, condition: null }
+      : { label: 'Momentum', status: 'PENDING', reason: `${momentumLabel}${candle.signal === 'red' ? ` · candle ${candle.pattern}` : ''}.`, condition: 'Momentum netral–positif dengan candle non-bearish dan RVOL ≥ 0,5x.' },
+    swingSetupOk && planOut.inZone
+      ? { label: 'Setup & R:R', status: 'PASS', reason: `${SETUP_LABEL[planOut.setup]} di area entry, R:R 1:${n1(planOut.riskReward!)}.`, condition: null }
+      : { label: 'Setup & R:R', status: 'PENDING', reason: swingSetupOk ? `${SETUP_LABEL[planOut.setup]} valid, harga belum di area entry.` : `Belum ada pullback / breakout dengan R:R ≥ 1:${n1(MIN_RISK_REWARD)}.`, condition: swingSetupOk ? planOut.entryTrigger : 'Pullback ke EMA 9–20 / support atau breakout resistance dengan SL ≤ 8% dan R:R ≥ 1:1,5.' },
+  ];
+  const businessSound = risk.fundamental.level === 'LOW' || risk.fundamental.level === 'MEDIUM';
+  const swingFailed = swingGates.filter((g) => g.status === 'FAIL');
+  const swingHardFail = swingFailed.some((g) => g.label === 'Data Quality' || g.label === 'Risk') || (swingFailed.length > 0 && !businessSound);
+  const swingStatus: MomentumStatus = swingHardFail ? 'AVOID' : swingGates.every((g) => g.status === 'PASS') ? 'BUY' : 'WAIT';
+  const swingOpen = swingGates.filter((g) => g.status !== 'PASS');
+  const swing: HorizonDecision<MomentumStatus> = {
+    label: 'Swing (5–15 hari)',
+    focus: 'Trend + momentum + pullback/breakout + likuiditas + risk/reward',
+    status: swingStatus,
+    why: swingStatus === 'BUY' ? swingGates[5].reason
+      : swingStatus === 'AVOID' ? `${swingFailed.map((g) => g.reason.replace(/\.$/, '')).join('; ')}${!businessSound && !swingFailed.some((g) => g.label === 'Data Quality' || g.label === 'Risk') ? ' — dan fundamental tidak cukup kuat untuk menunggu pemulihan' : ''}.`
+        : swingFailed.length > 0
+          ? `${swingFailed.map((g) => g.reason.replace(/\.$/, '')).join('; ')} — fundamental ${risk.fundamental.level === 'LOW' ? 'kuat' : 'memadai'}, jadi pantau pemulihan dalam horizon 5–15 hari.`
+          : `${swingOpen[0].label}: ${swingOpen[0].reason}`,
+    whyNotNow: swingStatus === 'BUY' ? null : swingOpen.map((g) => `${g.label}: ${g.reason.replace(/\.$/, '')}`).join(' · '),
+    changes: swingOpen.map((g) => g.condition).filter((c): c is string => Boolean(c)),
+  };
+
+  // Investing: fundamental + valuation + earnings quality + balance sheet. Price action is NOT an input.
+  const accZone = ok(i.accumulationLow) && ok(i.accumulationHigh) ? `${rp(i.accumulationLow)} – ${rp(i.accumulationHigh)}` : null;
+  const fundLow = risk.fundamental.level === 'LOW';
+  const valueTrap = finite(eg) && eg < 0;
+  const v = i.valuationVerdict;
+  const investingStatus: InvestingStatus = risk.fundamental.level === 'NA' ? 'WATCH'
+    : risk.fundamental.level === 'HIGH' ? 'AVOID'
+      : v === 'TIDAK_DAPAT_DINILAI' ? 'WATCH'
+        : fundLow
+          ? (v === 'UNDERVALUED' || v === 'WAJAR' ? 'ACCUMULATE' : v === 'PREMIUM' ? 'HOLD' : 'WATCH')
+          : (v === 'UNDERVALUED' && !valueTrap ? 'ACCUMULATE' : v === 'WAJAR' ? 'HOLD' : 'WATCH');
+  const fundTxt = `Fundamental Risk ${risk.fundamental.level === 'NA' ? 'N/A' : risk.fundamental.level} (${fundamentalLabel})`;
+  const valTxt = `valuasi ${valuationLabel.toLowerCase()}${ok(i.fairValue) ? ` (nilai wajar ${rp(i.fairValue)})` : ''}`;
+  const trendCaveat = trendFail ? ' Trend jangka pendek masih turun → cicil bertahap, jangan all-in; ini bukan sinyal trading.' : '';
+  const investing: HorizonDecision<InvestingStatus> = {
+    label: 'Investing (jangka panjang)',
+    focus: 'Fundamental + valuasi + kualitas laba + neraca + prospek jangka panjang',
+    status: investingStatus,
+    why: investingStatus === 'ACCUMULATE'
+      ? `${fundTxt}, ${valTxt}${accZone ? ` — area akumulasi ${accZone}` : ''}.${!fundLow ? ' Fundamental ada catatan → akumulasi kecil & bertahap.' : ''}${trendCaveat}`
+      : investingStatus === 'HOLD'
+        ? `${fundTxt}, ${valTxt} — layak dipertahankan bagi pemegang, belum ideal untuk menambah.`
+        : investingStatus === 'WATCH'
+          ? risk.fundamental.level === 'NA' ? 'Data fundamental belum cukup untuk keputusan investasi.'
+            : v === 'TIDAK_DAPAT_DINILAI' ? `${fundTxt}, tetapi nilai wajar tidak dapat dihitung.`
+              : valueTrap && v === 'UNDERVALUED' ? `${fundTxt}, terlihat murah tetapi laba turun ${sgn(eg!)} YoY — risiko value trap.`
+                : `${fundTxt}, ${valTxt} — harga belum memberi margin of safety.`
+          : `${fundTxt}: ${risk.fundamental.reasons.slice(0, 3).join('; ')}.`,
+    whyNotNow: investingStatus === 'ACCUMULATE' ? null
+      : investingStatus === 'AVOID' ? 'Kualitas bisnis / neraca bermasalah — murah atau naik pun bukan alasan untuk investasi.'
+        : investingStatus === 'HOLD' ? `Harga sudah ${v === 'PREMIUM' ? 'premium' : 'di sekitar nilai wajar'} — margin of safety tipis.`
+          : risk.fundamental.level === 'NA' ? 'Kualitas bisnis belum terverifikasi.'
+            : 'Valuasi belum menarik / risiko value trap.',
+    changes: [
+      risk.fundamental.level === 'NA' ? 'Data laporan keuangan (laba, ROE, DER, margin) tersedia lengkap.' : null,
+      risk.fundamental.level !== 'LOW' && risk.fundamental.level !== 'NA' ? 'Fundamental membaik: laba & pendapatan tumbuh, ROE ≥ 10%, utang terkendali.' : null,
+      investingStatus !== 'ACCUMULATE' && accZone && risk.fundamental.level !== 'HIGH' ? `Harga masuk area akumulasi ${accZone}.` : null,
+      investingStatus === 'ACCUMULATE' ? `Turun ke ${v === 'WAJAR' ? 'HOLD bila harga naik ke premium' : 'HOLD/WATCH bila harga melewati nilai wajar'} atau laba mulai turun.` : null,
+    ].filter((c): c is string => Boolean(c)),
+  };
+  const decisions: HorizonDecisions = { trading, swing, investing };
+
+  // "Bisnisnya bagus" vs "sahamnya layak dibeli sekarang".
+  const businessVerdict = risk.fundamental.level === 'LOW' ? `Bisnisnya bagus — ${fundamentalLabel}, Fundamental Risk LOW.`
+    : risk.fundamental.level === 'MEDIUM' ? `Bisnisnya cukup, dengan catatan: ${risk.fundamental.reasons.slice(0, 2).join('; ')}.`
+      : risk.fundamental.level === 'HIGH' ? `Bisnisnya bermasalah: ${risk.fundamental.reasons.slice(0, 2).join('; ')}.`
+        : 'Kualitas bisnis belum bisa dinilai (data fundamental kurang).';
+  const buyNowVerdict = trading.status === 'BUY'
+    ? `Sahamnya layak dibeli sekarang untuk trading — semua gate PASS (Trading Risk ${risk.trading}).`
+    : `Sahamnya BELUM layak dibeli sekarang untuk trading (${trading.status}) — ${gates.find(notPass)?.label ?? 'Entry'}: ${(gates.find(notPass)?.reason ?? trading.why).replace(/\.$/, '')}. Swing ${swing.status} · Investing ${investing.status}.`;
+
   const consistency: ConsistencyCheck[] = [
     { label: 'Status AVOID tidak memuat BUY / Entry / TP / SL', passed: planOut.status !== 'AVOID' || !hasLevels },
     { label: 'RVOL sangat rendah tidak disebut konfirmasi volume', passed: !veryLowVolume || (!volumeClaimed && planOut.status !== 'BUY') },
     { label: 'Rugi / PER negatif tidak disebut "Fundamental Solid"', passed: !lossMaking || fundamentalLabel !== 'Fundamental Solid' },
     { label: 'Fair value tidak dipakai sebagai alasan BUY saat gate gagal', passed: !anyFail || planOut.status === 'AVOID' },
     { label: 'Buy Area tidak dianggap otomatis BUY', passed: planOut.status === 'BUY' ? gates.every((g) => g.status === 'PASS') : planOut.planState !== 'active' },
+    { label: 'Liquidity Gate tidak PASS hanya dari transaksi 1 hari', passed: liquidityView.gate !== 'PASS' || liquidityStatus === 'LIQUID' || (todayLiquid && ok(i.rvol) && i.rvol >= RVOL_ANOMALY && followThrough === true) },
+    { label: 'Likuiditas tipis → Execution Risk HIGH & tidak ada BUY Trading', passed: !['THIN', 'RECOVERY_WATCH', 'NA'].includes(liquidityStatus) || (executionRisk.level === 'HIGH' && trading.status !== 'BUY') },
+    { label: 'Fundamental bagus tidak menurunkan Trading Risk', passed: RISK_RANK[risk.trading] >= Math.max(RISK_RANK[marketRisk.level === 'NA' ? 'MEDIUM' : marketRisk.level], RISK_RANK[executionRisk.level]) },
+    { label: 'Tidak ada BUY saat mandatory gate mode tersebut FAIL', passed: (trading.status !== 'BUY' || !anyFail) && (swing.status !== 'BUY' || swingFailed.length === 0) },
+    { label: 'Trading/Swing AVOID tidak memuat Entry / TP / SL', passed: !(trading.status === 'AVOID' || swing.status === 'AVOID') || !hasLevels },
   ];
 
   // ── Conclusion ──
@@ -557,7 +858,7 @@ export function buildMomentumReport(i: MomentumInput): MomentumReport {
         : `WAIT — ${planOut.statusReason}. Belum ada setup valid; jangan memaksakan entry.`;
 
   return {
-    gates, scores,
+    gates, scores, risk, liquidityView, decisions, businessVerdict, buyNowVerdict,
     candle, rvolCheck, positionChecks, emaStack, momentumSignal, momentumLabel,
     driver, liquidity, hotMoney,
     fundamentalLabel, valuationChecks, valuationSignal, valuationLabel, valuationWarnings,
@@ -581,7 +882,7 @@ function buildPlan(
 ): MomentumPlan & { entryGate: Gate } {
   const empty = {
     setup: 'NONE' as SetupType, entryLow: null, entryHigh: null, entryTrigger: null, targets: [], sl: null, slBasis: null,
-    riskPct: null, rewardPct: null, riskReward: null, validationErrors: [], confirmations: [], riskGate: [], sizing: [],
+    riskPct: null, rewardPct: null, riskReward: null, inZone: false, validationErrors: [], confirmations: [], riskGate: [], sizing: [],
   };
 
   // AVOID: a mandatory gate failed → no setup is generated at all.
@@ -752,7 +1053,7 @@ function buildPlan(
 
   return {
     status, statusReason, planState, setup, entryLow, entryHigh, entryTrigger, targets, sl, slBasis,
-    riskPct, rewardPct, riskReward, validationErrors, confirmations,
+    riskPct, rewardPct, riskReward, inZone, validationErrors, confirmations,
     conditions: status === 'BUY' ? [] : confirmations.filter((c) => !c.ok).map((c) => c.label),
     riskGate, sizing, entryGate,
   };
