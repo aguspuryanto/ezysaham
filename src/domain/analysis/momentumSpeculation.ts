@@ -24,6 +24,9 @@
  *   3. Independent decisions per horizon — Trading 1–5D, Swing 5–15D (BUY/WAIT/AVOID) and Investing
  *      (ACCUMULATE/HOLD/WATCH/AVOID). "Fundamentally worth buying" ≠ "worth buying now".
  *
+ * Decision Engine v3 (decisionEngineV3.ts) now owns BUY / WAIT / AVOID and reuses this report only as
+ * evidence (candle read, liquidity view, risk split, valuation context, hot-money flags).
+ *
  * Pure & deterministic: every verdict is derived from the numbers passed in. A missing input yields
  * `null` / an "na" signal — never a guessed value. Price levels shown as orders snap to valid IDX ticks.
  */
