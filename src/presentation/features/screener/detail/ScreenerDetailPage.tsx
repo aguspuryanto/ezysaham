@@ -37,7 +37,7 @@ import { StockHeader, StockHeaderSkeleton } from './components/StockHeader';
 import { StockTabId, StockTabs } from './components/StockTabs';
 import { BandarmologyPanel, CorporateActionPanel, FundamentalDetailPanel, NewsPanel, TechnicalDetail } from './components/TabPanels';
 import { TechnicalSummary } from './components/TechnicalSummary';
-import { Trading1MinutesGeminiReport, Trading1MinutesGeminiReportSkeleton } from './components/Trading1MinutesGeminiReport';
+import { Trading1MinutesReportv3, Trading1MinutesReportv3Skeleton } from './components/Trading1MinutesReportv3';
 import { TradingModesReport, TradingModesReportSkeleton } from './components/TradingModesReport';
 import { Card } from './components/ui';
 import { useStockDetail } from './useStockDetail';
@@ -213,15 +213,16 @@ export function ScreenerDetailPage({ ticker }: { ticker: string }) {
                             //   fundamentalScreening={detail.fundamentalScreening}
                             // />
 
-                            <Trading1MinutesGeminiReport
+                            <Trading1MinutesReportv3
                               summary={detail.summary}
                               bars={detail.bars}
+                              longBars={data.chartBars}
                               analysis={analysis}
                               fundamentals={detail.fundamentals}
                               fundamentalScreening={detail.fundamentalScreening}
                             />
                           ) : (
-                            <Trading1MinutesGeminiReportSkeleton />
+                            <Trading1MinutesReportv3Skeleton />
                           )}
                         </>
                       )}

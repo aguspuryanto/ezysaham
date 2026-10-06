@@ -15,6 +15,7 @@
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
 import { atr } from '@/domain/indicators/atr';
+import { macd } from '@/domain/indicators/macd';
 import { ema, lastValid } from '@/domain/indicators/movingAverages';
 import { rsi } from '@/domain/indicators/rsi';
 import { relativeVolume } from '@/domain/indicators/volume';
@@ -23,11 +24,25 @@ import { idxTickSize } from '@/domain/analysis/idxTick';
 import { ceilTick, clamp, DATA_NA, floorTick, fmt, nearestResistance, num, rp, SetupCheck, tickUp } from './setupUtils';
 
 export type DayTradingStatus = 'SETUP' | 'WATCH' | 'NO_TRADE';
+/**
+ * What the user sees (EzySaham AI — DAY TRADING): `status` decides the list (NO_TRADE is filtered out);
+ * the verdict adds AVOID CHASING for a WATCH row whose price already ran too far from the entry.
+ */
+export type DayTradingVerdict = 'SETUP' | 'WATCH' | 'AVOID' | 'AVOID_CHASING';
+export type DayTrendCall = 'BULLISH' | 'NETRAL' | 'BEARISH';
+export type DayMomentumCall = 'KUAT' | 'CUKUP' | 'LEMAH';
 
 export const DAY_TRADING_STATUS_LABEL: Record<DayTradingStatus, string> = {
   SETUP: 'DAY TRADE SETUP',
   WATCH: 'WATCH',
   NO_TRADE: 'NO TRADE',
+};
+
+export const DAY_TRADING_VERDICT_LABEL: Record<DayTradingVerdict, string> = {
+  SETUP: 'DAY TRADE SETUP',
+  WATCH: 'WATCH',
+  AVOID: 'AVOID',
+  AVOID_CHASING: 'AVOID CHASING',
 };
 
 export { DATA_NA };
@@ -48,6 +63,8 @@ export const DT_MAX_EMA20_DISTANCE_PCT = 15;
 export const DT_MAX_RETURN_5D_PCT = 25;
 /** Jangan mengejar harga: close lebih dari 1×ATR di atas EMA9 → WAIT pullback. */
 export const DT_CHASE_ATR_MULT = 1;
+/** Entry tidak direkomendasikan bila R:R di bawah ini — maksimal WATCH. */
+export const DT_MIN_RR = 1.5;
 export const DT_SCORE_SETUP = 75;
 export const DT_SCORE_WATCH = 60;
 export const DT_RISK_PER_TRADE_PCT = 1;
@@ -70,8 +87,14 @@ export interface DayTradingSetup {
   price: number;
   ema9: number | null;
   ema20: number | null;
+  ema21: number | null;
+  ema50: number | null;
   rsi: number | null;
+  macdHistogram: number | null;
   rvol: number | null;
+  /** Volume (lembar) dan nilai transaksi hari terakhir. */
+  volume: number | null;
+  todayValue: number | null;
   return1D: number;
   return1W: number | null;
   /** Posisi close di range harian, 0-1 */
@@ -89,6 +112,11 @@ export interface DayTradingSetup {
   riskReward: number | null;
   scores: DayTradingScores;
   status: DayTradingStatus;
+  verdict: DayTradingVerdict;
+  /** Price + EMA9/21/50. */
+  trend: DayTrendCall;
+  /** RSI + MACD. */
+  momentum: DayMomentumCall;
   /** Filter setup (trend/momentum/volume/candle/ATR/upside). Gagal → maksimal WATCH. */
   setupChecks: DayTradingCheck[];
   /** Risk gate (harga, likuiditas, gap-up, parabolik, data). Gagal → NO TRADE. */
@@ -155,6 +183,9 @@ export function computeDayTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf: 
   const ema20Series = ema(closes, 20);
   const ema9 = num(lastValid(ema9Series));
   const ema20 = num(lastValid(ema20Series));
+  const ema21 = bars.length >= 21 ? num(lastValid(ema(closes, 21))) : null;
+  const ema50 = bars.length >= 50 ? num(lastValid(ema(closes, 50))) : null;
+  const macdHistogram = num(lastValid(macd(bars).histogram));
   const ema20Prev = num(ema20Series[ema20Series.length - 6] ?? NaN);
   const rsiLast = num(lastValid(rsi(bars, 14)));
   const rvol = num(relativeVolume(bars, 20));
@@ -171,6 +202,8 @@ export function computeDayTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf: 
 
   const last20 = bars.slice(-20);
   const avgValue20D = last20.length >= 20 ? last20.reduce((sum, b) => sum + b.close * b.volume, 0) / last20.length : null;
+  const lastVolume = lastBar && lastBar.volume > 0 ? lastBar.volume : null;
+  const todayValue = lastBar && lastBar.volume > 0 ? lastBar.close * lastBar.volume : null;
 
   const gapUpPct = lastBar && prevBar && prevBar.close > 0 ? ((lastBar.open - prevBar.close) / prevBar.close) * 100 : null;
   const ema20DistancePct = ema20 != null && ema20 > 0 ? ((price - ema20) / ema20) * 100 : null;
@@ -240,6 +273,7 @@ export function computeDayTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf: 
     { ok: bullishCandle && closePosition != null && closePosition >= DT_MIN_CLOSE_POS, missing: closePosition == null, label: `Candle bullish, close ≥ 70% range (${closePosition == null ? DATA_NA : `${Math.round(closePosition * 100)}%`})` },
     { ok: atrPct != null && atrPct >= DT_MIN_ATR_PCT, missing: atrPct == null, label: `ATR% ≥ ${DT_MIN_ATR_PCT}% (${fmt(atrPct)}%)` },
     { ok: upsidePct != null && upsidePct >= DT_MIN_UPSIDE_PCT, missing: upsidePct == null, label: `Upside ke resistance ≥ ${DT_MIN_UPSIDE_PCT}% (${upsidePct == null ? 'resistance tidak terdeteksi' : `${upsidePct.toFixed(1)}%`})` },
+    { ok: riskReward != null && riskReward >= DT_MIN_RR, missing: riskReward == null, label: `R:R ≥ ${DT_MIN_RR} (${fmt(riskReward, 2)})` },
   ];
 
   // ── Scoring ──
@@ -271,6 +305,18 @@ export function computeDayTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf: 
     riskGateFailed || total < DT_SCORE_WATCH ? 'NO_TRADE'
       : total >= DT_SCORE_SETUP && setupValid ? 'SETUP'
         : 'WATCH';
+  const verdict: DayTradingVerdict = status === 'NO_TRADE' ? 'AVOID' : status === 'WATCH' && chasing ? 'AVOID_CHASING' : status;
+
+  // Trend: price + EMA9/21/50 (all three in line = clear direction, otherwise NETRAL).
+  const trendCall: DayTrendCall = ema9 == null || ema21 == null || ema50 == null ? 'NETRAL'
+    : price > ema21 && ema9 > ema21 && ema21 > ema50 ? 'BULLISH'
+      : price < ema21 && ema9 < ema21 && ema21 < ema50 ? 'BEARISH'
+        : 'NETRAL';
+  // Momentum: RSI + MACD histogram.
+  const momentumCall: DayMomentumCall = rsiLast == null && macdHistogram == null ? 'LEMAH'
+    : (rsiLast != null && rsiLast < 45) || (macdHistogram != null && macdHistogram < 0 && (rsiLast == null || rsiLast < 50)) ? 'LEMAH'
+      : (rsiLast == null || (rsiLast >= DT_RSI_MIN && rsiLast <= DT_RSI_MAX)) && (macdHistogram == null || macdHistogram > 0) ? 'KUAT'
+        : 'CUKUP';
 
   const conclusion = buildConclusion({
     status, total, riskChecks, setupChecks, chasing, entryTrigger, tp, sl, riskReward, ema9, freshness,
@@ -280,8 +326,13 @@ export function computeDayTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf: 
     price,
     ema9,
     ema20,
+    ema21,
+    ema50,
     rsi: rsiLast,
+    macdHistogram,
     rvol,
+    volume: lastVolume,
+    todayValue,
     return1D,
     return1W,
     closePosition,
@@ -296,6 +347,9 @@ export function computeDayTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf: 
     riskReward,
     scores,
     status,
+    verdict,
+    trend: trendCall,
+    momentum: momentumCall,
     setupChecks,
     riskChecks,
     chasing,

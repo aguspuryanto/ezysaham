@@ -1,8 +1,9 @@
 'use client';
 
 /**
- * Level 1 (10 detik) — decision, one-line reason, entry / target / SL / R:R, risk, what to wait for.
- * Level 2 ("Kenapa?") — plain-language reasons and the Swing / Investing verdicts.
+ * Level 1 (10 detik) — ticker, decision, price / trend / condition, one-line reason, plan or a calmer
+ * reference entry, risk, two-line conclusion and the Swing / Investing verdicts.
+ * Level 2 ("Kenapa?") — plain-language reasons and the per-horizon detail.
  * No EMA / RVOL / VWAP / PER numbers here — those live in Level 3 (DetailAnalysis).
  */
 
@@ -11,7 +12,7 @@ import { DecisionV3Report, HorizonResult } from '@/domain/analysis/decisionEngin
 import { cn } from '@/lib/format';
 import { fmtPct, fmtRp } from '../../format';
 import { Badge } from '../ui';
-import { Bullets, Callout, Caption, DECISION_TONE, DecisionBadge, LevelBadge } from './primitives';
+import { Bullets, Callout, Caption, DECISION_EMOJI, DECISION_TONE, DecisionBadge, LevelBadge, TAG_TEXT } from './primitives';
 
 const zone = (lo: number, hi: number) => (lo === hi ? fmtRp(lo) : `${fmtRp(lo)} – ${fmtRp(hi).replace('Rp ', '')}`);
 
@@ -24,10 +25,20 @@ function PlanTile({ icon, label, children, className }: { icon: string; label: s
   );
 }
 
+function Fact({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+  return (
+    <div className="rounded-lg bg-(--sv-surface) px-3 py-2">
+      <Caption>{label}</Caption>
+      <p className={cn('mt-0.5 text-sm font-semibold tabular-nums text-(--sv-text)', className)}>{children}</p>
+    </div>
+  );
+}
+
 export function QuickDecision({ ticker, report }: { ticker: string; report: DecisionV3Report }) {
   const s = report.simple;
   const plan = s.plan;
   const tone = DECISION_TONE[s.status];
+  const { swing, investing } = report.decisions;
 
   return (
     <div
@@ -38,16 +49,33 @@ export function QuickDecision({ ticker, report }: { ticker: string; report: Deci
             : 'border-amber-300/70 dark:border-amber-400/30',
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="space-y-2">
+        <p className="text-xl font-bold tracking-wide text-(--sv-text)">{ticker}</p>
         <div className="flex flex-wrap items-center gap-2">
-          <DecisionBadge status={s.status} className="px-3 py-1 text-base" />
-          {s.tag && <Badge tone={s.tag === 'AVOID CHASING' ? 'negative' : 'positive'}>{s.tag}</Badge>}
-          <span className="text-xs text-(--sv-muted)">{ticker} · Trading 1–5 hari</span>
+          <Badge tone={tone} className="px-3 py-1 text-base">
+            {DECISION_EMOJI[s.status]} {s.status}{s.tag ? ` · ${TAG_TEXT[s.tag]}` : ''}
+          </Badge>
+          <span className="text-xs text-(--sv-muted)">Trading 1–5 hari</span>
         </div>
-        <span className="flex items-center gap-1.5 text-sm text-(--sv-muted)">⚠️ Risiko <LevelBadge level={s.risk}>{s.riskText}</LevelBadge></span>
       </div>
 
-      <p className="text-[15px] font-medium leading-relaxed text-(--sv-text)">{s.reason}</p>
+      <div className="grid grid-cols-3 gap-2">
+        <Fact label="Harga">{fmtRp(s.price)}</Fact>
+        <Fact
+          label="Trend"
+          className={s.trend === 'BULLISH' ? 'text-emerald-700 dark:text-emerald-400' : s.trend === 'BEARISH' ? 'text-rose-600 dark:text-rose-400' : undefined}
+        >
+          {s.trendLabel}
+        </Fact>
+        <Fact label="Kondisi" className={s.condition.startsWith('Overextended') ? 'text-amber-700 dark:text-amber-300' : undefined}>
+          {s.condition}
+        </Fact>
+      </div>
+
+      <div>
+        <Caption>Alasan</Caption>
+        <p className="mt-1 text-[15px] font-medium leading-relaxed text-(--sv-text)">{s.reason}</p>
+      </div>
 
       {plan && (
         <div className="space-y-2">
@@ -76,17 +104,42 @@ export function QuickDecision({ ticker, report }: { ticker: string; report: Deci
         </div>
       )}
 
-      {s.waitFor && (
+      {s.betterEntry ? (
+        <Callout tone="warning">
+          <Caption className="text-current opacity-80">🎯 Entry lebih menarik</Caption>
+          <p className="mt-1 text-base font-semibold tabular-nums">± {fmtRp(s.betterEntry.price)}</p>
+          <p className="mt-0.5">Syarat: {s.betterEntry.condition}</p>
+        </Callout>
+      ) : s.waitFor && (
         <Callout tone={s.status === 'AVOID' ? 'negative' : 'warning'}>
           <Caption className="text-current opacity-80">{s.status === 'AVOID' ? 'Baru menarik lagi bila' : '⏳ Tunggu'}</Caption>
           <p className="mt-1">{s.waitFor}</p>
         </Callout>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-(--sv-border) pt-3">
-        <span className="text-sm text-(--sv-muted)">💡 Kesimpulan:</span>
-        <span className="text-sm font-semibold text-(--sv-text)">{s.conclusion}</span>
+      <div className="flex flex-wrap items-center gap-1.5 text-sm">
+        <span className="text-(--sv-muted)">⚠️ Risiko:</span>
+        <LevelBadge level={s.risk}>{s.riskText}</LevelBadge>
       </div>
+
+      <div className="border-t border-(--sv-border) pt-3 text-sm">
+        <span className="text-(--sv-muted)">💡 Kesimpulan:</span>
+        <p className="mt-1 text-(--sv-text)">{s.takeaway}</p>
+        <p className="font-semibold text-(--sv-text)">{s.conclusion}</p>
+      </div>
+
+      <div className="grid gap-2 text-sm sm:grid-cols-2">
+        {[swing, investing].map((d) => (
+          <div key={d.horizon} className="flex items-center justify-between gap-2 rounded-lg bg-(--sv-surface) px-3 py-2">
+            <span className="text-(--sv-muted)">{d.horizon === 'swing' ? 'Swing (5–15 hari)' : 'Investing'}</span>
+            <DecisionBadge status={d.status} />
+          </div>
+        ))}
+      </div>
+
+      <p className="border-t border-(--sv-border) pt-3 text-xs text-(--sv-muted)">
+        ⚠️ EOD + intraday tertunda · Edukasi, bukan ajakan jual/beli.
+      </p>
     </div>
   );
 }
@@ -97,7 +150,7 @@ function HorizonRow({ d }: { d: HorizonResult }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold text-(--sv-text)">{d.label}</span>
         <span className="flex items-center gap-1.5">
-          {d.tag && <Badge tone={d.tag === 'AVOID CHASING' ? 'negative' : 'positive'}>{d.tag}</Badge>}
+          {d.tag && <Badge tone={d.tag === 'AVOID CHASING' ? 'negative' : 'positive'}>{TAG_TEXT[d.tag]}</Badge>}
           <DecisionBadge status={d.status} />
         </span>
       </div>

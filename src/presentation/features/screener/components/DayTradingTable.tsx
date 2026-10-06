@@ -12,15 +12,18 @@
 import { ClipboardList } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useCallback, useMemo } from 'react';
 import {
   DATA_NA,
-  DAY_TRADING_STATUS_LABEL,
+  DAY_TRADING_VERDICT_LABEL,
   DayTradingSetup,
-  DayTradingStatus,
+  DayTradingVerdict,
   DT_SCORE_SETUP,
   DT_SCORE_WATCH,
 } from '@/domain/screener/dayTrading';
+import { buildDayTradingReport, dayTradingReportText } from '@/domain/screener/dayTradingReport';
 import { cn, formatRupiah } from '@/lib/format';
+import { CopyShareButton } from '../detail/components/TradingModesReport';
 import { Popover } from './Popover';
 import { ScreenerResult } from './ResultsTable';
 import { ActionsMenu, RowActions, ScreenerSort, ScreenerSortKey, Th, WatchStar } from './ScreenerTable';
@@ -41,12 +44,12 @@ import {
   TD,
 } from './SetupTableParts';
 
-const STATUS_TONE: Record<DayTradingStatus, SetupTone> = { SETUP: 'positive', WATCH: 'warning', NO_TRADE: 'negative' };
+const VERDICT_TONE: Record<DayTradingVerdict, SetupTone> = { SETUP: 'positive', WATCH: 'warning', AVOID: 'negative', AVOID_CHASING: 'negative' };
 /** Columns rendered by Row (identity 3 + Harga + 13 data + Aksi). */
 const COLUMN_COUNT = 18;
 
-function StatusChip({ status }: { status: DayTradingStatus }) {
-  return <SetupStatusChip tone={STATUS_TONE[status]} label={DAY_TRADING_STATUS_LABEL[status]} />;
+function StatusChip({ verdict }: { verdict: DayTradingVerdict }) {
+  return <SetupStatusChip tone={VERDICT_TONE[verdict]} label={DAY_TRADING_VERDICT_LABEL[verdict]} />;
 }
 
 function DayScore({ dt }: { dt: DayTradingSetup }) {
@@ -67,26 +70,55 @@ function DayScore({ dt }: { dt: DayTradingSetup }) {
   );
 }
 
+/** "⚡ EzySaham AI — DAY TRADING" report (dayTradingReport.ts) + the rule checks behind it. */
 function ConclusionButton({ ticker, dt }: { ticker: string; dt: DayTradingSetup }) {
+  const r = useMemo(() => buildDayTradingReport(ticker, dt), [ticker, dt]);
+  const getText = useCallback(() => dayTradingReportText(r), [r]);
+  const rows: Array<[string, string, string?]> = [
+    ['Trend', r.trend],
+    ['Momentum', r.momentum],
+    ['Volume', r.volume],
+    ['Likuiditas', r.liquidity],
+    ['Trigger', r.trigger, 'font-semibold'],
+    ['Entry', r.entry],
+    ['SL', r.sl, 'text-rose-700 dark:text-rose-400'],
+    ['TP', r.tp, 'text-emerald-700 dark:text-emerald-400'],
+    ['R:R', r.rr],
+  ];
   return (
     <Popover
       mode="click"
       label={`Kesimpulan day trading ${ticker}`}
-      width={340}
+      width={360}
       trigger={<ClipboardList className="size-4" strokeWidth={2} />}
       triggerClassName="size-8 rounded-lg text-(--sv-primary) hover:bg-(--sv-primary-soft)"
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-bold text-(--sv-text)">{ticker}</p>
-        <StatusChip status={dt.status} />
+        <div>
+          <p className="text-[11px] font-semibold text-(--sv-muted)">⚡ EzySaham AI — DAY TRADING</p>
+          <p className="text-sm font-bold text-(--sv-text)">{ticker}</p>
+        </div>
+        <CopyShareButton getText={getText} />
       </div>
-      <p className="mt-2 text-xs leading-relaxed text-(--sv-text)">{dt.conclusion}</p>
-      <div className="mt-3 space-y-2.5 border-t border-(--sv-border) pt-2.5">
-        <CheckList title="Risk gate" checks={dt.riskChecks} />
-        <CheckList title="Setup" checks={dt.setupChecks} />
-      </div>
+      <div className="mt-2"><StatusChip verdict={dt.verdict} /></div>
+      <dl className="mt-2.5 space-y-1 text-xs">
+        {rows.map(([k, v, cls]) => (
+          <div key={k} className="flex gap-2">
+            <dt className="w-20 shrink-0 text-(--sv-muted)">{k}</dt>
+            <dd className={cn('min-w-0 tabular-nums text-(--sv-text)', cls)}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-2.5 text-xs leading-relaxed text-(--sv-text)">💡 <b>Kesimpulan:</b> {r.conclusion}</p>
+      <details className="mt-2.5 border-t border-(--sv-border) pt-2">
+        <summary className="cursor-pointer text-[11px] font-semibold text-(--sv-muted)">Cek aturan (risk gate & setup)</summary>
+        <div className="mt-2 space-y-2.5">
+          <CheckList title="Risk gate" checks={dt.riskChecks} />
+          <CheckList title="Setup" checks={dt.setupChecks} />
+        </div>
+      </details>
       <p className="mt-2.5 border-t border-(--sv-border) pt-2 text-[11px] text-(--sv-muted)">
-        Entry hanya jika trigger terpenuhi · jangan kejar harga · risiko maks 1% modal · tanpa averaging down. Bukan rekomendasi beli/jual.
+        ⚠️ Data EOD, bukan realtime. Trigger wajib dikonfirmasi dengan harga realtime. DAY TRADE SETUP ≠ entry otomatis.
       </p>
     </Popover>
   );
@@ -107,6 +139,8 @@ function Row({ result, index, actions }: { result: ScreenerResult; index: number
       <td className={cn(TD, 'font-bold')}>{formatRupiah(s.lastClose)}</td>
       {dt ? (
         <>
+          <td className={TD} onClick={(e) => e.stopPropagation()}><DayScore dt={dt} /></td>
+          <td className="px-2.5 py-3"><StatusChip verdict={dt.verdict} /></td>
           <td className={TD}><Num v={dt.ema9} rupiah /></td>
           <td className={TD}><Num v={dt.ema20} rupiah /></td>
           <td className={TD}><Num v={dt.rsi} digits={1} /></td>
@@ -124,8 +158,6 @@ function Row({ result, index, actions }: { result: ScreenerResult; index: number
           <td className={cn(TD, 'text-emerald-700 dark:text-emerald-400')}><Num v={dt.tp} rupiah /></td>
           <td className={cn(TD, 'text-rose-700 dark:text-rose-400')}><Num v={dt.sl} rupiah /></td>
           <td className={TD}><Num v={dt.riskReward} digits={2} /></td>
-          <td className={TD} onClick={(e) => e.stopPropagation()}><DayScore dt={dt} /></td>
-          <td className="px-2.5 py-3"><StatusChip status={dt.status} /></td>
         </>
       ) : (
         <td colSpan={COLUMN_COUNT - 5} className="px-2.5 py-3 text-sm text-(--sv-muted)">{DATA_NA}</td>
@@ -167,7 +199,7 @@ function MobileCard({ result, actions }: { result: ScreenerResult; actions: RowA
         {dt && (
           <>
             <div className="mt-3 flex items-center justify-between gap-2">
-              <StatusChip status={dt.status} />
+              <StatusChip verdict={dt.verdict} />
               <span className="text-sm text-(--sv-muted)">Skor <b className="tabular-nums text-(--sv-text)">{dt.scores.total}</b></span>
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2 rounded-lg bg-(--sv-bg) px-3 py-2">
@@ -182,11 +214,12 @@ function MobileCard({ result, actions }: { result: ScreenerResult; actions: RowA
               {stat('1W', <PctCell v={dt.return1W} />)}
               {stat('Resist.', <Num v={dt.resistance} />)}
             </div>
-            <p className="mt-2.5 text-xs leading-relaxed text-(--sv-muted)">{dt.conclusion}</p>
+            <p className="mt-2.5 text-xs leading-relaxed text-(--sv-muted)">{buildDayTradingReport(s.ticker, dt).conclusion}</p>
           </>
         )}
       </Link>
       <div className="flex items-center justify-end border-t border-(--sv-border) px-2 py-1">
+        {dt && <ConclusionButton ticker={s.ticker} dt={dt} />}
         <WatchStar ticker={s.ticker} actions={actions} />
         <ActionsMenu ticker={s.ticker} actions={actions} />
       </div>
@@ -226,6 +259,8 @@ export function DayTradingTable({
               <IdentityHeadCells />
               <Th className="left-20 z-20 border-r" sortKey="ticker" sort={sort} onSort={onSort}>Kode</Th>
               <Th sortKey="price" sort={sort} onSort={onSort} align="right">Harga</Th>
+              <Th sortKey="score" sort={sort} onSort={onSort} align="right" tip={{ term: 'Score', text: 'Trend 25% · Momentum 25% · Volume 20% · Liquidity 15% · Risk/Reward 15%.' }}>Score</Th>
+              <Th tip={{ term: 'Status', text: 'DAY TRADE SETUP = skor ≥75 + setup valid + R:R ≥ 1,5 (bukan entry otomatis — tunggu trigger). WATCH = menarik tetapi belum cukup kuat / trigger belum valid. AVOID CHASING = harga sudah lari terlalu jauh. AVOID (skor <60 / risk gate gagal) disaring dari daftar.' }}>Status</Th>
               <Th align="right">EMA9</Th>
               <Th align="right">EMA20</Th>
               <Th align="right" tip={{ term: 'RSI', text: 'RSI(14). Zona day trading 50–70: momentum bullish, belum overbought.' }}>RSI</Th>
@@ -237,8 +272,6 @@ export function DayTradingTable({
               <Th align="right">TP</Th>
               <Th align="right">SL</Th>
               <Th align="right">R:R</Th>
-              <Th sortKey="score" sort={sort} onSort={onSort} align="right" tip={{ term: 'Score', text: 'Trend 25% · Momentum 25% · Volume 20% · Liquidity 15% · Risk/Reward 15%.' }}>Score</Th>
-              <Th tip={{ term: 'Status', text: 'DAY TRADE SETUP = skor ≥75 + setup valid. WATCH = skor 60–74 atau trigger belum valid. NO TRADE (skor <60 / risk gate gagal) disaring dari daftar.' }}>Status</Th>
               <Th align="right">Aksi</Th>
             </tr>
           </thead>

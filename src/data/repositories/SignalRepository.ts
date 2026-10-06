@@ -1,20 +1,21 @@
 /**
  * SignalRepository.ts
  *
- * API service for SARA AI signals. Signal logic is still TEMPORARY mock data, but
- * prices are real EOD quotes (mock trade plans are rebased onto them).
- * To go live, replace the body of `getSignalDashboard` with:
+ * SARA AI signals. Each signal is computed by Decision Engine v3 (domain/analysis/signalFromDecision.ts)
+ * from the SAME data the stock detail page uses — summary + 6-month daily bars + Yahoo fundamentals +
+ * session VWAP — so a ticker's BUY / WAIT / AVOID here always equals the detail page's Trading verdict.
  *
- *   const res = await fetch(`/api/signals?date=${date}`, { cache: 'no-store' });
- *   if (!res.ok) throw new Error('Gagal memuat sinyal');
- *   return (await res.json()) as SignalDashboardData;
- *
- * The UI only depends on `SignalDashboardData`, so nothing else needs to change.
+ * Past dates are replayed from 1-year history cut at that date (no intraday VWAP).
+ * The performance summary is still TEMPORARY mock data until signal outcomes are tracked.
  */
 
-import { MOCK_PERFORMANCE, buildMockSignals, rebaseMockSignal } from '@/data/mock/signalMock';
-import { getStockHistory, getStockSummaries } from '@/data/repositories/StockRepository';
+import { MOCK_PERFORMANCE, SIGNAL_UNIVERSE } from '@/data/mock/signalMock';
+import { getStockFundamentals, getStockHistory, getStockIntraday, getStockSummaries } from '@/data/repositories/StockRepository';
+import { buildSignalFromDecision } from '@/domain/analysis/signalFromDecision';
+import { vwap as sessionVwap } from '@/domain/indicators/vwap';
+import { OHLCVBar } from '@/domain/models/History';
 import { SignalDashboardData, StockSignal } from '@/domain/models/Signal';
+import { StockSummary } from '@/domain/models/Stock';
 
 /** Today's date in WIB (Asia/Jakarta) as YYYY-MM-DD. */
 export function todayWib(): string {
@@ -26,51 +27,68 @@ function isWeekend(date: string): boolean {
   return day === 0 || day === 6;
 }
 
-type Quote = { price: number; changePct: number };
+const pctChange = (bars: OHLCVBar[], back: number) => {
+  const last = bars[bars.length - 1];
+  const then = bars[bars.length - 1 - back];
+  return last && then && then.close > 0 ? ((last.close - then.close) / then.close) * 100 : 0;
+};
 
-/** EOD close + 1D change per ticker for `date`: live summaries for today, daily bars for past dates. */
-async function getEodQuotes(tickers: string[], date: string): Promise<Map<string, Quote>> {
-  const quotes = new Map<string, Quote>();
-  if (date >= todayWib()) {
-    const summaries = await getStockSummaries().catch(() => []);
-    const wanted = new Set(tickers);
-    for (const s of summaries) {
-      if (wanted.has(s.ticker) && s.lastClose > 0) quotes.set(s.ticker, { price: s.lastClose, changePct: s.percentChange1D });
-    }
-    return quotes;
+/**
+ * Same price sync as useStockAnalysis (detail page): the last daily bar is the price reference.
+ * For a past date the price-derived fields are rebuilt from the bars cut at that date.
+ */
+function syncSummary(base: StockSummary, bars: OHLCVBar[], past: boolean): StockSummary {
+  const s = { ...base };
+  const last = bars[bars.length - 1];
+  const prev = bars[bars.length - 2];
+  if (!last) return s;
+  s.lastClose = last.close;
+  if (prev) {
+    s.prevClose = prev.close;
+    s.percentChange1D = ((last.close - prev.close) / prev.close) * 100;
   }
-  await Promise.all(tickers.map(async (ticker) => {
-    const bars = await getStockHistory(ticker, '1y').catch(() => []);
-    const i = bars.findLastIndex((b) => b.date <= date);
-    if (i < 0 || !(bars[i].close > 0)) return;
-    const prev = i > 0 ? bars[i - 1].close : 0;
-    quotes.set(ticker, { price: bars[i].close, changePct: prev > 0 ? ((bars[i].close - prev) / prev) * 100 : 0 });
-  }));
-  return quotes;
+  if (past) {
+    s.percentChange1W = pctChange(bars, 5);
+    s.percentChange1M = pctChange(bars, 21);
+    s.volume = last.volume;
+    s.value = last.close * last.volume;
+    s.high = last.high;
+    s.low = last.low;
+  }
+  return s;
 }
 
-/** Replaces the mock prices with real EOD quotes (mock kept only if a quote is unavailable). */
-async function withEodPrices(signals: StockSignal[], date: string): Promise<StockSignal[]> {
-  const quotes = await getEodQuotes(signals.map((s) => s.ticker), date);
-  return signals.map((s) => {
-    const q = quotes.get(s.ticker);
-    return q ? rebaseMockSignal(s, q.price, q.changePct) : s;
-  });
+async function buildSignal(summary: StockSummary, date: string, isToday: boolean): Promise<StockSignal | null> {
+  const ticker = summary.ticker;
+  const [history, fundamentals, intraday] = await Promise.all([
+    // Today: the detail page's default 6-month range. Past: 1 year, cut at `date`.
+    getStockHistory(ticker, isToday ? undefined : '1y').catch(() => [] as OHLCVBar[]),
+    getStockFundamentals(ticker),
+    isToday ? getStockIntraday(ticker).catch(() => null) : Promise.resolve(null),
+  ]);
+  const bars = isToday ? history : history.filter((b) => b.date.slice(0, 10) <= date);
+  if (bars.length === 0) return null;
+  const vwap = intraday?.ok && intraday.bars.length > 0 ? sessionVwap(intraday.bars) : null;
+  return buildSignalFromDecision({ summary: syncSummary(summary, bars, !isToday), bars, fundamentals, vwap, date });
 }
 
 export async function getSignalDashboard(date: string): Promise<SignalDashboardData> {
-
   // No trading session on weekends → no signal batch (exercises the empty state).
   if (isWeekend(date)) {
     return { date, lastUpdated: null, signals: [], performance: MOCK_PERFORMANCE };
   }
 
-  const signals = await withEodPrices(buildMockSignals(date), date);
+  const isToday = date >= todayWib();
+  const summaries = await getStockSummaries();
+  const universe = SIGNAL_UNIVERSE
+    .map((t) => summaries.find((s) => s.ticker === t))
+    .filter((s): s is StockSummary => s != null);
+  const signals = (await Promise.all(universe.map((s) => buildSignal(s, date, isToday).catch(() => null))))
+    .filter((s): s is StockSignal => s != null);
 
   return {
     date,
-    // Batches are generated after market close (16:15 WIB).
-    lastUpdated: `${date}T16:15:00+07:00`,
+    lastUpdated: isToday ? new Date().toISOString() : `${date}T16:15:00+07:00`,
     signals,
     performance: MOCK_PERFORMANCE,
   };

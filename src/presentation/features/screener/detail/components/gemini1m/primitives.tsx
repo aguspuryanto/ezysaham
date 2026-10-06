@@ -3,7 +3,7 @@
 /** Shared tones, emoji and layout primitives for the EzySaham AI (Decision Engine v3) report. */
 
 import { ReactNode } from 'react';
-import { Decision, Level } from '@/domain/analysis/decisionEngineV3';
+import { Decision, DecisionTag, Level } from '@/domain/analysis/decisionEngineV3';
 import { Check, MomentumSignal, RiskLevel } from '@/domain/analysis/momentumSpeculation';
 import { cn } from '@/lib/format';
 import { Tone } from '../../format';
@@ -11,6 +11,11 @@ import { Badge } from '../ui';
 
 export const DECISION_TONE: Record<Decision, Tone> = { BUY: 'positive', WAIT: 'warning', AVOID: 'negative' };
 export const DECISION_EMOJI: Record<Decision, string> = { BUY: '🟢', WAIT: '🟡', AVOID: '🔴' };
+export const TAG_TEXT: Record<DecisionTag, string> = {
+  'AVOID CHASING': 'JANGAN KEJAR',
+  'EARLY MOMENTUM': 'MOMENTUM AWAL',
+  'BUY CANDIDATE': 'KANDIDAT BELI',
+};
 export const LEVEL_TONE: Record<Level, Tone> = { LOW: 'positive', MEDIUM: 'warning', HIGH: 'negative' };
 export const LEVEL_EMOJI: Record<Level, string> = { LOW: '🟢', MEDIUM: '🟡', HIGH: '🔴' };
 export const SIGNAL_EMOJI: Record<MomentumSignal, string> = { green: '🟢', yellow: '🟡', red: '🔴', na: '⚪' };

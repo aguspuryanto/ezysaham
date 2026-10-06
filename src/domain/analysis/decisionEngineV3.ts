@@ -37,7 +37,8 @@ import {
   RiskLevel,
 } from '@/domain/analysis/momentumSpeculation';
 import { pickTargets, validatePlanLevels } from '@/domain/analysis/tradingModesReview';
-import { ema } from '@/domain/indicators/movingAverages';
+import { ema, lastValid } from '@/domain/indicators/movingAverages';
+import { OHLCVBar } from '@/domain/models/History';
 
 // ─── Thresholds ─────────────────────────────────────────────────────────────────
 
@@ -79,8 +80,31 @@ export type SetupState = 'VALID' | 'FORMING' | 'INVALID';
 export type EntryQuality = 'GOOD' | 'FAIR' | 'POOR' | 'BAD';
 export type LiquidityGate = 'PASS' | 'LIMITED' | 'FAIL';
 
+export interface PriceStructure {
+  highs: 'HH' | 'LH' | 'EQ' | null;
+  lows: 'HL' | 'LL' | 'EQ' | null;
+  /** "Higher High + Higher Low". */
+  label: string;
+}
+
+export type HorizonTrend = 'BULLISH' | 'RECOVERY' | 'NETRAL' | 'MELEMAH' | 'BEARISH' | 'NA';
+
+export interface HorizonTrendRead {
+  trend: HorizonTrend;
+  /** EMA(s) this horizon is read against. */
+  emaLabel: string;
+  /** % of price vs that EMA (short: vs EMA 21). */
+  distPct: number | null;
+  structure: PriceStructure;
+}
+
 export interface TrendAssessment {
+  /** = the medium-term read mapped to the decision vocabulary (BULLISH / BEARISH / else SIDEWAYS). */
   direction: TrendDirection;
+  /** Short-term structure (last 10 sessions vs the 10 before). */
+  structure: PriceStructure;
+  /** Price + EMA + structure per horizon: short = EMA 9/21, medium = EMA 50, long = EMA 200. */
+  horizons: { short: HorizonTrendRead; medium: HorizonTrendRead; long: HorizonTrendRead };
   strength: TrendStrength;
   /** % change of EMA 20 / EMA 50 over the last 5 sessions. */
   ema20Slope: number | null;
@@ -219,6 +243,16 @@ export interface SimpleOutput {
   risk: Level;
   riskText: 'Rendah' | 'Sedang' | 'Tinggi';
   waitFor: string | null;
+  /** Level 1 snapshot — last price, trend direction and price condition ("Overextended", "Sehat", …). */
+  price: number;
+  trend: TrendDirection;
+  /** Display label = the medium-term read: Bullish · Recovery · Netral · Melemah · Bearish. */
+  trendLabel: string;
+  condition: string;
+  /** No plan yet: a calmer reference entry (pullback area / EMA 20) and what must happen first. Not a BUY signal. */
+  betterEntry: { price: number; condition: string } | null;
+  /** First conclusion line — trend vs. entry in one sentence; `conclusion` is the action. */
+  takeaway: string;
   conclusion: string;
   /** Level 2 — "Kenapa?" in plain words, 2–5 short sentences. */
   why: string[];
@@ -276,6 +310,9 @@ export const SETUP_STATE_TEXT: Record<SetupState, string> = {
 export const ENTRY_QUALITY_TEXT: Record<EntryQuality, string> = {
   GOOD: 'Bagus', FAIR: 'Cukup', POOR: 'Kurang', BAD: 'Buruk (mengejar harga)',
 };
+export const HORIZON_TREND_TEXT: Record<HorizonTrend, string> = {
+  BULLISH: 'Bullish', RECOVERY: 'Recovery', NETRAL: 'Netral', MELEMAH: 'Melemah', BEARISH: 'Bearish', NA: 'N/A',
+};
 export const LEVEL_TEXT: Record<Level, 'Rendah' | 'Sedang' | 'Tinggi'> = { LOW: 'Rendah', MEDIUM: 'Sedang', HIGH: 'Tinggi' };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -325,26 +362,99 @@ function assessLiquidity(ev: MomentumReport, price: number): LiquidityAssessment
 
 // ─── 2. Trend ───────────────────────────────────────────────────────────────────
 
+/** Highs / lows within this % count as equal. */
+const STRUCTURE_EQ_PCT = 0.5;
+
+/** Last `w` sessions vs the `w` before: higher/lower high and higher/lower low. */
+export function priceStructure(bars: Array<{ high: number; low: number }>, w = 10): PriceStructure {
+  if (bars.length < w * 2) return { highs: null, lows: null, label: 'Data kurang' };
+  const recent = bars.slice(-w);
+  const prior = bars.slice(-w * 2, -w);
+  const dh = pctDiff(Math.max(...recent.map((b) => b.high)), Math.max(...prior.map((b) => b.high)));
+  const dl = pctDiff(Math.min(...recent.map((b) => b.low)), Math.min(...prior.map((b) => b.low)));
+  const highs = dh > STRUCTURE_EQ_PCT ? 'HH' : dh < -STRUCTURE_EQ_PCT ? 'LH' : 'EQ';
+  const lows = dl > STRUCTURE_EQ_PCT ? 'HL' : dl < -STRUCTURE_EQ_PCT ? 'LL' : 'EQ';
+  const H = { HH: 'Higher High', LH: 'Lower High', EQ: 'High sejajar' } as const;
+  const L = { HL: 'Higher Low', LL: 'Lower Low', EQ: 'Low sejajar' } as const;
+  return { highs, lows, label: `${H[highs]} + ${L[lows]}` };
+}
+
+const HORIZONS = ['short', 'medium', 'long'] as const;
+export const isBullishStructure = (s: PriceStructure) => s.highs === 'HH' && s.lows === 'HL';
+export const isBearishStructure = (s: PriceStructure) => s.highs === 'LH' && s.lows === 'LL';
+
+/**
+ * One horizon = PRICE vs its EMA + STRUCTURE (never one indicator alone):
+ *   above/at EMA + HH/HL → BULLISH        below EMA + HH/HL → RECOVERY
+ *   below/at EMA + LH/LL → BEARISH        above EMA + LH/LL → MELEMAH
+ *   flat range (equal highs AND lows) → NETRAL whatever the EMA says;
+ *   mixed structure: near the EMA → NETRAL; clearly above with a rising EMA → BULLISH;
+ *   clearly below with a falling EMA → BEARISH; otherwise NETRAL.
+ * So price above the horizon's EMA is never BEARISH without a bearish structure.
+ */
+export function classifyHorizon(distPct: number | null, s: PriceStructure, emaRising: boolean | null, nearPct: number): HorizonTrend {
+  if (distPct == null) return 'NA';
+  if (isBullishStructure(s)) return distPct >= 0 ? 'BULLISH' : 'RECOVERY';
+  if (isBearishStructure(s)) return distPct <= 0 ? 'BEARISH' : 'MELEMAH';
+  if ((s.highs === 'EQ' && s.lows === 'EQ') || Math.abs(distPct) <= nearPct) return 'NETRAL';
+  if (distPct > 0) return emaRising !== false ? 'BULLISH' : 'NETRAL';
+  return emaRising === false ? 'BEARISH' : 'NETRAL';
+}
+
+function readHorizons(i: MomentumInput): TrendAssessment['horizons'] {
+  const price = i.price;
+  const closes = i.bars.map((b) => b.close);
+  const hist = i.longBars && i.longBars.length > i.bars.length ? i.longBars : i.bars;
+  const emaOf = (bars: OHLCVBar[], p: number) => {
+    if (bars.length < p) return null;
+    const v = lastValid(ema(bars.map((b) => b.close), p));
+    return ok(v) ? v : null;
+  };
+  const ema9 = ok(i.ema9) ? i.ema9 : emaOf(i.bars, 9);
+  const ema21 = ok(i.ema21) ? i.ema21 : emaOf(hist, 21);
+  const ema200 = ok(i.ema200) ? i.ema200 : emaOf(hist, 200);
+  // Short: price must clear BOTH EMA 9 and EMA 21 to count as above / below; in between = at the EMAs.
+  const sS = priceStructure(i.bars, 10);
+  const shortRaw = ema9 != null && ema21 != null ? pctDiff(price, ema21) : null;
+  const shortDist = shortRaw == null || ema9 == null || ema21 == null ? null
+    : price > ema9 && price > ema21 ? Math.max(shortRaw, 0.01)
+      : price < ema9 && price < ema21 ? Math.min(shortRaw, -0.01) : 0;
+  const short = classifyHorizon(shortDist, sS, ema9 != null && ema21 != null ? ema9 > ema21 : null, 0);
+  // Medium: EMA 50 + 20-session structure.
+  const sM = priceStructure(i.bars, 20);
+  const mDist = ok(i.ema50) ? pctDiff(price, i.ema50) : null;
+  const ema50Slope = slopePct(ema(closes, 50));
+  const medium = classifyHorizon(mDist, sM, ema50Slope == null ? null : ema50Slope > 0, 2);
+  // Long: EMA 200 + 60-session structure (40 when history is short).
+  const sL = priceStructure(hist, hist.length >= 120 ? 60 : 40);
+  const lDist = ema200 != null ? pctDiff(price, ema200) : null;
+  const ema200Slope = hist.length >= 220 ? slopePct(ema(hist.map((b) => b.close), 200), 20) : null;
+  const long = classifyHorizon(lDist, sL, ema200Slope == null ? null : ema200Slope > 0, 3);
+  return {
+    short: { trend: short, emaLabel: 'EMA 9/21', distPct: shortRaw, structure: sS },
+    medium: { trend: medium, emaLabel: 'EMA 50', distPct: mDist, structure: sM },
+    long: { trend: long, emaLabel: 'EMA 200', distPct: lDist, structure: sL },
+  };
+}
+
 export function assessTrend(i: MomentumInput): TrendAssessment {
   const price = i.price;
+  const structure = priceStructure(i.bars);
+  const horizons = readHorizons(i);
   if (!ok(i.ema20) || !ok(i.ema50) || !(price > 0)) {
-    return { direction: 'NA', strength: 'NA', ema20Slope: null, ema50Slope: null, higherLows: null, pullbackDip: false, score: null };
+    return { direction: 'NA', structure, horizons, strength: 'NA', ema20Slope: null, ema50Slope: null, higherLows: null, pullbackDip: false, score: null };
   }
   const closes = i.bars.map((b) => b.close);
   const ema20Slope = slopePct(ema(closes, 20));
   const ema50Slope = slopePct(ema(closes, 50));
   const lows = i.bars.map((b) => b.low);
   const higherLows = lows.length >= 20 ? Math.min(...lows.slice(-10)) > Math.min(...lows.slice(-20, -10)) : null;
-  const emaUp = i.ema20 > i.ema50;
 
-  let direction: TrendDirection;
-  let pullbackDip = false;
-  if (price > i.ema20 && emaUp) direction = 'BULLISH';
-  else if (price < i.ema20 && i.ema20 < i.ema50) direction = 'BEARISH';
-  else if (emaUp && price > i.ema50 && price >= i.ema20 * 0.98 && (ema20Slope ?? 0) > 0) {
-    direction = 'BULLISH';
-    pullbackDip = true;
-  } else direction = 'SIDEWAYS';
+  // Direction IS the medium-term read (price vs EMA 50 + structure) — the trend the user sees.
+  const m = horizons.medium.trend;
+  const direction: TrendDirection = m === 'BULLISH' ? 'BULLISH' : m === 'BEARISH' ? 'BEARISH' : m === 'NA' ? 'NA' : 'SIDEWAYS';
+  // Pullback inside an uptrend: still medium-term bullish, but price dipped under EMA 20.
+  const pullbackDip = direction === 'BULLISH' && price < i.ema20;
 
   const gap = pctDiff(i.ema20, i.ema50);
   let strength: TrendStrength;
@@ -359,7 +469,7 @@ export function assessTrend(i: MomentumInput): TrendAssessment {
   const score = direction === 'BULLISH' ? (strength === 'STRONG' ? 90 : strength === 'MODERATE' ? 72 : 58)
     : direction === 'SIDEWAYS' ? 40
       : strength === 'STRONG' ? 5 : strength === 'MODERATE' ? 15 : 25;
-  return { direction, strength, ema20Slope, ema50Slope, higherLows, pullbackDip, score };
+  return { direction, structure, horizons, strength, ema20Slope, ema50Slope, higherLows, pullbackDip, score };
 }
 
 // ─── 3. Momentum: strength · quality · stage · risk ─────────────────────────────
@@ -774,6 +884,9 @@ export function buildDecisionV3(i: MomentumInput): DecisionV3Report {
   const setupValid = primarySetup?.state === 'VALID';
   const rrPass = rr != null && rr >= MIN_RR;
 
+  // Conflicting indicators never make a BUY. A pullback naturally dips MACD, so it is exempt there.
+  const macdConflict = finite(i.macdHistogram) && i.macdHistogram < 0 && primarySetup?.kind !== 'PULLBACK';
+
   const waitTargets = buildWaitFor(i, trend, momentum, setups, primarySetup, rvol);
 
   // Trading 1–5D — fundamentals are a warning only.
@@ -785,6 +898,7 @@ export function buildDecisionV3(i: MomentumInput): DecisionV3Report {
     { label: 'Bukan parabolik / tidak mengejar harga', ok: !chase },
     { label: 'Setup entry valid', ok: setupValid },
     { label: 'Tidak ada breakout tanpa volume', ok: !weakBreakout },
+    { label: 'Indikator searah (MACD tidak melemah)', ok: !macdConflict },
     { label: rrLabel, ok: rrPass },
     { label: 'Risk gate PASS', ok: riskGate === 'PASS' },
   ];
@@ -897,10 +1011,32 @@ export function buildDecisionV3(i: MomentumInput): DecisionV3Report {
     };
   }
   const conclusion = tradingStatus === 'BUY' ? 'Layak dibeli dengan risiko terukur.'
-    : tradingStatus === 'AVOID' ? (chase ? 'Jangan kejar harga.' : 'Hindari dulu.')
+    : tradingStatus === 'AVOID' ? (chase ? 'Tunggu pullback — jangan kejar harga.' : 'Hindari dulu.')
       : momentum.stage === 'EXTENDED' ? 'Tunggu pullback terlebih dahulu.'
         : trading.tag === 'BUY CANDIDATE' ? 'Kandidat beli — tunggu sinyal masuk.'
           : 'Belum perlu membeli sekarang.';
+  const overextended = momentum.stage === 'PARABOLIC' || momentum.stage === 'EXTENDED';
+  const condition = !dataOk ? 'Data kurang'
+    : momentum.stage === 'PARABOLIC' ? 'Overextended (parabolik)'
+      : momentum.stage === 'EXTENDED' ? 'Overextended'
+        : trend.pullbackDip ? 'Pullback'
+          : trend.direction === 'BEARISH' ? 'Melemah'
+            : momentum.stage === 'EARLY' ? 'Momentum awal'
+              : momentum.stage === 'CONFIRMED' ? 'Sehat'
+                : 'Konsolidasi';
+  // Reference entry only when there is no plan yet and price sits above a calmer area in an uptrend.
+  const pullbackSetup = setups.find((s) => s.kind === 'PULLBACK');
+  const refEntry = pullbackSetup?.entryLow != null && pullbackSetup.entryHigh != null
+    ? roundToTick((pullbackSetup.entryLow + pullbackSetup.entryHigh) / 2)
+    : ok(i.ema20) ? roundToTick(i.ema20) : null;
+  const betterEntry = plan == null && dataOk && trend.direction === 'BULLISH' && refEntry != null && refEntry < price
+    ? { price: refEntry, condition: overextended ? 'harga pullback dan mulai stabil.' : 'harga turun ke area ini lalu muncul candle pantulan.' }
+    : null;
+  const takeaway = tradingStatus === 'BUY' ? 'Trend dan titik masuk sama-sama mendukung.'
+    : trend.direction === 'BULLISH'
+      ? (overextended ? 'Trend masih menarik, tetapi entry sekarang kurang ideal.' : 'Trend masih menarik, tetapi sinyal masuk belum lengkap.')
+      : trend.direction === 'BEARISH' ? 'Arah harga masih turun — belum waktunya masuk.'
+        : 'Arah harga belum jelas.';
   const simple: SimpleOutput = {
     status: tradingStatus,
     tag: trading.tag,
@@ -909,6 +1045,12 @@ export function buildDecisionV3(i: MomentumInput): DecisionV3Report {
     risk: overall,
     riskText: LEVEL_TEXT[overall],
     waitFor: trading.waitFor,
+    price,
+    trend: trend.direction,
+    trendLabel: HORIZON_TREND_TEXT[trend.horizons.medium.trend],
+    condition,
+    betterEntry,
+    takeaway,
     conclusion,
     why: buildWhy({ i, trend, momentum, liquidity, hotMoney, primarySetup, rr, rvol, chase, tradingStatus, ev }),
   };
@@ -921,6 +1063,15 @@ export function buildDecisionV3(i: MomentumInput): DecisionV3Report {
     { label: 'Breakout tanpa volume tidak BUY', passed: !(tradingStatus === 'BUY' && primarySetup?.kind === 'BREAKOUT') || (rvol != null && rvol >= BREAKOUT_RVOL) },
     { label: 'Trading tidak AVOID hanya karena fundamental', passed: tradingStatus !== 'AVOID' || tradingAvoid },
     { label: 'Trend Price > EMA20 > EMA50 tidak disebut sideways', passed: !(ok(i.ema20) && ok(i.ema50) && price > i.ema20 && i.ema20 > i.ema50) || trend.direction === 'BULLISH' },
+    { label: 'Harga di atas EMA tidak disebut BEARISH tanpa struktur bearish', passed: HORIZONS.every((h) => {
+      const x = trend.horizons[h];
+      return !(x.trend === 'BEARISH' && (x.distPct ?? 0) > 0 && !isBearishStructure(x.structure));
+    }) },
+    { label: 'Struktur HH/HL atau LH/LL tidak disebut netral', passed: HORIZONS.every((h) => {
+      const x = trend.horizons[h];
+      return !(x.trend === 'NETRAL' && (isBullishStructure(x.structure) || isBearishStructure(x.structure)));
+    }) },
+    { label: 'Indikator bertentangan tidak BUY', passed: tradingStatus !== 'BUY' || !macdConflict },
     { label: 'Investing BUY hanya bila fundamental sehat', passed: investStatus !== 'BUY' || ev.risk.fundamental.level === 'LOW' },
   ];
 
@@ -999,7 +1150,10 @@ function buildWaitFor(
   const pullback = primary?.kind === 'BREAKOUT' && primary.triggered ? undefined : setups.find((s) => s.kind === 'PULLBACK');
   const parts: string[] = [];
   if (trend.direction === 'SIDEWAYS' || trend.direction === 'NA') {
-    parts.push(`harga bertahan di atas ${ok(i.ema20) ? rp(roundToTick(i.ema20)) : 'EMA 20'} dan arahnya mulai naik`);
+    const ema20Txt = ok(i.ema20) ? rp(roundToTick(i.ema20)) : 'EMA 20';
+    parts.push(ok(i.ema20) && i.price < i.ema20
+      ? `harga naik kembali ke atas ${ema20Txt} dan arahnya mulai naik`
+      : `harga bertahan di atas ${ema20Txt} dan arahnya mulai naik`);
   }
   if (pullback?.entryLow != null && pullback.entryHigh != null && pullback.state !== 'INVALID') {
     parts.push(pullback.inZone ? `muncul candle hijau di area ${rpZone(pullback.entryLow, pullback.entryHigh)}` : `harga turun mendekati ${rpZone(pullback.entryLow, pullback.entryHigh)} lalu muncul candle hijau`);

@@ -152,10 +152,10 @@ export function SignalPage() {
                       ? <>Potential {potentialTarget}% · data EOD <span className="font-medium text-(--sv-text)">{fmtDateLong(potential.scan.dataDate)}</span></>
                       : `Potential ${potentialTarget}%`
                   : loading
-                  ? 'Memuat sinyal…'
-                  : data?.lastUpdated
-                    ? <>Last updated: <span className="font-medium text-(--sv-text)">{fmtTimestamp(data.lastUpdated)}</span></>
-                    : `Belum ada batch sinyal untuk ${fmtDateLong(filters.date)}`}
+                    ? 'Memuat sinyal…'
+                    : data?.lastUpdated
+                      ? <>Last updated: <span className="font-medium text-(--sv-text)">{fmtTimestamp(data.lastUpdated)}</span></>
+                      : `Belum ada batch sinyal untuk ${fmtDateLong(filters.date)}`}
               </p>
             </div>
             <button type="button" onClick={potentialMode ? potential.rescan : refresh} disabled={busy} className={btnSecondary}>
@@ -198,7 +198,7 @@ export function SignalPage() {
 
               {!potential.error && (
                 <>
-                  <section aria-labelledby="pot-top-title" className="flex flex-col gap-3">
+                  {/* <section aria-labelledby="pot-top-title" className="flex flex-col gap-3">
                     <h2 id="pot-top-title" className="flex items-center gap-2 text-lg font-semibold text-(--sv-text)">
                       <Flame className="size-5 text-orange-500" strokeWidth={2} />Top Potential {potentialTarget}% Candidates
                     </h2>
@@ -215,7 +215,7 @@ export function SignalPage() {
                         {potTop.map((c) => <PotentialCard key={c.ticker} candidate={c} onSelect={setSelectedPot} />)}
                       </div>
                     )}
-                  </section>
+                  </section> */}
 
                   <section aria-labelledby="pot-all-title" className="flex flex-col gap-3">
                     <h2 id="pot-all-title" className="text-lg font-semibold text-(--sv-text)">Semua Kandidat</h2>
@@ -241,7 +241,7 @@ export function SignalPage() {
             />
           ) : !error && (
             <>
-              <section aria-labelledby="top-signals-title" className="flex flex-col gap-3">
+              {/* <section aria-labelledby="top-signals-title" className="flex flex-col gap-3">
                 <div className="flex items-baseline justify-between gap-2">
                   <h2 id="top-signals-title" className="text-lg font-semibold text-(--sv-text)">Top Signals Hari Ini</h2>
                   {!loading && (
@@ -265,7 +265,7 @@ export function SignalPage() {
                     {topSignals.map((s) => <SignalCard key={s.id} signal={s} onSelect={setSelected} />)}
                   </div>
                 )}
-              </section>
+              </section> */}
 
               <section aria-labelledby="all-signals-title" className="flex flex-col gap-3">
                 <div className="flex items-baseline justify-between gap-2">

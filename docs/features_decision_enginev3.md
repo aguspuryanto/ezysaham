@@ -942,3 +942,447 @@ Level 3 — "Detail Analisis"
 Baru tampilkan EMA, RSI, RVOL, VWAP, fundamental, broker flow, scoring, dan seluruh reasoning engine.
 
 Dengan pendekatan ini, AI boleh rumit di belakang, tetapi EzySaham terasa sederhana di depan. Itu menurut saya jauh lebih cocok untuk target pengguna retail.
+
+---
+## UPDATE EzySaham AI v3 — FINAL OUTPUT FORMAT
+
+Tujuan:
+Perbaiki FORMAT OUTPUT FINAL EzySaham AI v3 agar:
+1. Tetap mudah dipahami dalam 10 detik.
+2. Tetap menampilkan DATA ANALISIS sebagai bukti bahwa AI benar-benar menganalisis data.
+3. Memisahkan Decision, Data, Interpretation, dan Reasoning.
+4. Jangan mengubah core Decision Engine / scoring logic yang sudah ada kecuali diperlukan untuk konsistensi output.
+
+==================================================
+1. STRUKTUR FINAL OUTPUT
+==================================================
+
+Gunakan struktur:
+
+⚡ EzySaham AI v3
+
+[TICKER]
+
+[🟢 BUY / 🟡 WAIT / 🔴 AVOID]
+
+[Judul keputusan singkat]
+
+[Alasan utama 1–2 kalimat]
+
+
+📌 KEPUTUSAN
+Trading:    [BUY/WAIT/AVOID]
+Swing:      [BUY/WAIT/AVOID]
+Investing:  [BUY/WAIT/AVOID]
+
+Risk:       [LOW/MEDIUM/HIGH]
+Setup:      [BREAKOUT/PULLBACK/TREND FOLLOWING/NONE]
+
+
+📊 DATA ANALISIS
+
+Harga:      [value]
+EMA20:      [value]
+EMA50:      [value]
+RSI:        [value]
+RVOL:       [value]
+1D:         [value]
+5D:         [value]
+20D:        [value]
+
+Trend:      [BULLISH/NEUTRAL/BEARISH]
+Momentum:   [WEAK/MODERATE/STRONG/VERY STRONG]
+Quality:    [GOOD/FAIR/EXCESSIVE/POOR]
+Stage:      [EARLY/CONFIRMED/EXTENDED/PARABOLIC]
+Entry:      [GOOD/FAIR/POOR]
+R:R:        [value / PASS / FAIL]
+
+
+🧠 KENAPA?
+
+Tampilkan 3–6 faktor utama yang benar-benar memengaruhi keputusan.
+
+Contoh:
+
+✓ Trend bullish
+✓ Volume mendukung breakout
+✓ Momentum menguat
+
+✗ RSI terlalu tinggi
+✗ Harga terlalu jauh dari EMA20
+✗ R:R tidak memenuhi minimum
+
+
+🔄 KAPAN MENARIK?
+
+Jika WAIT/AVOID, jelaskan kondisi yang dapat membuat saham
+kembali menarik.
+
+Contoh:
+"Tunggu pullback ke EMA20/support dan muncul konfirmasi volume."
+
+Jika BUY:
+"Tidak perlu menunggu kondisi tambahan selama setup masih valid."
+
+
+💡 KESIMPULAN
+
+1 kalimat sederhana yang menjelaskan keputusan.
+
+
+==================================================
+2. ATURAN PENTING
+==================================================
+
+JANGAN hanya menampilkan:
+
+"AVOID — Jangan kejar harga."
+
+Harus selalu ada DATA ANALISIS yang mendukung keputusan.
+
+JANGAN menampilkan data tanpa interpretasi.
+
+Contoh buruk:
+RSI 85
+RVOL 2.5x
+EMA20 150
+
+Contoh benar:
+RSI 85 → Overextended
+RVOL 2.5x → Volume sangat kuat
+Harga +30% di atas EMA20 → Risiko chasing tinggi
+
+
+==================================================
+3. PISAHKAN STRENGTH VS QUALITY
+==================================================
+
+Momentum kuat tidak otomatis berarti BUY.
+
+Gunakan:
+
+Momentum Strength
+= seberapa kuat momentum.
+
+Momentum Quality
+= apakah momentum tersebut sehat untuk entry.
+
+Contoh:
+
+Momentum: VERY STRONG
+Quality: EXCESSIVE
+Stage: PARABOLIC
+Entry: POOR
+Decision: AVOID
+
+Artinya:
+"Momentum sangat kuat, tetapi entry sudah terlambat."
+
+
+==================================================
+4. TREND JUGA HARUS DIPISAHKAN
+==================================================
+
+Trend Direction:
+BULLISH / NEUTRAL / BEARISH
+
+Trend Strength:
+WEAK / MODERATE / STRONG
+
+Jangan menyebut trend "sideways/unclear"
+jika struktur harga jelas:
+
+Price > EMA20 > EMA50
+
+→ Trend Direction = BULLISH.
+
+
+==================================================
+5. DECISION TETAP BERDASARKAN ENGINE
+==================================================
+
+Jangan menentukan BUY hanya karena:
+
+- harga naik
+- RSI tinggi
+- momentum tinggi
+- volume tinggi
+- total score tinggi
+
+BUY hanya jika setup valid + entry sehat + risk terkendali
++ R:R memenuhi syarat.
+
+Minimum R:R Trading/Swing:
+1 : 1.5
+
+Jika R:R tidak memenuhi:
+→ jangan BUY.
+
+
+==================================================
+6. TOP GAINER PROTECTION
+==================================================
+
+Jika:
+
+- kenaikan 1D sangat tinggi
+- harga terlalu jauh dari EMA20
+- RSI >75
+- kenaikan beberapa hari terlalu cepat
+
+maka evaluasi:
+
+Momentum Strength = bisa tetap VERY STRONG
+
+tetapi:
+
+Momentum Quality = EXCESSIVE/POOR
+Momentum Stage = EXTENDED/PARABOLIC
+Entry Quality = POOR
+Risk = HIGH
+
+→ AVOID CHASING
+
+Jangan menyebut momentum "lemah" hanya karena saham sudah terlalu tinggi.
+
+
+==================================================
+7. OUTPUT HARUS KONSISTEN
+==================================================
+
+Tidak boleh terjadi:
+
+Momentum = VERY STRONG
+tetapi alasan mengatakan momentum lemah.
+
+Risk Score rendah
+tetapi Risk = HIGH tanpa penjelasan.
+
+Trend = BULLISH
+tetapi alasan mengatakan trend bearish.
+
+R:R = 0.7
+tetapi status BUY.
+
+Semua field final harus berasal dari data dan reasoning
+yang sama.
+
+
+==================================================
+8. UI PRINCIPLE
+==================================================
+
+Default view:
+- Decision
+- Reason
+- Risk
+- Trading/Swing/Investing
+- Entry/TP/SL jika BUY
+
+Detail/accordion:
+"📊 Data Analisis"
+"🧠 Kenapa?"
+
+Tujuannya:
+
+LEVEL 1 → pengguna tahu keputusan dalam 10 detik.
+
+LEVEL 2 → pengguna tahu bukti/data yang digunakan AI.
+
+LEVEL 3 → pengguna dapat memahami reasoning lengkap.
+
+
+==================================================
+9. CORE PHILOSOPHY
+==================================================
+
+EzySaham bukan sekadar mencari saham yang sedang naik.
+
+EzySaham mencari:
+
+"Momentum yang sehat + setup yang valid +
+entry yang masih masuk akal + risiko yang terukur."
+
+Prinsip utama:
+
+STRONG MOMENTUM ≠ BUY
+
+GOOD FUNDAMENTAL ≠ BUY NOW
+
+BUY = VALID SETUP + GOOD ENTRY + CONTROLLED RISK + GOOD R:R
+
+
+==================================================
+10. JANGAN UBAH CORE ENGINE
+==================================================
+
+Fokus task ini adalah memperbaiki FINAL OUTPUT FORMAT,
+reasoning presentation, consistency, dan explainability.
+
+Pertahankan:
+- BUY / WAIT / AVOID
+- Trading / Swing / Investing
+- Risk Gate
+- Liquidity Gate
+- Trend
+- Momentum
+- Momentum Stage
+- Setup Detection
+- Entry Quality
+- Risk
+- R:R
+
+Setelah implementasi, test minimal:
+
+1. Healthy bullish
+2. Breakout valid
+3. Pullback valid
+4. Early momentum
+5. Extended
+6. Parabolic/top gainer
+7. Weak volume breakout
+8. Bearish
+9. Sideways
+10. Low liquidity
+11. Poor R:R
+12. Strong technical + poor fundamental
+13. Strong fundamental + weak technical
+14. Counter-trend momentum
+
+Pastikan output FINAL selalu menjelaskan:
+
+DATA → INTERPRETASI → REASONING → DECISION
+
+---
+UPDATE CORE TECHNICAL EzySaham v3
+
+Perbaiki kontradiksi antara keputusan, fase, trend, dan indikator.
+
+URUTAN ANALISIS WAJIB:
+1. FASE → AKUMULASI / MARKUP / DISTRIBUSI / MARKDOWN / RECOVERY / SIDEWAYS
+2. TREND → SHORT / MEDIUM / LONG TERM
+3. TENAGA → Volume + RVOL
+4. MOMENTUM → RSI + MACD
+5. POSISI HARGA → Support + Resistance
+6. ENTRY → apakah sekarang ada zona entry yang aman?
+7. RISIKO → Support, SL, dan Risk/Reward
+8. KEPUTUSAN → BUY / WAIT / AVOID / AVOID CHASING
+
+ATURAN KONSISTENSI:
+- Jangan sebut TREND "SIDEWAYS" jika struktur harga jelas HH/HL atau LH/LL.
+- Bedakan trend SHORT, MEDIUM, dan LONG TERM.
+- EMA200 digunakan sebagai acuan trend jangka panjang.
+- Lower High + Lower Low = struktur bearish.
+- Higher High + Higher Low = struktur bullish.
+- Harga di bawah EMA200 tidak otomatis bearish total jika short-term sedang recovery; tampilkan keduanya.
+- R:R bagus TIDAK otomatis berarti BUY.
+- "Ruang naik menarik" hanya berarti POTENSI, bukan sinyal BUY.
+- Jika harga sudah naik terlalu jauh dari entry/support → AVOID CHASING.
+- Jika trend membaik tetapi entry belum aman → WAIT.
+- Jangan memaksakan BUY jika indikator saling bertentangan.
+
+FORMAT OUTPUT INDIKATOR:
+
+📊 CORE TECHNICAL
+
+1️⃣ Fase
+[FASE] — [penjelasan sederhana]
+
+2️⃣ Trend
+[SHORT] · [MEDIUM] · [LONG]
+→ [kesimpulan sederhana]
+
+3️⃣ Tenaga
+[KUAT / CUKUP / LEMAH]
+→ Volume [x]× rata-rata
+
+4️⃣ Momentum
+[KUAT / NETRAL / LEMAH]
+→ RSI [x] · MACD [POSITIF/NEGATIF]
+
+5️⃣ Posisi Harga
+[DEKAT SUPPORT / TENGAH / DEKAT RESISTANCE / BREAKOUT / TERLALU JAUH]
+→ Support Rp[x] · Resistance Rp[x]
+
+6️⃣ Entry
+[ADA / BELUM ADA]
+→ Entry Rp[x] atau "Tunggu pullback/konfirmasi"
+
+7️⃣ Risiko
+[RENDAH / SEDANG / TINGGI]
+→ SL Rp[x] · R:R [x]
+
+🎯 KEPUTUSAN
+[BUY / WAIT / AVOID / AVOID CHASING]
+
+Gunakan bahasa sederhana seperti menjelaskan kepada anak SD.
+Jangan menampilkan indikator yang tidak membantu keputusan.
+
+----
+EzySaham v3 — FINAL CORE TECHNICAL RULE
+
+Jangan menentukan TREND hanya dari satu indikator.
+Gabungkan PRICE + EMA + STRUKTUR HARGA.
+
+TREND:
+- SHORT TERM = Price vs EMA9/21 + struktur terbaru
+- MEDIUM TERM = Price vs EMA50 + struktur
+- LONG TERM = Price vs EMA200 + struktur
+
+ATURAN:
+- Harga > EMA + HH/HL → BULLISH
+- Harga > EMA tetapi LH/LL → RECOVERY / MELEMAH
+- Harga < EMA + LH/LL → BEARISH
+- Harga dekat EMA dan struktur campuran → NETRAL
+- Jangan menyebut BEARISH jika harga masih berada di atas EMA utama jangka tersebut tanpa bukti struktur bearish yang kuat.
+- Jika indikator bertentangan, gunakan status NETRAL / RECOVERY / MELEMAH, bukan memaksakan BULLISH atau BEARISH.
+
+BEDAKAN:
+Trend = arah harga.
+Tenaga = kekuatan transaksi.
+Momentum = kecepatan/perubahan harga.
+Posisi = lokasi harga.
+Entry = apakah sekarang aman membeli.
+
+R:R bagus TIDAK berarti BUY.
+Volume besar TIDAK berarti BUY.
+Momentum kuat TIDAK berarti BUY.
+Semua harus mendukung ENTRY.
+
+FORMAT:
+
+📊 CORE TECHNICAL
+
+1️⃣ Fase
+[AKUMULASI / MARKUP / DISTRIBUSI / MARKDOWN / RECOVERY / SIDEWAYS]
+
+2️⃣ Trend
+Pendek [BULLISH/RECOVERY/NETRAL/BEARISH]
+· Menengah [...]
+· Panjang [...]
+→ jelaskan 1 kalimat.
+
+3️⃣ Tenaga
+[KUAT/CUKUP/LEMAH]
+→ Volume + RVOL
+
+4️⃣ Momentum
+[KUAT/NETRAL/LEMAH]
+→ RSI + MACD
+
+5️⃣ Posisi Harga
+[DEKAT SUPPORT/TENGAH/DEKAT RESISTANCE/TERLALU JAUH/BREAKOUT]
+
+6️⃣ Entry
+[ADA/BELUM ADA]
+→ area entry atau apa yang harus ditunggu.
+
+7️⃣ Risiko
+[RENDAH/SEDANG/TINGGI]
+→ SL + R:R
+
+🎯 KEPUTUSAN
+BUY / WAIT / AVOID / AVOID CHASING
+
+Prioritaskan KONSISTENSI antar data.
+Jika data bertentangan, jelaskan konflik tersebut secara singkat.

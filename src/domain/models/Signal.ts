@@ -2,21 +2,19 @@
  * Signal.ts
  *
  * SARA AI (Smart Algorithmic Return Analysis) signal contracts (features_signal.md).
- * These shapes are what the /signal UI consumes — the future API must return
- * the same structure so the mock in `data/mock/signalMock.ts` can be swapped out.
+ * These shapes are what the /signal UI consumes. Signals are built by
+ * domain/analysis/signalFromDecision.ts from Decision Engine v3.
  */
 
-export type SignalAction = 'BUY' | 'BUY_ON_WEAKNESS' | 'WAIT' | 'HOLD' | 'SELL' | 'NO_TRADE';
+/** Same three states as Decision Engine v3 (the stock detail page's Trading verdict). */
+export type SignalAction = 'BUY' | 'WAIT' | 'AVOID';
 
-export const SIGNAL_ACTIONS: readonly SignalAction[] = ['BUY', 'BUY_ON_WEAKNESS', 'WAIT', 'HOLD', 'SELL', 'NO_TRADE'];
+export const SIGNAL_ACTIONS: readonly SignalAction[] = ['BUY', 'WAIT', 'AVOID'];
 
 export const SIGNAL_ACTION_LABEL: Record<SignalAction, string> = {
   BUY: 'BUY',
-  BUY_ON_WEAKNESS: 'BUY ON WEAKNESS',
   WAIT: 'WAIT',
-  HOLD: 'HOLD',
-  SELL: 'SELL',
-  NO_TRADE: 'NO TRADE',
+  AVOID: 'AVOID',
 };
 
 export type SignalPattern = 'Breakout' | 'Pullback' | 'Momentum' | 'Reversal' | 'Consolidation' | 'Breakdown';

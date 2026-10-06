@@ -226,7 +226,7 @@ sequenceDiagram
 
 | Tab | Isi |
 |---|---|
-| **Ringkasan** | Technical Summary, AI Insight, laporan **⚡ Momentum vs Spekulasi** (`Trading1MinutesGeminiReport`) |
+| **Ringkasan** | Technical Summary, AI Insight, laporan **⚡ EzySaham AI** + Analisa Teknikal 7 langkah (`Trading1MinutesReportv3`) |
 | **Chart** | Grafik harga interaktif |
 | **Teknikal** | Technical Summary + detail indikator & level |
 | **Fundamental** | Detail fundamental (growth, margin, DER, ROE, PER, PBV) |

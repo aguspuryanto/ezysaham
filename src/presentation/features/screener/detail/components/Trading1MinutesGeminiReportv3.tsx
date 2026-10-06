@@ -12,23 +12,18 @@
 import { Zap } from 'lucide-react';
 import { ReactNode, useCallback, useMemo } from 'react';
 import { FundamentalScreeningResult } from '@/domain/analysis/aiStockEngine';
-import { buildDecisionV3 } from '@/domain/analysis/decisionEngineV3';
 import { buildFundamentalPillars } from '@/domain/analysis/fundamentalPillars';
-import { atr } from '@/domain/indicators/atr';
-import { ema, lastValid } from '@/domain/indicators/movingAverages';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { cn } from '@/lib/format';
-import { buildMomentumInput } from './gemini1m/buildInput';
+import { buildDecisionForStock } from '@/domain/analysis/decisionInput';
 import { Caption, DECISION_TONE, LEVEL_TONE } from './gemini1m/primitives';
 import { buildTemplateV3, TEMPLATE_EMOJI, templateV3Text } from './gemini1m/templateV3';
 import { useSessionVwap } from './gemini1m/useSessionVwap';
 import { CopyShareButton } from './TradingModesReport';
 import { Badge, Card, PanelTitle, Skeleton } from './ui';
-
-const pos = (n: number) => (Number.isFinite(n) && n > 0 ? n : null);
 
 const STATUS_BORDER = {
   positive: 'border-emerald-300/70 dark:border-emerald-400/30',
@@ -67,13 +62,11 @@ export function Trading1MinutesGeminiReportv3({
     () => buildFundamentalPillars(summary, fundamentals, fundamentalScreening),
     [summary, fundamentals, fundamentalScreening],
   );
-  const ema9 = useMemo(() => pos(lastValid(ema(bars.map((b) => b.close), 9))), [bars]);
-  const atr14 = useMemo(() => pos(lastValid(atr(bars, 14))), [bars]);
 
   const t = useMemo(() => {
-    const report = buildDecisionV3(buildMomentumInput({ summary, bars, analysis, fundamentals, pillars, ema9, atr14, vwap }));
+    const report = buildDecisionForStock({ summary, bars, analysis, fundamentals, pillars, vwap });
     return buildTemplateV3(ticker, report);
-  }, [ticker, summary, bars, analysis, fundamentals, pillars, ema9, atr14, vwap]);
+  }, [ticker, summary, bars, analysis, fundamentals, pillars, vwap]);
   const getShareText = useCallback(() => templateV3Text(t), [t]);
   const tone = DECISION_TONE[t.status];
 

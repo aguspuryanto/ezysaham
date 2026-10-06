@@ -88,6 +88,11 @@ export interface MomentumInput {
   ema9: number | null;
   ema20: number | null;
   ema50: number | null;
+  /** Short-term (with EMA 9) and long-term trend references. Optional: missing = horizon not readable. */
+  ema21?: number | null;
+  ema200?: number | null;
+  /** Longer daily history (e.g. 2y) for the long-term structure; falls back to `bars`. */
+  longBars?: OHLCVBar[];
   /** Session VWAP from the 1-minute feed; null when the intraday feed is unavailable. */
   vwap: number | null;
   rvol: number | null;

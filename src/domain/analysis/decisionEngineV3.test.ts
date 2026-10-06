@@ -181,7 +181,9 @@ describe('Decision Engine v3', () => {
     assert.equal(r.decisions.trading.tag, 'AVOID CHASING');
     assert.equal(r.decisions.swing.status, 'AVOID');
     assert.equal(r.simple.plan, null);
-    assert.equal(r.simple.conclusion, 'Jangan kejar harga.');
+    assert.equal(r.simple.conclusion, 'Tunggu pullback — jangan kejar harga.');
+    assert.equal(r.simple.condition, 'Overextended (parabolik)');
+    assert.ok(r.simple.betterEntry && r.simple.betterEntry.price < r.simple.price);
     assert.match(r.simple.reason, /Momentumnya kuat, tetapi harga sudah naik terlalu jauh/);
   });
 

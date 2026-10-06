@@ -16,7 +16,9 @@
 
 import { OHLCVBar } from '@/domain/models/History';
 import { StockSummary } from '@/domain/models/Stock';
+import { isBearishStructure, isBullishStructure, priceStructure, PriceStructure } from '@/domain/analysis/decisionEngineV3';
 import { atr } from '@/domain/indicators/atr';
+import { macd } from '@/domain/indicators/macd';
 import { ema, lastValid } from '@/domain/indicators/movingAverages';
 import { rsi } from '@/domain/indicators/rsi';
 import { relativeVolume } from '@/domain/indicators/volume';
@@ -38,6 +40,22 @@ import {
 
 export type SwingTradingStatus = 'BUY' | 'WAIT' | 'NO_TRADE';
 export type SwingSetupType = 'BREAKOUT' | 'BREAKOUT_RETEST' | 'PULLBACK' | 'NONE';
+/**
+ * What the user sees (EzySaham AI — SWING): `status` decides the list (NO_TRADE is filtered out);
+ * the verdict adds AVOID CHASING for a WAIT row whose price already ran too far from the entry.
+ */
+export type SwingVerdict = 'SETUP' | 'WATCH' | 'AVOID' | 'AVOID_CHASING';
+/** Price + EMA9/21/50/200 + structure HH/HL · LH/LL. */
+export type SwingTrendCall = 'BULLISH' | 'RECOVERY' | 'NETRAL' | 'BEARISH';
+/** RSI + MACD. */
+export type SwingMomentumCall = 'KUAT' | 'CUKUP' | 'LEMAH';
+
+export const SWING_VERDICT_LABEL: Record<SwingVerdict, string> = {
+  SETUP: 'SWING SETUP',
+  WATCH: 'WATCH',
+  AVOID: 'AVOID',
+  AVOID_CHASING: 'AVOID CHASING',
+};
 
 export const SWING_STATUS_LABEL: Record<SwingTradingStatus, string> = {
   BUY: 'SWING BUY SETUP',
@@ -118,10 +136,23 @@ export interface SwingTradingSetup {
   price: number;
   ema8: number | null;
   ema18: number | null;
+  ema9: number | null;
+  ema21: number | null;
+  ema50: number | null;
   ema200: number | null;
   trend: SwingTrendLabel;
+  /** 20-session structure (last 20 vs the 20 before). */
+  structure: PriceStructure;
+  trendCall: SwingTrendCall;
+  momentumCall: SwingMomentumCall;
   rsi: number | null;
+  macdHistogram: number | null;
   rvol: number | null;
+  volume: number | null;
+  /** Pullback only: selling dried up (volume under average) and volume picked up on the rebound bar. */
+  pullbackVolumeOk: boolean | null;
+  /** Breakout / retest level, otherwise the lowest low of the last 10 sessions. */
+  support: number | null;
   return1W: number | null;
   return1M: number | null;
   closePosition: number | null;
@@ -152,6 +183,7 @@ export interface SwingTradingSetup {
   targetRealistic: boolean | null;
   scores: SwingTradingScores;
   status: SwingTradingStatus;
+  verdict: SwingVerdict;
   setupChecks: SwingTradingCheck[];
   riskChecks: SwingTradingCheck[];
   chasing: boolean;
@@ -245,6 +277,12 @@ export function computeSwingTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf
   const ema18 = num(lastValid(ema18Series));
   const ema18Prev = num(ema18Series[n - 6] ?? NaN);
   const ema200 = num(lastValid(ema(closes, 200)));
+  const ema9 = num(lastValid(ema(closes, 9)));
+  const ema21 = n >= 21 ? num(lastValid(ema(closes, 21))) : null;
+  const ema50 = n >= 50 ? num(lastValid(ema(closes, 50))) : null;
+  const macdHistogram = num(lastValid(macd(bars).histogram));
+  const structure = priceStructure(bars, 20);
+  const lastVolume = lastBar && lastBar.volume > 0 ? lastBar.volume : null;
   const rsiLast = num(lastValid(rsi(bars, 14)));
   const rvol = num(relativeVolume(bars, 20));
   const atrLast = num(lastValid(atr(bars, 14)));
@@ -265,6 +303,30 @@ export function computeSwingTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf
           : 'SIDEWAYS';
 
   const { type: setupType, breakoutLevel } = detectSetup(bars, price, ema8, ema18, rvol);
+
+  // Trend = price + EMA9/21/50/200 + structure (never one indicator alone).
+  const bullS = isBullishStructure(structure);
+  const bearS = isBearishStructure(structure);
+  const emaUp = ema9 != null && ema21 != null && ema50 != null && price > ema21 && ema9 > ema21 && ema21 > ema50;
+  const emaDown = ema9 != null && ema21 != null && ema50 != null && price < ema21 && ema9 < ema21 && ema21 < ema50;
+  const trendCall: SwingTrendCall = bearS && ema50 != null && price < ema50 ? 'BEARISH'
+    : emaUp && !bearS && (ema200 == null || price > ema200) ? 'BULLISH'
+      : (bullS || emaUp || (ema21 != null && ema9 != null && price > ema21 && ema9 > ema21)) && !bearS ? 'RECOVERY'
+        : emaDown ? 'BEARISH'
+          : 'NETRAL';
+  // Momentum = RSI + MACD histogram.
+  const momentumCall: SwingMomentumCall = rsiLast == null && macdHistogram == null ? 'LEMAH'
+    : (rsiLast != null && rsiLast < 45) || (macdHistogram != null && macdHistogram < 0 && (rsiLast == null || rsiLast < 50)) ? 'LEMAH'
+      : (rsiLast == null || (rsiLast >= SW_RSI_MIN && rsiLast <= SW_RSI_MAX)) && (macdHistogram == null || macdHistogram > 0) ? 'KUAT'
+        : 'CUKUP';
+  // Healthy pullback: volume shrinks into the dip, then rises on the rebound bar.
+  const volMa20 = n >= 21 ? bars.slice(-21, -1).reduce((sum, b) => sum + b.volume, 0) / 20 : null;
+  const dipVols = bars.slice(-4, -1).map((b) => b.volume);
+  const pullbackVolumeOk = setupType !== 'PULLBACK' ? null
+    : volMa20 != null && dipVols.length === 3 && prevBar != null && lastBar != null
+      && dipVols.reduce((sum, v) => sum + v, 0) / 3 <= volMa20 && lastBar.volume > prevBar.volume;
+  const support = breakoutLevel != null && breakoutLevel < price ? breakoutLevel
+    : n >= 10 ? Math.min(...bars.slice(-10).map((b) => b.low)) : null;
 
   // ── Rencana ──
   // Trigger = break high bar terakhir; batas entry = trigger + 0,5×ATR.
@@ -369,6 +431,10 @@ export function computeSwingTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf
     { ok: setupType !== 'NONE', label: `Setup: ${SWING_SETUP_LABEL[setupType]}` },
     { ok: upsidePct != null && upsidePct >= SW_MIN_UPSIDE_PCT, missing: upsidePct == null, label: `Upside ke ${resistance != null ? 'resistance' : 'target'} ≥ ${SW_MIN_UPSIDE_PCT}% (${upsidePct == null ? DATA_NA : `${upsidePct.toFixed(1)}%`})` },
     { ok: riskReward != null && riskReward >= SW_MIN_RR, missing: riskReward == null, label: `R:R ≥ 1:${SW_MIN_RR} (${riskReward == null ? DATA_NA : `1:${riskReward.toFixed(2)}`})` },
+    { ok: targetRealistic === true, missing: targetRealistic == null, label: `Target realistis ${SW_TARGET_MIN_PCT}–${SW_TARGET_MAX_PCT}% (${tp1Pct == null ? DATA_NA : `${tp1Pct.toFixed(1)}%`})` },
+    // Conflicting data → WATCH: trend and momentum must agree.
+    { ok: trendCall === 'BULLISH' && momentumCall !== 'LEMAH', label: `Trend & momentum searah (${trendCall} · ${momentumCall})` },
+    ...(setupType === 'PULLBACK' ? [{ ok: pullbackVolumeOk === true, label: 'Pullback: volume mengecil lalu naik saat memantul' }] : []),
   ];
 
   // ── Scoring ──
@@ -395,6 +461,7 @@ export function computeSwingTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf
     riskGateFailed || total < SW_SCORE_WAIT ? 'NO_TRADE'
       : total >= SW_SCORE_BUY && triggerValid ? 'BUY'
         : 'WAIT';
+  const verdict: SwingVerdict = status === 'NO_TRADE' ? 'AVOID' : status === 'WAIT' && chasing ? 'AVOID_CHASING' : status === 'BUY' ? 'SETUP' : 'WATCH';
 
   const conclusion = buildConclusion({
     status, total, setupType, trend, aboveEma200: ema200 == null ? null : price > ema200, rvol, return1M, rsiLast, riskChecks, setupChecks, chasing,
@@ -405,10 +472,20 @@ export function computeSwingTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf
     price,
     ema8,
     ema18,
+    ema9,
+    ema21,
+    ema50,
     ema200,
     trend,
+    structure,
+    trendCall,
+    momentumCall,
     rsi: rsiLast,
+    macdHistogram,
     rvol,
+    volume: lastVolume,
+    pullbackVolumeOk,
+    support,
     return1W,
     return1M,
     closePosition,
@@ -432,6 +509,7 @@ export function computeSwingTradingSetup(s: StockSummary, bars: OHLCVBar[], asOf
     targetRealistic,
     scores,
     status,
+    verdict,
     setupChecks,
     riskChecks,
     chasing,

@@ -4,7 +4,8 @@
  * SwingTradingTable.tsx
  *
  * Results for the Swing Trading preset (docs/features_swingtrading.md). Columns follow the spec:
- * Kode | Harga | Trend | RSI | RVOL | 1W | 1M | Setup | Entry | TP1 | TP2 | SL | R:R | Score | Status.
+ * Kode | Harga | Score | Status | Trend | RSI | RVOL | 1W | 1M | Setup | Entry | TP1 | TP2 | SL | R:R.
+ * The 📋 button opens the "⚡ EzySaham AI — SWING" report (swingTradingReport.ts) with a copy button.
  * Every value comes from `evaluation.swingTrading`; anything not computable renders as
  * "DATA TIDAK TERSEDIA" rather than a guess. Presentation only.
  */
@@ -12,17 +13,20 @@
 import { ClipboardList } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useCallback, useMemo } from 'react';
 import { DATA_NA } from '@/domain/screener/setupUtils';
 import {
   SW_SCORE_BUY,
   SW_SCORE_WAIT,
   SWING_SETUP_LABEL,
-  SWING_STATUS_LABEL,
+  SWING_VERDICT_LABEL,
   SwingTradingSetup,
-  SwingTradingStatus,
-  SwingTrendLabel,
+  SwingTrendCall,
+  SwingVerdict,
 } from '@/domain/screener/swingTrading';
+import { buildSwingTradingReport, swingTradingReportText } from '@/domain/screener/swingTradingReport';
 import { cn, formatRupiah } from '@/lib/format';
+import { CopyShareButton } from '../detail/components/TradingModesReport';
 import { Popover } from './Popover';
 import { ScreenerResult } from './ResultsTable';
 import { Chip } from './ScreenerBadges';
@@ -44,18 +48,19 @@ import {
   TD,
 } from './SetupTableParts';
 
-const STATUS_TONE: Record<SwingTradingStatus, SetupTone> = { BUY: 'positive', WAIT: 'warning', NO_TRADE: 'negative' };
+const VERDICT_TONE: Record<SwingVerdict, SetupTone> = { SETUP: 'positive', WATCH: 'warning', AVOID: 'negative', AVOID_CHASING: 'negative' };
 /** Columns rendered by Row (identity 3 + Harga + 13 data + Aksi). */
 const COLUMN_COUNT = 18;
 
-function StatusChip({ status }: { status: SwingTradingStatus }) {
-  return <SetupStatusChip tone={STATUS_TONE[status]} label={SWING_STATUS_LABEL[status]} />;
+function StatusChip({ verdict }: { verdict: SwingVerdict }) {
+  return <SetupStatusChip tone={VERDICT_TONE[verdict]} label={SWING_VERDICT_LABEL[verdict]} />;
 }
 
-function TrendChip({ trend }: { trend: SwingTrendLabel }) {
-  if (trend == null) return <NA />;
-  const tone = trend === 'UPTREND' ? 'positive' : trend === 'DOWNTREND' ? 'negative' : 'neutral';
-  const label = trend === 'UPTREND' ? 'Uptrend' : trend === 'DOWNTREND' ? 'Downtrend' : 'Sideways';
+const TREND_CHIP: Record<SwingTrendCall, ['positive' | 'warning' | 'neutral' | 'negative', string]> = {
+  BULLISH: ['positive', 'Bullish'], RECOVERY: ['warning', 'Recovery'], NETRAL: ['neutral', 'Netral'], BEARISH: ['negative', 'Bearish'],
+};
+function TrendChip({ trend }: { trend: SwingTrendCall }) {
+  const [tone, label] = TREND_CHIP[trend];
   return <Chip tone={tone}>{label}</Chip>;
 }
 
@@ -81,40 +86,67 @@ function SwingScore({ sw }: { sw: SwingTradingSetup }) {
   );
 }
 
+/** "⚡ EzySaham AI — SWING" report (swingTradingReport.ts) + the rule checks behind it. */
 function ConclusionButton({ ticker, sw }: { ticker: string; sw: SwingTradingSetup }) {
-  const items: Array<[string, string]> = [
-    ['Mengapa menarik?', sw.conclusion.why],
-    ['Trigger entry', sw.conclusion.trigger],
-    ['Target 5–15%', sw.conclusion.target],
-    ['Invalidation / SL', sw.conclusion.invalidation],
-    ['Alasan TIDAK entry', sw.conclusion.reasonsNotToEnter],
+  const r = useMemo(() => buildSwingTradingReport(ticker, sw), [ticker, sw]);
+  const getText = useCallback(() => swingTradingReportText(r), [r]);
+  const rows: Array<[string, string, string?]> = [
+    ['Setup', r.setup, 'font-semibold'],
+    ['Trend', r.trend],
+    ['Momentum', r.momentum],
+    ['Volume', r.volume],
+    ['Support', r.support],
+    ['Resistance', r.resistance],
   ];
+  const plan: Array<[string, string, string?]> = [
+    ['Entry', r.entry, 'font-semibold'],
+    ['SL', r.sl, 'text-rose-700 dark:text-rose-400'],
+    ['TP', r.tp, 'text-emerald-700 dark:text-emerald-400'],
+    ['Target', r.target],
+    ['R:R', r.rr],
+  ];
+  const list = (items: Array<[string, string, string?]>) => (
+    <dl className="space-y-1 text-xs">
+      {items.map(([k, v, cls]) => (
+        <div key={k} className="flex gap-2">
+          <dt className="w-20 shrink-0 text-(--sv-muted)">{k}</dt>
+          <dd className={cn('min-w-0 tabular-nums text-(--sv-text)', cls)}>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
   return (
     <Popover
       mode="click"
       label={`Kesimpulan swing ${ticker}`}
-      width={360}
+      width={380}
       trigger={<ClipboardList className="size-4" strokeWidth={2} />}
       triggerClassName="size-8 rounded-lg text-(--sv-primary) hover:bg-(--sv-primary-soft)"
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-bold text-(--sv-text)">{ticker}</p>
-        <StatusChip status={sw.status} />
+        <div>
+          <p className="text-[11px] font-semibold text-(--sv-muted)">⚡ EzySaham AI — SWING</p>
+          <p className="text-sm font-bold text-(--sv-text)">{ticker}</p>
+        </div>
+        <CopyShareButton getText={getText} />
       </div>
-      <ol className="mt-2 space-y-1.5">
-        {items.map(([q, a], i) => (
-          <li key={q} className="text-xs leading-relaxed">
-            <span className="font-semibold text-(--sv-text)">{i + 1}. {q}</span>{' '}
-            <span className="text-(--sv-text)">{a}</span>
-          </li>
-        ))}
-      </ol>
-      <div className="mt-3 space-y-2.5 border-t border-(--sv-border) pt-2.5">
-        <CheckList title="Risk gate" checks={sw.riskChecks} />
-        <CheckList title="Setup & trigger" checks={sw.setupChecks} />
+      <div className="mt-2"><StatusChip verdict={sw.verdict} /></div>
+      <div className="mt-2.5">{list(rows)}</div>
+      <div className="mt-2.5 rounded-lg bg-(--sv-bg) p-2 text-xs text-(--sv-text)">
+        <p className="font-semibold">🎯 Trigger</p>
+        <p className="mt-0.5">{r.trigger}</p>
       </div>
+      <div className="mt-2.5">{list(plan)}</div>
+      <p className="mt-2.5 text-xs leading-relaxed text-(--sv-text)">💡 <b>Kesimpulan:</b> {r.conclusion}</p>
+      <details className="mt-2.5 border-t border-(--sv-border) pt-2">
+        <summary className="cursor-pointer text-[11px] font-semibold text-(--sv-muted)">Cek aturan (risk gate, setup &amp; trigger)</summary>
+        <div className="mt-2 space-y-2.5">
+          <CheckList title="Risk gate" checks={sw.riskChecks} />
+          <CheckList title="Setup & trigger" checks={sw.setupChecks} />
+        </div>
+      </details>
       <p className="mt-2.5 border-t border-(--sv-border) pt-2 text-[11px] text-(--sv-muted)">
-        &quot;Buy area&quot; ≠ BUY otomatis · entry hanya setelah trigger valid · jangan kejar di atas batas entry · risiko maks 1% modal · tanpa averaging down. Bukan rekomendasi beli/jual.
+        ⚠️ Data EOD, bukan realtime. Entry hanya setelah trigger valid. Setup ≠ BUY.
       </p>
     </Popover>
   );
@@ -138,7 +170,9 @@ function Row({ result, index, actions }: { result: ScreenerResult; index: number
       </td>
       {sw ? (
         <>
-          <td className="px-2.5 py-3"><TrendChip trend={sw.trend} /></td>
+          <td className={TD} onClick={(e) => e.stopPropagation()}><SwingScore sw={sw} /></td>
+          <td className="px-2.5 py-3"><StatusChip verdict={sw.verdict} /></td>
+          <td className="px-2.5 py-3"><TrendChip trend={sw.trendCall} /></td>
           <td className={TD}><Num v={sw.rsi} digits={1} /></td>
           <td className={TD}><Num v={sw.rvol} digits={2} suffix="x" /></td>
           <td className={TD}><PctCell v={sw.return1W} /></td>
@@ -162,8 +196,6 @@ function Row({ result, index, actions }: { result: ScreenerResult; index: number
             {sw.riskReward == null ? <NA /> : <span className="tabular-nums">1:{sw.riskReward.toFixed(2).replace('.', ',')}</span>}
             {sw.targetBasis === 'rMultiple' && <p className="text-[11px] text-(--sv-muted)" title="Tidak ada resistance di atas — target dari kelipatan risiko">R-multiple</p>}
           </td>
-          <td className={TD} onClick={(e) => e.stopPropagation()}><SwingScore sw={sw} /></td>
-          <td className="px-2.5 py-3"><StatusChip status={sw.status} /></td>
         </>
       ) : (
         <td colSpan={COLUMN_COUNT - 5} className="px-2.5 py-3 text-sm text-(--sv-muted)">{DATA_NA}</td>
@@ -206,7 +238,7 @@ function MobileCard({ result, actions }: { result: ScreenerResult; actions: RowA
           <>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
-                <StatusChip status={sw.status} />
+                <StatusChip verdict={sw.verdict} />
                 <SetupChip sw={sw} />
               </div>
               <span className="text-sm text-(--sv-muted)">Skor <b className="tabular-nums text-(--sv-text)">{sw.scores.total}</b></span>
@@ -224,7 +256,7 @@ function MobileCard({ result, actions }: { result: ScreenerResult; actions: RowA
               {stat('1W', <PctCell v={sw.return1W} />)}
               {stat('1M', <PctCell v={sw.return1M} />)}
             </div>
-            <p className="mt-2.5 text-xs leading-relaxed text-(--sv-muted)">{sw.conclusion.why} {sw.conclusion.trigger}</p>
+            <p className="mt-2.5 text-xs leading-relaxed text-(--sv-muted)">{buildSwingTradingReport(s.ticker, sw).conclusion}</p>
           </>
         )}
       </Link>
@@ -269,7 +301,9 @@ export function SwingTradingTable({
               <IdentityHeadCells />
               <Th className="left-20 z-20 border-r" sortKey="ticker" sort={sort} onSort={onSort}>Kode</Th>
               <Th sortKey="price" sort={sort} onSort={onSort} align="right">Harga</Th>
-              <Th tip={{ term: 'Trend', text: 'Uptrend = harga > EMA18, EMA8 > EMA18, dan harga > EMA200.' }}>Trend</Th>
+              <Th sortKey="score" sort={sort} onSort={onSort} align="right" tip={{ term: 'Score', text: 'Trend 25% · Momentum 25% · Volume 20% · Setup/Price Action 20% · Risk/Reward 10%.' }}>Score</Th>
+              <Th tip={{ term: 'Status', text: 'SWING SETUP = skor ≥80, semua syarat utama terpenuhi & trigger jelas (bukan BUY otomatis — tunggu trigger). WATCH = setup menarik tetapi trigger belum terjadi / data bertentangan. AVOID CHASING = harga sudah lari terlalu jauh. AVOID (skor <60 / risk gate gagal) disaring dari daftar.' }}>Status</Th>
+              <Th tip={{ term: 'Trend', text: 'Harga + EMA9/21/50/200 + struktur HH/HL · LH/LL. Bullish = di atas semua EMA & struktur naik. Recovery = mulai naik tetapi belum di atas EMA utama. Bearish = di bawah EMA & struktur turun. Netral = campuran.' }}>Trend</Th>
               <Th align="right" tip={{ term: 'RSI', text: 'RSI(14). Zona swing 50–70: momentum naik, belum overbought.' }}>RSI</Th>
               <Th align="right" tip={{ term: 'RVOL', text: 'Volume hari terakhir dibanding rata-rata 20 hari. Minimal 1,2x; breakout ideal ≥ 1,5x.' }}>RVOL</Th>
               <Th align="right">1W</Th>
@@ -280,8 +314,6 @@ export function SwingTradingTable({
               <Th align="right">TP2</Th>
               <Th align="right" tip={{ term: 'SL', text: 'Di bawah low 5 hari (atau level breakout), maksimal 2×ATR di bawah trigger.' }}>SL</Th>
               <Th align="right" tip={{ term: 'R:R', text: 'Reward ke TP1 dibanding risiko ke SL. Minimal 1:2.' }}>R:R</Th>
-              <Th sortKey="score" sort={sort} onSort={onSort} align="right" tip={{ term: 'Score', text: 'Trend 25% · Momentum 25% · Volume 20% · Setup/Price Action 20% · Risk/Reward 10%.' }}>Score</Th>
-              <Th tip={{ term: 'Status', text: 'SWING BUY SETUP = skor ≥80 + trigger valid. SWING WAIT = skor 60–79 atau trigger belum terpenuhi. NO TRADE (skor <60 / risk gate gagal) disaring dari daftar.' }}>Status</Th>
               <Th align="right">Aksi</Th>
             </tr>
           </thead>

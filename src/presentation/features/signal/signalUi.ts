@@ -1,14 +1,11 @@
 import { SignalAction } from '@/domain/models/Signal';
 import { Tone } from '../screener/detail/format';
 
-/** Color coding per signal: green = buy, blue = buy on dip, amber = wait, red = sell, slate = hold/no trade. */
+/** Color coding per signal — same as the detail page: green = BUY, amber = WAIT, red = AVOID. */
 export const ACTION_TONE: Record<SignalAction, Tone> = {
   BUY: 'positive',
-  BUY_ON_WEAKNESS: 'info',
   WAIT: 'warning',
-  HOLD: 'neutral',
-  SELL: 'negative',
-  NO_TRADE: 'neutral',
+  AVOID: 'negative',
 };
 
 export function scoreTone(score: number): Tone {
