@@ -120,3 +120,47 @@ R:R: [...]
 
 ⚠️ Data EOD, bukan realtime.
 Trigger wajib dikonfirmasi dengan harga realtime.
+
+---
+# qwenAI
+
+"Bertindaklah sebagai analis kuantitatif dan day trader profesional pasar modal Indonesia (IDX).
+Buatkan formulasi Stock Screener berbasis data EOD (End of Day) yang dikhususkan untuk strategi Day Trading (holding 1 hari / scalping) dengan kriteria ketat berikut:
+Likuiditas: Rata-rata nilai transaksi harian (1 Bulan) ≥ Rp 20 Miliar (memastikan likuiditas tinggi untuk entry/exit cepat).
+Harga: Close ≥ Rp 200 (menghindari saham lapis 3 yang rentan manipulasi/gocap).
+Tren: Close > SMA 5 DAN Close > SMA 20 (memastikan momentum jangka sangat pendek tetap naik).
+Momentum: RSI (14) di kisaran 55 – 70 (kuat, namun masih memiliki ruang naik sebelum overbought ekstrem).
+Volume: RVOL (Volume Hari Ini / Rata-rata Volume 20 hari) ≥ 2.0x (menandakan anomali volume/akumulasi bandar).
+Risk/Reward: Jarak harga saat ini ke resistensi terdekat (High 20 hari atau ATH) memungkinkan potensi gain minimal 2x dari risiko loss.
+Format Output yang Diminta (Ringkas & Teknis):
+Logika Filter: Penjelasan 1 kalimat per parameter.
+Formula Stockbit: Kode siap copy-paste untuk Custom Formula.
+Setting TradingView: Daftar filter spesifik untuk Stock Screener.
+Protokol Eksekusi (WAJIB):
+Status: Tegaskan "DAY TRADE SETUP / WATCH" (bukan sinyal beli instan).
+Trigger Entry: Jelas (misal: "Hanya entry jika harga menembus High hari ini / High kemarin dengan volume intraday yang tebal").
+Stop Loss: Tight SL (misal: di bawah Low hari ini atau SMA 5).
+Take Profit: Target R:R minimal 1:2 atau trailing stop ketat.
+Buat jawaban yang sangat ringkas, padat, teknis, dan tanpa basa-basi."
+
+---
+# Screener BSJP (Beli Sore Jual Pagi)
+Kriteria Rumus Screener BSJP
+Gunakan kriteria ini dan jalankan screener 30 menit sebelum pasar tutup:
+• Price ≥ 1.05 x Previous Price (Kenaikan minimal +5%)
+• Price ≥ 1 x Price MA5 (Harga di atas rata-rata 5 hari)
+• Volume ≥ 1.2 x Previous Volume (Lonjakan volume)
+• Value > Rp 5.000.000.000 (Nilai transaksi > 5 Miliar)
+
+Rumus screener BSJP (Beli Sore Jual Pagi) di Stockbit dapat dibuat dengan memasukkan 5 kriteria utama 30 menit sebelum pasar tutup
+
+---
+# Screener BPJS (Beli Pagi Jual Sore)
+Kriteria / Rumus Screener BPJS
+• Harga ≥ 1x MA5 (Moving Average 5)
+• Harga ≥ 1,05x Previous Price (harga penutupan kemarin/+5%)
+• Harga ≥ 1x Open Price (harga pembukaan)
+• Volume ≥ 0,2x Previous Volume
+• Value (Nilai Transaksi) > Rp5.000.000.000 (5 Miliar)
+
+* Rumus screener BPJS (Beli Pagi Jual Sore) di Stockbit dapat dibuat dengan memasukkan 5 kriteria utama 30 menit sebelum pasar buka
