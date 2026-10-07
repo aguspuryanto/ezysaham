@@ -5,7 +5,8 @@
  *
  * Momentum Trade Engine report (docs/features_momentum_engine.md) on the detail page's `.sv-theme`:
  * Status · Momentum · Structure · Entry · SL · TP1 · TP2 · Potential · R:R · Exit Risk, the HARD RISK GATE
- * (6 × PASS/FAIL), then Alasan utama, Trigger Entry, Exit Warning, Kesimpulan and the analysis behind it.
+ * (6 × PASS/FAIL + FINAL GATE), then Alasan utama, Trigger Entry / Re-evaluation, Exit Warning, Kesimpulan.
+ * FINAL GATE BLOCKED → every trading parameter renders as N/A; candidate levels are never shown as a plan.
  * Every verdict comes from domain/analysis/momentumTradeEngine.ts — this file only lays it out.
  */
 
@@ -17,8 +18,9 @@ import { buildFundamentalPillars } from '@/domain/analysis/fundamentalPillars';
 import {
   buildMomentumTrade,
   ExitRisk,
-  MOMENTUM_STATUS_EMOJI,
+  FinalGate,
   MIN_MOMENTUM_RR,
+  MOMENTUM_STATUS_EMOJI,
   MOMENTUM_TARGET_PCT,
   MomentumGrade,
   MomentumSignalItem,
@@ -35,28 +37,30 @@ import { StockSummary } from '@/domain/models/Stock';
 import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { cn } from '@/lib/format';
 import { fmtNum, fmtPct, fmtRp, Tone } from '../format';
-import { Bullets, Callout, Caption, Section } from './gemini1m/primitives';
+import { Bullets, Caption, Section } from './gemini1m/primitives';
 import { CopyShareButton } from './TradingModesReport';
 import { Badge, Card, PanelTitle, Skeleton, TONE_TEXT } from './ui';
 
 const STATUS_TONE: Record<MomentumTradeStatus, Tone> = {
   'MOMENTUM BUY': 'positive',
-  'WAIT PULLBACK': 'warning',
-  'WAIT BREAKOUT': 'warning',
   'AVOID CHASING': 'negative',
   'AVOID REVERSAL': 'negative',
   'NO TRADE': 'negative',
   'N/A': 'neutral',
 };
 const MOMENTUM_TONE: Record<MomentumGrade, Tone> = { STRONG: 'positive', MODERATE: 'warning', WEAK: 'negative', 'N/A': 'neutral' };
-const STRUCTURE_TONE: Record<StructureGrade, Tone> = { HEALTHY: 'positive', EXTENDED: 'warning', DISTRIBUTION: 'negative', 'NO TREND': 'neutral', 'N/A': 'neutral' };
+const STRUCTURE_TONE: Record<StructureGrade, Tone> = { HEALTHY: 'positive', EXTENDED: 'warning', DISTRIBUTION: 'negative', DOWNTREND: 'negative', 'NO TREND': 'neutral', 'N/A': 'neutral' };
 const EXIT_TONE: Record<ExitRisk, Tone> = { LOW: 'positive', MEDIUM: 'warning', HIGH: 'negative', EXTREME: 'negative', 'N/A': 'neutral' };
+const FINAL_GATE_TONE: Record<FinalGate, Tone> = { PASS: 'positive', BLOCKED: 'negative', 'N/A': 'neutral' };
 
 const NA = 'N/A';
 const zoneText = (r: MomentumTradeReport) =>
   r.entryLow == null || r.entryHigh == null ? NA : r.entryLow === r.entryHigh ? fmtRp(r.entryLow) : `${fmtRp(r.entryLow)} – ${fmtNum(r.entryHigh)}`;
 const targetText = (t: MomentumTarget | null) => (t ? `${fmtRp(t.price)} (${fmtPct(t.pct, 1)})` : NA);
 const rrText = (rr: number | null) => (rr == null ? NA : `1:${fmtNum(rr, 1)}`);
+const slText = (sl: number | null) => (sl == null ? NA : fmtRp(sl));
+const potentialText = (p: number | null) => (p == null ? NA : fmtPct(p, 1));
+const isValidated = (r: MomentumTradeReport) => r.finalGate === 'PASS';
 
 function PlanTile({ label, children, sub, className }: { label: string; children: ReactNode; sub?: string | null; className?: string }) {
   return (
@@ -81,13 +85,13 @@ function SignalList({ items }: { items: MomentumSignalItem[] }) {
   );
 }
 
-function RiskGate({ gates }: { gates: RiskGateItem[] }) {
+function RiskGate({ gates, finalGate }: { gates: RiskGateItem[]; finalGate: FinalGate }) {
   const passed = gates.filter((g) => g.pass).length;
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <Caption>🔒 Hard Risk Gate</Caption>
-        <Badge tone={passed === gates.length ? 'positive' : 'negative'}>{passed}/{gates.length} PASS</Badge>
+        <span className="text-xs text-(--sv-muted)">{passed}/{gates.length} PASS</span>
       </div>
       <ul className="grid gap-1.5 sm:grid-cols-2">
         {gates.map((g) => (
@@ -100,6 +104,10 @@ function RiskGate({ gates }: { gates: RiskGateItem[] }) {
           </li>
         ))}
       </ul>
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-(--sv-border) bg-(--sv-surface) px-3 py-2 text-sm">
+        <span className="font-semibold text-(--sv-text)">FINAL GATE</span>
+        <Badge tone={FINAL_GATE_TONE[finalGate]} className="shrink-0">{finalGate}</Badge>
+      </div>
     </div>
   );
 }
@@ -111,21 +119,22 @@ function buildShareText(ticker: string, r: MomentumTradeReport): string {
     `Status: ${MOMENTUM_STATUS_EMOJI[r.status]} ${r.status}`,
     `Momentum: ${r.momentum}`,
     `Structure: ${r.structure}`,
-    `Entry: ${zoneText(r)}${r.conditional ? ' (setelah trigger)' : ''}`,
-    `SL: ${r.sl != null ? fmtRp(r.sl) : NA}`,
+    `Entry: ${zoneText(r)}`,
+    `SL: ${slText(r.sl)}`,
     `TP1: ${targetText(r.tp1)}`,
     `TP2: ${targetText(r.tp2)}`,
-    `Potential: ${r.potentialPct != null ? fmtPct(r.potentialPct, 1) : NA}`,
+    `Potential: ${potentialText(r.potentialPct)}`,
     `R:R: ${rrText(r.riskReward)}`,
     `Exit Risk: ${r.exitRisk}`,
     '',
-    'Risk Gate:',
+    'HARD RISK GATE:',
     ...r.riskGate.map((g) => `${g.label}: ${g.pass ? 'PASS' : 'FAIL'}`),
+    `FINAL GATE: ${r.finalGate}`,
     '',
     'Alasan utama:',
     ...r.reasons.map((s) => `- ${s}`),
     '',
-    `Trigger Entry: ${r.trigger}`,
+    `${isValidated(r) ? 'Trigger Entry' : 'Re-evaluation'}: ${r.trigger}`,
     '',
     'Exit Warning:',
     ...r.exitWarnings.map((s) => `- ${s}`),
@@ -161,6 +170,8 @@ export function TradingMomentumReport({
   const r = report;
   const tone = STATUS_TONE[r.status];
   const m = r.metrics;
+  const validated = isValidated(r);
+  const planValue = validated ? 'text-(--sv-text)' : 'text-(--sv-muted)';
 
   return (
     <Card aria-labelledby="momentum-engine-title">
@@ -169,62 +180,47 @@ export function TradingMomentumReport({
       </PanelTitle>
 
       <div className="space-y-4 p-4">
-        {/* Status & plan */}
+        {/* Status & final trade plan */}
         <div
           className={cn(
             'space-y-4 rounded-xl border-2 p-4',
             tone === 'positive' ? 'border-emerald-300/70 dark:border-emerald-400/30'
               : tone === 'negative' ? 'border-rose-300/70 dark:border-rose-400/30'
-                : tone === 'warning' ? 'border-amber-300/70 dark:border-amber-400/30'
-                  : 'border-(--sv-border)',
+                : 'border-(--sv-border)',
           )}
         >
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={tone} className="px-3 py-1 text-base">{MOMENTUM_STATUS_EMOJI[r.status]} {r.status}</Badge>
-            {r.setup !== 'NONE' && <span className="text-xs text-(--sv-muted)">{SETUP_NAME[r.setup]}</span>}
+            {validated && r.setup !== 'NONE' && <span className="text-xs text-(--sv-muted)">{SETUP_NAME[r.setup]}</span>}
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <PlanTile label="Momentum"><span className={TONE_TEXT[MOMENTUM_TONE[r.momentum]]}>{r.momentum}</span></PlanTile>
             <PlanTile label="Structure"><span className={TONE_TEXT[STRUCTURE_TONE[r.structure]]}>{r.structure}</span></PlanTile>
             <PlanTile label="Exit Risk"><span className={TONE_TEXT[EXIT_TONE[r.exitRisk]]}>{r.exitRisk}</span></PlanTile>
           </div>
 
-          {r.entryLow != null ? (
-            <div className="space-y-2">
-              {r.conditional && (
-                r.status === 'NO TRADE' ? (
-                  <Callout tone="negative" className="text-xs">
-                    Rencana acuan di bawah gagal Hard Risk Gate — hanya untuk evaluasi, bukan untuk dieksekusi.
-                  </Callout>
-                ) : (
-                  <Callout tone="warning" className="text-xs">
-                    Rencana bersyarat — baru berlaku setelah trigger entry terpenuhi. Entry zone ≠ sinyal BUY.
-                  </Callout>
-                )
-              )}
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <PlanTile label={r.status === 'NO TRADE' ? 'Entry (acuan)' : r.conditional ? 'Entry (setelah trigger)' : 'Entry'}>{zoneText(r)}</PlanTile>
-                <PlanTile label="SL" className="text-rose-600 dark:text-rose-400" sub={r.slBasis}>{r.sl != null ? fmtRp(r.sl) : NA}</PlanTile>
-                <PlanTile label="R:R" sub={`Ke TP2, min 1:${MIN_MOMENTUM_RR}`}>{rrText(r.riskReward)}</PlanTile>
-                <PlanTile label="TP1" className="text-emerald-600 dark:text-emerald-400" sub={r.tp1?.basis}>{targetText(r.tp1)}</PlanTile>
-                <PlanTile label="TP2" className="text-emerald-600 dark:text-emerald-400" sub={r.tp2?.basis}>{targetText(r.tp2)}</PlanTile>
-                <PlanTile
-                  label="Potential"
-                  className={r.target20Realistic ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}
-                  sub={r.target20Realistic ? `Target ≥${MOMENTUM_TARGET_PCT}% realistis` : `Target ≥${MOMENTUM_TARGET_PCT}% belum didukung resistance/volatilitas`}
-                >
-                  {r.potentialPct != null ? fmtPct(r.potentialPct, 1) : NA}
-                </PlanTile>
-              </div>
+          <div className="space-y-2">
+            {!validated && (
+              <p className="rounded-lg bg-(--sv-bg) px-3 py-2 text-sm text-(--sv-muted)">
+                {r.dataOk
+                  ? <>Setup belum valid — tidak ada trading plan.{r.candidateSetup && <> Candidate setup: <span className="font-medium text-(--sv-text)">{r.candidateSetup}</span> (belum tervalidasi).</>}</>
+                  : r.dataNote}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <PlanTile label="Entry" className={planValue}>{zoneText(r)}</PlanTile>
+              <PlanTile label="SL" className={validated ? 'text-rose-600 dark:text-rose-400' : planValue} sub={validated ? r.slBasis : null}>{slText(r.sl)}</PlanTile>
+              <PlanTile label="TP1" className={validated ? 'text-emerald-600 dark:text-emerald-400' : planValue} sub={validated ? r.tp1?.basis : null}>{targetText(r.tp1)}</PlanTile>
+              <PlanTile label="TP2" className={validated ? 'text-emerald-600 dark:text-emerald-400' : planValue} sub={validated ? r.tp2?.basis : null}>{targetText(r.tp2)}</PlanTile>
+              <PlanTile label="Potential" className={validated ? 'text-emerald-600 dark:text-emerald-400' : planValue} sub={validated ? `Target ≥${MOMENTUM_TARGET_PCT}% realistis` : null}>
+                {potentialText(r.potentialPct)}
+              </PlanTile>
+              <PlanTile label="R:R" className={planValue} sub={validated ? `Ke TP2, min 1:${MIN_MOMENTUM_RR}` : null}>{rrText(r.riskReward)}</PlanTile>
             </div>
-          ) : (
-            <p className="rounded-lg bg-(--sv-bg) px-3 py-2 text-sm text-(--sv-muted)">
-              Entry, SL, TP & R:R: N/A — {r.dataOk ? 'tidak ada rencana entry saat risiko tinggi.' : r.dataNote}
-            </p>
-          )}
+          </div>
 
-          {r.riskGate.length > 0 && <RiskGate gates={r.riskGate} />}
+          {r.riskGate.length > 0 && <RiskGate gates={r.riskGate} finalGate={r.finalGate} />}
 
           <div className="space-y-1">
             <Caption>Alasan utama</Caption>
@@ -237,7 +233,7 @@ export function TradingMomentumReport({
         {r.dataOk && (
           <>
             <div className="grid gap-3 md:grid-cols-2">
-              <Section title="🎯 Trigger Entry">
+              <Section title={validated ? '🎯 Trigger Entry' : '🔁 Re-evaluation'}>
                 <p className="text-sm text-(--sv-text)">{r.trigger}</p>
               </Section>
               <Section title="🚨 Exit Warning">
@@ -277,7 +273,7 @@ export function TradingMomentumReport({
         )}
 
         <p className="text-xs leading-relaxed text-(--sv-muted)">
-          “Momentum kuat bukan berarti BUY. BUY hanya jika momentum + entry + upside ≥{MOMENTUM_TARGET_PCT}% + R:R ≥1:{MIN_MOMENTUM_RR} + risk terkendali.”
+          “Jika setup belum valid, jangan berikan trading plan.” BUY hanya jika momentum + entry + upside ≥{MOMENTUM_TARGET_PCT}% + R:R ≥1:{MIN_MOMENTUM_RR} + risk terkendali.
           Analisa otomatis dari candle harian terakhir — target adalah proyeksi, bukan janji profit.
         </p>
       </div>

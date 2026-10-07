@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { MomentumInput } from '@/domain/analysis/momentumSpeculation';
-import { buildMomentumTrade } from '@/domain/analysis/momentumTradeEngine';
+import { buildMomentumTrade, MomentumTradeReport } from '@/domain/analysis/momentumTradeEngine';
 import { atr } from '@/domain/indicators/atr';
 import { macd } from '@/domain/indicators/macd';
 import { ema, lastValid } from '@/domain/indicators/movingAverages';
@@ -74,6 +74,19 @@ function breakoutBars(breakoutVol: number): OHLCVBar[] {
   return barsFrom(800, [...zigzag(60, 2.5, 1.5, { wick: 1.5 }), ...base, { pct: 3.5, vol: breakoutVol, wick: 0.3 }]);
 }
 
+/** FINAL GATE BLOCKED → every final trading parameter is N/A; PASS ⇔ MOMENTUM BUY with a full plan. */
+function assertGateConsistency(r: MomentumTradeReport) {
+  const params = [r.entryLow, r.entryHigh, r.entryRef, r.sl, r.tp1, r.tp2, r.potentialPct, r.riskReward];
+  if (r.finalGate === 'PASS') {
+    assert.equal(r.status, 'MOMENTUM BUY');
+    assert.ok(r.riskGate.every((g) => g.pass));
+    assert.ok(r.entryLow != null && r.sl != null && r.tp2 != null && r.potentialPct != null && r.riskReward != null);
+  } else {
+    assert.notEqual(r.status, 'MOMENTUM BUY');
+    for (const v of params) assert.equal(v, null, `${r.status}: trading parameter must be N/A when BLOCKED`);
+  }
+}
+
 describe('Momentum Trade Engine', () => {
   test('insufficient data → N/A', () => {
     const r = buildMomentumTrade(inputFrom(barsFrom(1000, zigzag(30, 1, 0.5))));
@@ -92,16 +105,28 @@ describe('Momentum Trade Engine', () => {
     assert.ok(r.sl != null && r.sl < r.entryLow!);
     assert.equal(r.riskGate.length, 6);
     assert.ok(r.riskGate.every((g) => g.pass), JSON.stringify(r.riskGate));
-    assert.equal(r.conditional, false);
+    assert.equal(r.finalGate, 'PASS');
+    assertGateConsistency(r);
   });
 
-  test('resistance only +10% away → not BUY (WAIT BREAKOUT / NO TRADE)', () => {
+  test('resistance only +10% away → NO TRADE, every trading parameter N/A', () => {
     const bars = breakoutBars(12_000_000);
     const price = bars[bars.length - 1].close;
     const r = buildMomentumTrade(inputFrom(bars, { resistances: [price * 1.1, price * 1.35] }));
-    assert.ok(r.status === 'WAIT BREAKOUT' || r.status === 'NO TRADE', r.status);
-    assert.ok(r.conditional);
-    assert.ok(r.riskGate.some((g) => !g.pass));
+    assert.equal(r.status, 'NO TRADE');
+    assert.equal(r.finalGate, 'BLOCKED');
+    assert.equal(r.riskGate.find((g) => g.key === 'upside')?.pass, false);
+    assertGateConsistency(r);
+    assert.match(r.trigger, /^Re-evaluasi/);
+  });
+
+  test('price left the breakout zone (trigger FAIL only) → NO TRADE, not a plan', () => {
+    const bars = breakoutBars(12_000_000);
+    const price = bars[bars.length - 1].close;
+    // Same chart, but the last close is reported 6% higher — out of the +3% breakout zone.
+    const r = buildMomentumTrade(inputFrom(bars, { price: price * 1.06 }));
+    assert.notEqual(r.status, 'MOMENTUM BUY');
+    assertGateConsistency(r);
   });
 
   test('breakout without volume → not a valid breakout', () => {
@@ -117,6 +142,7 @@ describe('Momentum Trade Engine', () => {
     assert.equal(r.status, 'NO TRADE');
     assert.equal(r.target20Realistic, false);
     assert.equal(r.riskGate.find((g) => g.key === 'potential')?.pass, false);
+    assertGateConsistency(r);
   });
 
   test('RSI > 70 alone is not AVOID', () => {
@@ -129,8 +155,9 @@ describe('Momentum Trade Engine', () => {
     const bars = breakoutBars(12_000_000);
     const price = bars[bars.length - 1].close;
     const r = buildMomentumTrade(inputFrom(bars, { resistances: [price * 1.1] }));
-    assert.notEqual(r.status, 'MOMENTUM BUY');
-    assert.equal(r.riskGate.find((g) => g.key === 'upside')?.pass, r.status === 'WAIT BREAKOUT');
+    assert.equal(r.status, 'NO TRADE');
+    assert.equal(r.riskGate.find((g) => g.key === 'upside')?.pass, false);
+    assertGateConsistency(r);
   });
 
   test('parabolic run → AVOID, never BUY', () => {
@@ -138,7 +165,7 @@ describe('Momentum Trade Engine', () => {
     const r = buildMomentumTrade(inputFrom(bars));
     assert.equal(r.structure, 'EXTENDED');
     assert.ok(r.status === 'AVOID CHASING' || r.status === 'AVOID REVERSAL', r.status);
-    assert.equal(r.entryLow, null);
+    assertGateConsistency(r);
   });
 
   test('downtrend → AVOID REVERSAL with no plan', () => {
@@ -148,5 +175,9 @@ describe('Momentum Trade Engine', () => {
     assert.equal(r.entryLow, null);
     assert.equal(r.tp1, null);
     assert.equal(r.riskGate.find((g) => g.key === 'distribution')?.pass, false);
+    assertGateConsistency(r);
+    // Labels only: a confirmed downtrend reads DOWNTREND (not NO TREND), and no candidate is named.
+    if (r.structure !== 'DISTRIBUTION') assert.equal(r.structure, 'DOWNTREND');
+    assert.equal(r.candidateSetup, null);
   });
 });

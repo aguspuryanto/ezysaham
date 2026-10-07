@@ -16,9 +16,12 @@
  * HARD RISK GATE — MOMENTUM BUY only when ALL pass:
  *   1. Potential ≥ 20%          (fail → NO TRADE)     4. SL valid on structure      (fail → NO TRADE)
  *   2. R:R ≥ 1:2                (fail → NO TRADE)     5. Distribution risk < HIGH   (fail → AVOID)
- *   3. Valid entry trigger      (fail → WAIT)         6. Upside to next resistance ≥ 20% (fail → NO TRADE)
+ *   3. Valid entry trigger      (fail → NO TRADE)     6. Upside to next resistance ≥ 20% (fail → NO TRADE)
+ *   Extended (too far from entry) → AVOID CHASING.
  *
- * WAIT means the conditional plan already passes gates 1, 2, 4, 6 and only the trigger is missing.
+ * The HARD RISK GATE is final. Candidate Setup = internal calculation; Validated Setup = every gate PASS;
+ * Final Trade Plan = only for a Validated Setup. FINAL GATE BLOCKED → Entry, SL, TP1, TP2, Potential and
+ * R:R are all N/A — a candidate's levels are never published as a plan, and FAIL is never turned into PASS.
  * TP comes only from resistance, measured move or structure — never from a % stretched to hit 20%.
  * RSI > 70 never means AVOID by itself. Missing data → N/A. Order prices snap to valid IDX ticks.
  */
@@ -42,7 +45,7 @@ export const MAX_SL_PCT = 10;
 export const BREAKOUT_RVOL = 1.5;
 /** Entry zone above a breakout level — beyond this it's chasing. */
 export const BREAKOUT_ZONE_PCT = 3;
-/** Price within this % under the breakout level → WAIT BREAKOUT (otherwise WAIT PULLBACK). */
+/** Price within this % under the breakout level → the candidate is a breakout of that level (else a pullback). */
 const NEAR_BREAKOUT_PCT = 5;
 /** Extended: further above EMA 20 than max(this, EXTENDED_ATR_MULT × ATR%). */
 const EXTENDED_EMA20_PCT = 10;
@@ -59,10 +62,15 @@ const MIN_TP1_PCT = 3;
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
-export type MomentumTradeStatus = 'MOMENTUM BUY' | 'WAIT PULLBACK' | 'WAIT BREAKOUT' | 'AVOID CHASING' | 'AVOID REVERSAL' | 'NO TRADE' | 'N/A';
+export type MomentumTradeStatus = 'MOMENTUM BUY' | 'AVOID CHASING' | 'AVOID REVERSAL' | 'NO TRADE' | 'N/A';
+/** PASS = Validated Setup (final trade plan published). BLOCKED = every trading parameter is N/A. */
+export type FinalGate = 'PASS' | 'BLOCKED' | 'N/A';
 export type MomentumGrade = 'STRONG' | 'MODERATE' | 'WEAK' | 'N/A';
-/** NO TREND = no bullish structure to continue (sideways / bearish without distribution signs). */
-export type StructureGrade = 'HEALTHY' | 'EXTENDED' | 'DISTRIBUTION' | 'NO TREND' | 'N/A';
+/**
+ * Display label only (never drives the decision). DOWNTREND = confirmed bearish trend without fresh
+ * distribution signs; NO TREND = sideways, no bullish structure to continue.
+ */
+export type StructureGrade = 'HEALTHY' | 'EXTENDED' | 'DISTRIBUTION' | 'DOWNTREND' | 'NO TREND' | 'N/A';
 export type ExitRisk = 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME' | 'N/A';
 export type TrendRead = 'BULLISH' | 'SIDEWAYS' | 'BEARISH' | 'N/A';
 export type VolumeRead = 'EXPANSION' | 'NORMAL' | 'CONTRACTION' | 'N/A';
@@ -71,8 +79,6 @@ export type RiskGateKey = 'potential' | 'rr' | 'trigger' | 'sl' | 'distribution'
 
 export const MOMENTUM_STATUS_EMOJI: Record<MomentumTradeStatus, string> = {
   'MOMENTUM BUY': '🟢',
-  'WAIT PULLBACK': '🟡',
-  'WAIT BREAKOUT': '🟡',
   'AVOID CHASING': '🔴',
   'AVOID REVERSAL': '🔴',
   'NO TRADE': '🔴',
@@ -123,8 +129,18 @@ export interface MomentumTradeReport {
   dataOk: boolean;
   dataNote: string;
   status: MomentumTradeStatus;
-  /** Entry / SL / TP are not an executable BUY: a WAIT plan (after trigger) or a NO TRADE plan that failed the gate. */
-  conditional: boolean;
+  /** HARD RISK GATE verdict. Entry / SL / TP / Potential / R:R are non-null only when PASS. */
+  finalGate: FinalGate;
+  /**
+   * Candidate Setup — what was evaluated internally (no levels), e.g. "Kandidat breakout di atas Rp 1.250".
+   * Null for AVOID REVERSAL: the gate still runs on a reference pullback, but naming it would suggest a setup exists.
+   */
+  candidateSetup: string | null;
+  /**
+   * Candidate Setup numbers as percentages only (no prices) — for discovery screens (Moonstock) that rank
+   * candidates before this engine validates them. Never a trade plan. Null when there is no candidate.
+   */
+  candidateStats: { potentialPct: number | null; riskReward: number | null; upsidePct: number | null; target20Realistic: boolean } | null;
   momentum: MomentumGrade;
   structure: StructureGrade;
   exitRisk: ExitRisk;
@@ -182,7 +198,8 @@ export interface MomentumTradeReport {
 const pct = (a: number, b: number) => (a / b - 1) * 100;
 const fin = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
 const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : NaN);
-const r1 = (n: number) => Math.round(n * 10) / 10;
+/** One-decimal number for narrative text, Indonesian locale (1,5 — matching Rp 1.250). */
+const r1 = (n: number) => (Math.round(n * 10) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
 const rp = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`;
 
 function structureOf(bars: OHLCVBar[], w = 10): { highs: 'HH' | 'LH' | 'EQ' | null; lows: 'HL' | 'LL' | 'EQ' | null; label: string } {
@@ -203,7 +220,9 @@ function emptyReport(price: number, note: string): MomentumTradeReport {
     dataOk: false,
     dataNote: note,
     status: 'N/A',
-    conditional: false,
+    finalGate: 'N/A',
+    candidateSetup: null,
+    candidateStats: null,
     momentum: 'N/A',
     structure: 'N/A',
     exitRisk: 'N/A',
@@ -396,7 +415,8 @@ export function buildMomentumTrade(i: MomentumInput): MomentumTradeReport {
   const distributionGateOk = exitRisk === 'LOW' || exitRisk === 'MEDIUM';
 
   const distribution = breakdown || flags.length >= 3;
-  const structure: StructureGrade = distribution ? 'DISTRIBUTION' : trend !== 'BULLISH' ? 'NO TREND' : extended ? 'EXTENDED' : 'HEALTHY';
+  const structure: StructureGrade =
+    distribution ? 'DISTRIBUTION' : trend === 'BEARISH' ? 'DOWNTREND' : trend !== 'BULLISH' ? 'NO TREND' : extended ? 'EXTENDED' : 'HEALTHY';
 
   // 4–5. Structure, support & resistance
   const resistances = [...i.resistances, ...(fin(i.annualHigh) ? [i.annualHigh] : [])].filter((r) => fin(r) && r > 0);
@@ -464,85 +484,84 @@ export function buildMomentumTrade(i: MomentumInput): MomentumTradeReport {
     });
   };
 
-  // HARD RISK GATE for a plan (trigger is judged separately).
+  // HARD RISK GATE on the Candidate Setup. Details carry percentages / S&R levels only — the candidate's
+  // Entry / SL / TP prices are never published unless the FINAL GATE passes.
   const gateOf = (pl: Plan | null, triggerOk: boolean, triggerDetail: string): RiskGateItem[] => {
     const g = (key: RiskGateKey, pass: boolean, detail: string): RiskGateItem => ({ key, label: RISK_GATE_LABEL[key], pass, detail });
     return [
       g('potential', !!pl?.target20Realistic,
         pl?.tp2 == null ? 'Tidak ada target dari resistance / measured move'
-          : pl.tp2.pct < MOMENTUM_TARGET_PCT ? `Potensi ke TP2 hanya ${r1(pl.tp2.pct)}%`
-            : roomPct < MOMENTUM_TARGET_PCT ? `TP2 +${r1(pl.tp2.pct)}%, tapi ATR ${r1(atrPct)}% hanya menjangkau ±${r1(roomPct)}%`
-              : `TP2 +${r1(pl.tp2.pct)}% (jangkauan ATR ±${r1(roomPct)}%)`),
-      g('rr', pl?.rr != null && pl.rr >= MIN_MOMENTUM_RR, pl?.rr == null ? 'R:R tidak dapat dihitung' : `R:R 1:${r1(pl.rr)}`),
+          : pl.tp2.pct < MOMENTUM_TARGET_PCT ? `Potensi kandidat hanya ${r1(pl.tp2.pct)}%`
+            : roomPct < MOMENTUM_TARGET_PCT ? `Potensi kandidat ${r1(pl.tp2.pct)}%, tapi ATR ${r1(atrPct)}% hanya menjangkau ±${r1(roomPct)}%`
+              : `Potensi ${r1(pl.tp2.pct)}% (jangkauan ATR ±${r1(roomPct)}%)`),
+      g('rr', pl?.rr != null && pl.rr >= MIN_MOMENTUM_RR, pl?.rr == null ? 'R:R tidak dapat dihitung' : `R:R kandidat 1:${r1(pl.rr)}`),
       g('trigger', triggerOk, triggerDetail),
       g('sl', pl != null && pl.slPct > 0 && pl.slPct <= MAX_SL_PCT,
-        pl == null ? 'Tidak ada SL struktural' : `SL ${rp(pl.sl)} (${r1(pl.slPct)}% dari entry, maks ${MAX_SL_PCT}%)`),
-      g('distribution', distributionGateOk, `Exit risk ${exitRisk}${flags.length ? ` — ${flags.length} tanda distribusi` : ''}`),
+        pl == null ? 'Tidak ada SL struktural' : `SL struktural ${r1(pl.slPct)}% dari entry (maks ${MAX_SL_PCT}%)`),
+      g('distribution', distributionGateOk, `Exit risk ${exitRisk}${
+        [flags.length ? `${flags.length} tanda distribusi` : '', breakdown ? 'breakdown support' : '', trend === 'BEARISH' ? 'tren turun' : '']
+          .filter(Boolean).map((x, k) => (k === 0 ? ` — ${x}` : ` + ${x}`)).join('')}`),
       g('upside', pl != null && (pl.upsideToResistancePct == null ? pl.tp2 != null : pl.upsideToResistancePct >= MOMENTUM_TARGET_PCT),
-        pl == null ? 'Tidak ada entry acuan'
+        pl == null ? 'Tidak ada setup kandidat'
           : pl.upsideToResistancePct == null ? (pl.tp2 != null ? 'Tidak ada resistance di atas (blue sky)' : 'Tidak ada target terukur')
             : `Resistance berikutnya ${rp(pl.blocker!)} (+${r1(pl.upsideToResistancePct)}%)`),
     ];
   };
-  const tradeGatesOk = (gs: RiskGateItem[]) => gs.filter((x) => x.key !== 'trigger' && x.key !== 'distribution').every((x) => x.pass);
 
   // ─── Classification ──────────────────────────────────────────────────────────
-  let status: MomentumTradeStatus;
-  let p: Plan | null = null;
-  let gates: RiskGateItem[];
-  let waitWhy = '';
+  // 1) pick the Candidate Setup, 2) run the gate, 3) publish a plan only for a Validated Setup.
+  interface Candidate { kind: PlanKind; plan: Plan; level: number | null; label: string; triggerOk: boolean; triggerDetail: string }
+  let candidate: Candidate | null = null;
+  let avoidStatus: 'AVOID CHASING' | 'AVOID REVERSAL' | null = null;
+  let noCandidateDetail = 'Tidak ada tren naik maupun level breakout';
 
   const breakoutTarget = nearestResistance ?? (breakoutLevel > price ? breakoutLevel : null);
   const nearBreakout = breakoutTarget != null && pct(breakoutTarget, price) <= NEAR_BREAKOUT_PCT;
   const setupKind: PlanKind | null = setup === 'BREAKOUT' ? 'breakout' : setup === 'RETEST' ? 'retest' : setup === 'PULLBACK' ? 'pullback' : null;
+  const pullbackCandidate = (triggerDetail: string): Candidate => ({
+    kind: 'pullback', plan: plan('pullback'), level: null, label: 'Kandidat pullback ke EMA 9–20', triggerOk: false, triggerDetail,
+  });
 
   if (!distributionGateOk || distribution || trend === 'BEARISH') {
-    // Gate 5 → AVOID. Gates are shown against the pullback reference, no levels are published.
-    status = 'AVOID REVERSAL';
-    gates = gateOf(plan('pullback'), false, 'Tidak ada entry saat risiko distribusi/reversal tinggi');
+    avoidStatus = 'AVOID REVERSAL';
+    candidate = pullbackCandidate('Tidak ada entry saat risiko distribusi/reversal tinggi');
   } else if (extended) {
-    status = 'AVOID CHASING';
-    gates = gateOf(plan('pullback'), false, `Harga ${r1(distEma20Pct)}% di atas EMA 20 — terlalu jauh dari zona entry`);
+    // Strong momentum but EXTENDED → never BUY; wait for a pullback / reset and a new trigger.
+    avoidStatus = 'AVOID CHASING';
+    candidate = pullbackCandidate(`Harga ${r1(distEma20Pct)}% di atas EMA 20 — terlalu jauh dari zona entry`);
   } else if (trend === 'BULLISH' && setupKind != null) {
     const cand = plan(setupKind);
     const triggerOk = cand.inZone && momentum !== 'WEAK';
-    const trigDetail = triggerOk ? `${SETUP_NAME[setup]} — harga di zona entry`
-      : !cand.inZone ? `${SETUP_NAME[setup]}, tapi harga di luar zona entry` : `${SETUP_NAME[setup]}, tapi momentum lemah`;
-    const g = gateOf(cand, triggerOk, trigDetail);
-    if (tradeGatesOk(g) && triggerOk) {
-      status = 'MOMENTUM BUY'; p = cand; gates = g;
-    } else if (tradeGatesOk(g)) {
-      status = 'WAIT PULLBACK'; p = cand; gates = g; waitWhy = `${trigDetail} — tunggu kembali ke zona.`;
-    } else if (cand.blocker != null && (cand.upsideToResistancePct ?? 0) < MOMENTUM_TARGET_PCT) {
-      // Resistance too close: the trade only exists after that resistance breaks.
-      const nb = plan('nextBreakout', cand.blocker);
-      const gNb = gateOf(nb, false, `Breakout di atas ${rp(cand.blocker)} belum terkonfirmasi`);
-      if (tradeGatesOk(gNb)) { status = 'WAIT BREAKOUT'; p = nb; gates = gNb; waitWhy = `Resistance ${rp(cand.blocker)} hanya +${r1(cand.upsideToResistancePct!)}% — tunggu breakout.`; }
-      else { status = 'NO TRADE'; p = cand; gates = g; }
-    } else {
-      status = 'NO TRADE'; p = cand; gates = g;
-    }
-  } else if (breakoutTarget != null && (nearBreakout || trend === 'SIDEWAYS')) {
-    const nb = plan('nextBreakout', breakoutTarget);
-    const gNb = gateOf(nb, false, `Breakout di atas ${rp(breakoutTarget)} belum terkonfirmasi (close + volume)`);
-    p = nb; gates = gNb;
-    if (tradeGatesOk(gNb)) {
-      status = 'WAIT BREAKOUT';
-      waitWhy = trend === 'SIDEWAYS' ? 'Belum ada tren naik — tunggu breakout dengan volume.' : `Harga ${r1(pct(breakoutTarget, price))}% di bawah resistance — belum breakout valid.`;
-    } else status = 'NO TRADE';
+    candidate = {
+      kind: setupKind,
+      plan: cand,
+      level: setupKind === 'breakout' ? breakoutLevel : setupKind === 'retest' ? baseLevel : null,
+      label: SETUP_NAME[setup],
+      triggerOk,
+      triggerDetail: triggerOk ? `${SETUP_NAME[setup]} — harga di zona entry`
+        : !cand.inZone ? `${SETUP_NAME[setup]}, tapi harga sudah di luar zona entry` : `${SETUP_NAME[setup]}, tapi momentum lemah`,
+    };
+  } else if (breakoutTarget != null && nearBreakout) {
+    // Only a resistance within NEAR_BREAKOUT_PCT is a breakout candidate — a level far above price
+    // would produce a hypothetical entry unrelated to where the stock trades now.
+    candidate = {
+      kind: 'nextBreakout', plan: plan('nextBreakout', breakoutTarget), level: breakoutTarget,
+      label: `Kandidat breakout di atas ${rp(breakoutTarget)}`, triggerOk: false,
+      triggerDetail: `Breakout di atas ${rp(breakoutTarget)} belum terkonfirmasi (close + volume)`,
+    };
   } else if (trend === 'BULLISH') {
-    const pb = plan('pullback');
-    const gPb = gateOf(pb, false, 'Belum ada breakout / retest / pullback yang valid');
-    p = pb; gates = gPb;
-    if (tradeGatesOk(gPb)) { status = 'WAIT PULLBACK'; waitWhy = 'Tren naik sehat, tapi belum ada entry aman — tunggu pullback.'; }
-    else status = 'NO TRADE';
+    candidate = pullbackCandidate('Belum ada breakout / retest / pullback yang valid');
   } else {
-    status = 'NO TRADE';
-    gates = gateOf(null, false, 'Tidak ada tren naik maupun level breakout');
+    noCandidateDetail = trend !== 'SIDEWAYS' ? noCandidateDetail
+      : breakoutTarget != null ? `Tren datar — resistance terdekat ${rp(breakoutTarget)} masih +${r1(pct(breakoutTarget, price))}% di atas harga`
+        : 'Tren datar tanpa level breakout terukur';
   }
 
-  const avoid = status === 'AVOID CHASING' || status === 'AVOID REVERSAL';
-  if (avoid) p = null;
+  const gates = gateOf(candidate?.plan ?? null, candidate?.triggerOk ?? false, candidate?.triggerDetail ?? noCandidateDetail);
+  const finalGate: FinalGate = gates.every((x) => x.pass) ? 'PASS' : 'BLOCKED';
+  const status: MomentumTradeStatus = avoidStatus ?? (finalGate === 'PASS' ? 'MOMENTUM BUY' : 'NO TRADE');
+  // Final Trade Plan — Validated Setup only. Anything else: every trading parameter stays N/A.
+  const p: Plan | null = status === 'MOMENTUM BUY' && finalGate === 'PASS' ? candidate!.plan : null;
   const failed = gates.filter((x) => !x.pass);
 
   // ─── Checks per area ─────────────────────────────────────────────────────────
@@ -562,7 +581,7 @@ export function buildMomentumTrade(i: MomentumInput): MomentumTradeReport {
       { label: volumeRatio5 == null ? 'Volume 5 hari: N/A' : `Volume 5 hari ${r1(volumeRatio5)}× rata-rata 20 hari (${volume.toLowerCase()})`, ok: volume === 'EXPANSION' || (setup === 'PULLBACK' && volume === 'CONTRACTION') },
     ],
     structure: [
-      { label: `Breakout: close di atas ${rp(breakoutLevel)} + RVOL ≥ ${BREAKOUT_RVOL}× (maks +${BREAKOUT_ZONE_PCT}%)`, ok: breakoutValid },
+      { label: `Breakout: close di atas ${rp(breakoutLevel)} + RVOL ≥ ${r1(BREAKOUT_RVOL)}× (maks +${BREAKOUT_ZONE_PCT}%)`, ok: breakoutValid },
       { label: `Retest breakout ${rp(baseLevel)} bertahan`, ok: retestValid },
       { label: `Pullback ke EMA 9–20 (${rp(pbLow)}–${rp(pbHigh)}) dengan volume turun`, ok: pullbackValid },
       { label: nearestResistance != null ? `Resistance terdekat ${rp(nearestResistance)} (+${r1(pct(nearestResistance, price))}%)` : 'Tidak ada resistance di atas (blue sky)', ok: nearestResistance == null || pct(nearestResistance, price) >= MOMENTUM_TARGET_PCT },
@@ -593,44 +612,62 @@ export function buildMomentumTrade(i: MomentumInput): MomentumTradeReport {
     for (const f of flags.slice(0, 3 - reasons.length)) reasons.push(f.label + '.');
   } else if (status === 'AVOID CHASING') {
     reasons.push(`Harga sudah ${r1(distEma20Pct)}% di atas EMA 20${fin(i.change1W) ? ` (${i.change1W >= 0 ? '+' : ''}${r1(i.change1W)}% seminggu)` : ''} — terlalu jauh dari zona entry.`);
+    if (momentum === 'STRONG') reasons.push('Momentum kuat, tapi struktur EXTENDED — momentum kuat bukan berarti BUY.');
     if (rsi14 >= HOT_RSI) reasons.push(`RSI ${r1(rsi14)} sangat panas — risiko profit taking tinggi.`);
     for (const f of flags.slice(0, 3 - reasons.length)) reasons.push(f.label + '.');
   } else {
-    reasons.push(`Tren ${trend === 'BULLISH' ? 'naik' : 'datar'} (${st.label}), momentum ${momentum.toLowerCase()} — RSI ${r1(rsi14)}${macdHistogram != null ? `, MACD ${macdHistogram > 0 ? 'positif' : 'negatif'}` : ''}.`);
-    if (status === 'MOMENTUM BUY') {
+    reasons.push(`Tren ${trend === 'BULLISH' ? 'naik' : trend === 'SIDEWAYS' ? 'datar' : 'turun'} (${st.label}), momentum ${momentum.toLowerCase()} — RSI ${r1(rsi14)}${macdHistogram != null ? `, MACD ${macdHistogram > 0 ? 'positif' : 'negatif'}` : ''}.`);
+    if (status === 'MOMENTUM BUY' && p) {
       reasons.push(`${SETUP_NAME[setup]} — harga di zona entry, volume ${volume === 'N/A' ? 'N/A' : volume.toLowerCase()}${rvol != null ? ` (RVOL ${r1(rvol)}×)` : ''}.`);
-      if (p) reasons.push(`Semua Hard Risk Gate lulus: potensi +${r1(p.potentialPct ?? 0)}%, R:R 1:${r1(p.rr ?? 0)}.`);
-    } else if (status === 'NO TRADE') {
-      for (const f of failed.filter((x) => x.key !== 'trigger').slice(0, 2)) reasons.push(`${f.label} gagal — ${f.detail}.`);
+      reasons.push(`Semua Hard Risk Gate lulus: potensi +${r1(p.potentialPct ?? 0)}%, R:R 1:${r1(p.rr ?? 0)}.`);
     } else {
-      reasons.push(waitWhy);
+      // Main gates first, the trigger last — unless there is no candidate at all: then the trigger detail
+      // is the root cause and the other FAILs ("R:R tidak dapat dihitung") are only its consequence.
+      const trig = failed.filter((x) => x.key === 'trigger');
+      const main = failed.filter((x) => x.key !== 'trigger');
+      const ordered = candidate ? [...main, ...trig] : [...trig, ...main];
+      for (const f of ordered.slice(0, 2)) reasons.push(`${f.label} FAIL — ${f.detail}.`);
     }
   }
 
+  // Trigger Entry (Validated Setup) or Re-evaluation (blocked) — only levels backed by data (S/R, EMA 20).
   const zoneText = p ? (p.entryLow === p.entryHigh ? rp(p.entryLow) : `${rp(p.entryLow)}–${rp(p.entryHigh)}`) : '';
+  const failedMain = failed.filter((x) => x.key !== 'trigger' && x.key !== 'distribution').map((x) => x.label);
+  const reevalSetup = (() => {
+    if (!candidate) {
+      if (trend !== 'SIDEWAYS') return 'tren naik terbentuk kembali';
+      return breakoutTarget != null
+        ? `tren naik terbentuk (EMA 20 > EMA 50, Higher Low) atau harga mendekati resistance ${rp(breakoutTarget)} lalu CLOSE di atasnya dengan volume`
+        : 'tren naik terbentuk (EMA 20 > EMA 50, Higher Low) atau ada resistance yang di-breakout dengan volume';
+    }
+    const blocker = candidate.plan.blocker;
+    if (candidate.plan.upsideToResistancePct != null && candidate.plan.upsideToResistancePct < MOMENTUM_TARGET_PCT && blocker != null) {
+      return `CLOSE di atas resistance ${rp(blocker)} dengan RVOL ≥ ${r1(BREAKOUT_RVOL)}×, dan ruang ≥ ${MOMENTUM_TARGET_PCT}% ke resistance berikutnya`;
+    }
+    if (candidate.kind === 'nextBreakout') return `CLOSE di atas ${rp(candidate.level!)} dengan RVOL ≥ ${r1(BREAKOUT_RVOL)}× dan candle hijau kuat (maks +${BREAKOUT_ZONE_PCT}% dari level)`;
+    if (candidate.kind === 'breakout' || candidate.kind === 'retest') return `harga kembali ke area level ${rp(candidate.level!)} (maks +${BREAKOUT_ZONE_PCT}%) dan bertahan di atasnya`;
+    return `pullback ke area EMA 20 (${rp(ema20)}) dengan volume mengecil, lalu candle pantulan hijau`;
+  })();
   const trigger =
-    status === 'MOMENTUM BUY' ? `Entry di ${zoneText} selama harga bertahan di atas ${rp(p!.sl)}; jangan kejar di atas ${rp(p!.entryHigh)}.`
-      : status === 'WAIT BREAKOUT' ? `CLOSE di atas ${rp(p!.entryLow)} dengan RVOL ≥ ${BREAKOUT_RVOL}× dan candle hijau kuat (close di separuh atas), maksimal +${BREAKOUT_ZONE_PCT}% dari level.`
-        : status === 'WAIT PULLBACK' ? `Pullback ke ${zoneText} dengan volume mengecil, lalu candle pantulan hijau tanpa menembus ${rp(p!.sl)}.`
-          : status === 'AVOID CHASING' ? `Tunggu harga kembali dekat EMA 20 (${rp(ema20)}) dan struktur tetap Higher Low sebelum menilai ulang.`
-            : status === 'AVOID REVERSAL' ? `Tunggu struktur pulih: kembali di atas EMA 20 (${rp(ema20)}) dengan Higher Low baru dan tanda distribusi hilang.`
-              : `Tidak ada — nilai ulang jika ${failed.filter((x) => x.key !== 'trigger').map((x) => x.label).join(', ') || 'setup'} terpenuhi.`;
+    status === 'MOMENTUM BUY' && p ? `Entry di ${zoneText} selama harga bertahan di atas ${rp(p.sl)}; jangan kejar di atas ${rp(p.entryHigh)}.`
+      : status === 'AVOID CHASING' ? `Re-evaluasi setelah pullback/reset ke area EMA 20 (${rp(ema20)}) dengan volume mengecil dan muncul trigger baru — lalu cek ulang semua Hard Risk Gate.`
+        : status === 'AVOID REVERSAL' ? `Re-evaluasi setelah struktur pulih: kembali di atas EMA 20 (${rp(ema20)}) dengan Higher Low baru dan tanda distribusi hilang.`
+          : `Re-evaluasi jika ${reevalSetup}${failedMain.length ? `; gate yang harus lulus: ${failedMain.join(', ')}` : ''}.`;
 
   const exitWarnings = [
-    p && status !== 'NO TRADE' ? `Close di bawah SL ${rp(p.sl)} → keluar penuh.` : `Close di bawah EMA 20 (${rp(ema20)}) → kurangi/tutup posisi.`,
+    p ? `Close di bawah SL ${rp(p.sl)} → keluar penuh.` : `Close di bawah EMA 20 (${rp(ema20)}) → kurangi/tutup posisi yang sudah ada.`,
     'Upper wick panjang / rejection dengan volume besar di dekat resistance → kurangi posisi.',
     'Candle merah dengan volume ≥ 1,5× rata-rata (selling volume) → waspada distribusi.',
     'Terbentuk Lower High + MACD histogram turun 3 hari → amankan profit.',
-    ...(p?.tp1 && status !== 'NO TRADE' ? [`TP1 ${rp(p.tp1.price)} tercapai → realisasi sebagian, naikkan SL ke entry.`] : []),
+    ...(p?.tp1 ? [`TP1 ${rp(p.tp1.price)} tercapai → realisasi sebagian, naikkan SL ke entry.`] : []),
   ];
 
+  const blockedBy = failed.map((x) => x.label).join(', ');
   const conclusion = {
-    'MOMENTUM BUY': `Semua Hard Risk Gate lulus — BUY di ${zoneText}, SL ${p ? rp(p.sl) : 'N/A'}, target +${r1(p?.potentialPct ?? 0)}%.`,
-    'WAIT BREAKOUT': `Jangan beli dulu — tunggu breakout terkonfirmasi di atas ${p ? rp(p.entryLow) : 'resistance'}.`,
-    'WAIT PULLBACK': `Jangan kejar — tunggu pullback sehat ke ${zoneText || 'EMA 20'}.`,
-    'AVOID CHASING': 'Harga sudah terlalu jauh dari zona entry — jangan kejar.',
-    'AVOID REVERSAL': 'Risiko distribusi/reversal tinggi — hindari sampai struktur pulih.',
-    'NO TRADE': `Tidak layak trade — gagal Hard Risk Gate (${failed.filter((x) => x.key !== 'trigger').map((x) => x.label).join(', ') || 'setup'}).`,
+    'MOMENTUM BUY': `Validated Setup — semua Hard Risk Gate lulus: BUY di ${zoneText}, SL ${p ? rp(p.sl) : 'N/A'}, target +${r1(p?.potentialPct ?? 0)}%.`,
+    'AVOID CHASING': 'Harga sudah terlalu jauh dari zona entry — jangan kejar, tidak ada trading plan.',
+    'AVOID REVERSAL': 'Risiko distribusi/reversal tinggi — hindari, tidak ada trading plan.',
+    'NO TRADE': `Setup belum valid — tidak ada trading plan (FINAL GATE BLOCKED: ${blockedBy}).`,
     'N/A': 'Data tidak cukup.',
   }[status];
 
@@ -638,7 +675,11 @@ export function buildMomentumTrade(i: MomentumInput): MomentumTradeReport {
     dataOk: true,
     dataNote: '',
     status,
-    conditional: p != null && status !== 'MOMENTUM BUY',
+    finalGate,
+    candidateSetup: status === 'AVOID REVERSAL' ? null : candidate?.label ?? null,
+    candidateStats: candidate
+      ? { potentialPct: candidate.plan.potentialPct, riskReward: candidate.plan.rr, upsidePct: candidate.plan.upsideToResistancePct, target20Realistic: candidate.plan.target20Realistic }
+      : null,
     momentum,
     structure,
     exitRisk,
