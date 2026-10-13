@@ -218,7 +218,8 @@ function technicalOf(snap: Snapshot, bars: OHLCVBar[]): { input: MomentumInput; 
   const analysis = computeStockAnalysis(snap.summary, bars);
   const pillars = buildFundamentalPillars(snap.summary, null, evaluateFundamentalScreening(snap.summary));
   const input = buildMomentumInput({ summary: snap.summary, bars, analysis, fundamentals: null, pillars, vwap: null, longBars: bars });
-  return { input, mt: buildMomentumTrade(input) };
+  // Moonstock keeps the ≥ 20% momentum rules (SWING_RULES.minUpsidePct) — evaluated in that explicit mode.
+  return { input, mt: buildMomentumTrade(input, { mode: 'momentum20' }) };
 }
 
 const riskyStructure = (mt: MomentumTradeReport) =>
