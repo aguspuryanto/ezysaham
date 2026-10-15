@@ -37,7 +37,7 @@ const pctChange = (bars: OHLCVBar[], back: number) => {
  * Same price sync as useStockAnalysis (detail page): the last daily bar is the price reference.
  * For a past date the price-derived fields are rebuilt from the bars cut at that date.
  */
-function syncSummary(base: StockSummary, bars: OHLCVBar[], past: boolean): StockSummary {
+export function syncSummary(base: StockSummary, bars: OHLCVBar[], past: boolean): StockSummary {
   const s = { ...base };
   const last = bars[bars.length - 1];
   const prev = bars[bars.length - 2];

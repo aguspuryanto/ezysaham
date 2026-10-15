@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
     // break file-system route discovery. Pin it explicitly.
     root: path.join(__dirname),
   },
+  async redirects() {
+    // Moonstock was replaced by Top BUY (docs/features_topbuy.md).
+    return [{ source: '/moonstock', destination: '/topbuy', permanent: true }];
+  },
 };
 
 export default nextConfig;
