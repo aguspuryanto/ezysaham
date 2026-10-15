@@ -56,6 +56,9 @@ export const PASARDANA_LIST_URL =
     "FreeFloatPct": 8.1100
   }
 */
+
+// Data Historis
+// https://pasardana.id/api/StockSearchResult/GetAll?Code=HATM&date=10%2F14%2F2026&pageBegin=1&pageLength=100&sortField=Code&sortOrder=ASC
 export interface PasardanaStockItem {
   Code: string;
   Name: string;

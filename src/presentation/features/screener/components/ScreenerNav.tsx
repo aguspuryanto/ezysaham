@@ -1,6 +1,6 @@
 'use client';
 
-import { BookOpen, FlaskConical, GitCompare, Home, LayoutGrid, NotebookPen, PieChart, Radar, ScanSearch, Star, TrendingUp, Trophy } from 'lucide-react';
+import { BookOpen, FlaskConical, GitCompare, Home, Landmark, LayoutGrid, NotebookPen, PieChart, Radar, ScanSearch, Star, TrendingUp, Trophy } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/format';
@@ -10,7 +10,8 @@ const NAV_LINKS = [
   { href: '/', label: 'Beranda', icon: Home },
   { href: '/screener', label: 'Screener Saham', icon: ScanSearch },
   { href: '/signal', label: 'Signal', icon: Radar },
-  { href: '/topbuy', label: 'Watchlist', icon: Trophy },
+  // { href: '/smartmoney', label: 'SmartMoney', icon: Landmark },
+  { href: '/topbuy', label: 'Rekomendasi', icon: Trophy },
   { href: '/best-performing', label: 'Kinerja Terbaik', icon: TrendingUp },
   { href: '/watchlist', label: 'Watchlist', icon: Star },
   { href: '/sektor', label: 'Sektor', icon: PieChart },
@@ -24,7 +25,7 @@ const NAV_LINKS = [
 export function ScreenerNav({ watchlistCount }: { watchlistCount: number }) {
   const pathname = usePathname() ?? '/';
   // Screener stays highlighted on the pages that host it (/, /screener, /screener/[ticker]).
-  const section = ['/signal', '/topbuy', '/best-performing', '/watchlist', '/sektor', '/jurnal', '/panduan', '/blog', '/compare', '/backtest'].find((p) => pathname.startsWith(p)) ?? '/screener';
+  const section = ['/signal', '/smartmoney', '/topbuy', '/best-performing', '/watchlist', '/sektor', '/jurnal', '/panduan', '/blog', '/compare', '/backtest'].find((p) => pathname.startsWith(p)) ?? '/screener';
   const itemClass = 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors';
   const linkClass = (active: boolean) => cn(itemClass, active ? 'bg-(--sv-primary-soft) text-(--sv-primary) font-semibold' : 'text-(--sv-text) hover:bg-(--sv-bg)');
   return (

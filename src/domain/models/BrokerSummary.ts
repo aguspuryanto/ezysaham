@@ -51,6 +51,39 @@ export type BrokerActivityUnavailableReason =
   | 'unavailable'
   | 'error';
 
+/** Net foreign flow of one trading day (IDR). Null = that day's call failed, not zero flow. */
+export interface SmartMoneyForeignDay {
+  date: string;
+  netForeign: number | null;
+}
+
+/** Inputs of the Smart Money Accumulation Hunter (docs/features_smartmoney_hunter.md). EOD, published 19:00 WIB. */
+export interface SmartMoneyFlows {
+  ticker: string;
+  /** Last trading date covered (YYYY-MM-DD). */
+  asOf: string;
+  from5: string;
+  from20: string;
+  /** Oldest → newest, 5 trading days. Empty when daily calls are disabled (INDEX_ALPHA_FOREIGN_DAILY). */
+  foreignDaily: SmartMoneyForeignDay[];
+  /** 5- and 20-trading-day totals. */
+  foreign5: ForeignFlowDetail | null;
+  foreign20: ForeignFlowDetail | null;
+  /** All brokers, RG market, 5- and 20-trading-day totals. */
+  broker5: BrokerSummaryRow[] | null;
+  broker20: BrokerSummaryRow[] | null;
+  source: 'indexalpha';
+  fetchedAt: string;
+}
+
+export interface SmartMoneyFlowsResponse {
+  ticker: string;
+  ok: boolean;
+  reason?: BrokerActivityUnavailableReason;
+  message?: string;
+  data: SmartMoneyFlows | null;
+}
+
 export interface BrokerActivityResponse {
   ticker: string;
   ok: boolean;

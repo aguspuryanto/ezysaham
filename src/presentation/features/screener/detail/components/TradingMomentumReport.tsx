@@ -178,11 +178,16 @@ function SetupList({ setups }: { setups: SetupEval[] }) {
   );
 }
 
-function buildShareText(ticker: string, r: MomentumTradeReport): string {
+/** `lastBar` = the candle the report was computed on (its date is r.data.lastBarDate). */
+function buildShareText(ticker: string, r: MomentumTradeReport, changePct: number, lastBar: OHLCVBar | undefined): string {
   const v = isValidated(r);
   return [
     `🚀 Momentum Trade Engine — ${ticker} (${r.config.label})`,
     `Timeframe ${r.data.timeframe} · candle ${r.data.lastBarDate ?? NA} · data ${DATA_TEXT[r.data.status]}`,
+    `Harga: ${fmtRp(r.metrics.price)} (${fmtPct(changePct)})`,
+    `High: ${lastBar ? fmtRp(lastBar.high) : NA}`,
+    `Low: ${lastBar ? fmtRp(lastBar.low) : NA}`,
+    `Vol: ${lastBar ? `${fmtCompact(lastBar.volume)} lembar` : NA}`,
     '',
     `Status: ${MOMENTUM_STATUS_EMOJI[r.status]} ${r.status}`,
     `Trend Structure: ${r.structure} · Momentum: ${r.momentum} · Setup: ${SETUP_TYPE_NAME[r.setupType]}`,
@@ -230,7 +235,10 @@ export function TradingMomentumReport({
     const pillars = buildFundamentalPillars(summary, fundamentals, fundamentalScreening);
     return buildMomentumTrade(buildMomentumInput({ summary, bars, analysis, fundamentals, pillars, vwap: null, longBars }), { mode: 'swing', asOf });
   }, [summary, bars, analysis, fundamentals, fundamentalScreening, longBars, asOf]);
-  const getShareText = useCallback(() => buildShareText(ticker, report), [ticker, report]);
+  const getShareText = useCallback(
+    () => buildShareText(ticker, report, summary.percentChange1D, bars[bars.length - 1]),
+    [ticker, report, summary.percentChange1D, bars],
+  );
 
   const r = report;
   const tone = STATUS_TONE[r.status];

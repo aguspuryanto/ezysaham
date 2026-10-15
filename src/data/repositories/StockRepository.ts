@@ -2,7 +2,7 @@ import { HistoryResponse, OHLCVBar } from '@/domain/models/History';
 import { IntradayResponse } from '@/domain/models/Intraday';
 import { StockSummary } from '@/domain/models/Stock';
 import { FundamentalDetail } from '@/domain/models/Fundamentals';
-import { BrokerActivityDetail, BrokerActivityResponse } from '@/domain/models/BrokerSummary';
+import { BrokerActivityDetail, BrokerActivityResponse, SmartMoneyFlowsResponse } from '@/domain/models/BrokerSummary';
 import { mapToStockSummary, PasardanaStockItem } from '@/data/external/pasardana';
 import { AnalysisCacheManager } from '@/data/cache/analysisCache';
 
@@ -112,6 +112,17 @@ export async function getStockBrokerActivity(ticker: string): Promise<BrokerActi
     return result.ok ? result.data : null;
   } catch {
     return null;
+  }
+}
+
+/** Smart Money flows (foreign daily 5D + 20D, broker summary 5D + 20D). Costs Index Alpha quota on a cache miss —
+ *  call only on explicit user action. Never throws; `ok: false` carries the reason (e.g. quota_exceeded). */
+export async function getStockSmartMoneyFlows(ticker: string): Promise<SmartMoneyFlowsResponse> {
+  try {
+    const response = await fetch(`/api/stocks/${ticker}/smart-flow`);
+    return (await response.json()) as SmartMoneyFlowsResponse;
+  } catch (error) {
+    return { ticker, ok: false, reason: 'error', message: (error as Error).message, data: null };
   }
 }
 
