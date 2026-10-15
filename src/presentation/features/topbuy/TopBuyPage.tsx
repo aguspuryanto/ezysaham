@@ -29,7 +29,7 @@ import { useTopBuy } from './useTopBuy';
 const GROUPS: Array<{ action: SignalAction; title: string; hint: string; empty: string }> = [
   { action: 'BUY', title: 'BUY', hint: 'Semua aturan trading Decision Engine v3 terpenuhi.', empty: 'Tidak ada saham BUY pada snapshot ini — tidak ada yang dipaksakan.' },
   { action: 'WAIT', title: 'WAIT — watchlist', hint: 'Belum BUY. Diurutkan berdasarkan % aturan terpenuhi, lalu SARA Score.', empty: 'Tidak ada saham WAIT.' },
-  { action: 'AVOID', title: 'AVOID', hint: 'Lolos kriteria awal, tetapi ditolak mesin.', empty: 'Tidak ada saham AVOID.' },
+  // { action: 'AVOID', title: 'AVOID', hint: 'Lolos kriteria awal, tetapi ditolak mesin.', empty: 'Tidak ada saham AVOID.' },
 ];
 
 export function TopBuyPage() {
@@ -95,9 +95,9 @@ export function TopBuyPage() {
             <div>
               <h1 className="flex items-center gap-2 text-xl font-bold text-(--sv-text) sm:text-2xl">
                 <Trophy className="size-5 text-(--sv-primary)" strokeWidth={2} />
-                Top BUY
+                Rekomendasi Saham
               </h1>
-              <p className="mt-0.5 text-sm text-(--sv-muted)">Saham BUY yang tidak sekadar naik tinggi dalam satu hari — hanya dari data aktual.</p>
+              <p className="mt-0.5 text-sm text-(--sv-muted)">Rekomendasi saham yang dipilih berdasarkan kriteria likuiditas, valuasi dan momentum mingguan, lalu divalidasi Decision Engine v3.</p>
               <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-(--sv-muted)">
                 <Clock className="size-3.5" strokeWidth={2} />
                 {top.loading
@@ -113,7 +113,7 @@ export function TopBuyPage() {
             </button>
           </div>
 
-          {scan && (
+          {/* {scan && (
             <section aria-label="Tahap 1 — kriteria awal" className="rounded-xl border border-(--sv-border) bg-(--sv-surface) p-4 shadow-(--sv-shadow)">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-(--sv-muted)">Tahap 1 — Kriteria awal</p>
               <ol className="mt-2 divide-y divide-(--sv-border) text-sm">
@@ -128,7 +128,7 @@ export function TopBuyPage() {
               </ol>
               <p className="mt-2 text-xs text-(--sv-muted)">Tahap 2 — setiap kandidat dinilai Decision Engine v3 (verdict yang sama dengan halaman Signal dan detail saham).</p>
             </section>
-          )}
+          )} */}
 
           {top.error && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200">

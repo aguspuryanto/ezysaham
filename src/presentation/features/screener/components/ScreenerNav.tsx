@@ -10,7 +10,7 @@ const NAV_LINKS = [
   { href: '/', label: 'Beranda', icon: Home },
   { href: '/screener', label: 'Screener Saham', icon: ScanSearch },
   { href: '/signal', label: 'Signal', icon: Radar },
-  { href: '/topbuy', label: 'Top BUY', icon: Trophy },
+  { href: '/topbuy', label: 'Watchlist', icon: Trophy },
   { href: '/best-performing', label: 'Kinerja Terbaik', icon: TrendingUp },
   { href: '/watchlist', label: 'Watchlist', icon: Star },
   { href: '/sektor', label: 'Sektor', icon: PieChart },
