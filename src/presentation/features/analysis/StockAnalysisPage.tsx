@@ -93,7 +93,7 @@ import { useWatchlist } from '@/presentation/features/screener/hooks/useWatchlis
 import { useJournal } from '@/presentation/features/journal/hooks/useJournal';
 import { PhilosophyBanner } from '@/presentation/features/screener/components/PhilosophyBanner';
 import { useStockAnalysis } from './useStockAnalysis';
-import { AnalisisReasearchReport } from './AnalisisReasearchReport';
+import { AiAnalystHub } from './AiAnalystHub';
 import { DataFreshnessPill, DataFreshnessStaleBanner } from './DataFreshnessBanner';
 import { OHLCVChart } from './OHLCVChart';
 import { useTradingStyle } from './useTradingStyle';
@@ -5271,6 +5271,19 @@ export function StockAnalysisPage({ ticker }: { ticker: string }) {
                   priceAction={priceAction}
                   newsItems={newsItems}
                   brokerActivity={brokerActivity}
+                />
+
+                <AiAnalystHub
+                  key={summary.ticker}
+                  summary={liveSummary ?? summary}
+                  analysis={analysis}
+                  bars={bars}
+                  fundamentals={fundamentals}
+                  newsSummary={newsSummary}
+                  fundamentalScreening={fundamentalScreening}
+                  technicalScreening={technicalScreening}
+                  brokerActivity={brokerActivity}
+                  allSummaries={allSummaries}
                 />
 
                 <div className={cn(

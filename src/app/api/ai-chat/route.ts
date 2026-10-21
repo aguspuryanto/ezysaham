@@ -1,17 +1,34 @@
-import { CHAT_SYSTEM_PROMPT, RESEARCH_REPORT_SYSTEM_PROMPT } from '@/lib/aiPrompts';
+import {
+  BANDAR_SYSTEM_PROMPT,
+  CHAT_SYSTEM_PROMPT,
+  COMPARE_SYSTEM_PROMPT,
+  FOREIGN_FLOW_SYSTEM_PROMPT,
+  RESEARCH_REPORT_SYSTEM_PROMPT,
+  TRADING_PLAN_SYSTEM_PROMPT,
+  VALUATION_SYSTEM_PROMPT,
+} from '@/lib/aiPrompts';
 
 // Server-only proxy to the BangunWeb AI router (OpenAI-compatible, https://bangunweb.com/ai/docs).
 // BANGUNWEB_APIKEY must never reach the browser, so the widget calls this route instead.
 const MODEL = process.env.BANGUNWEB_MODEL || 'deepseek-v4-flash';
 const MAX_HISTORY = 20;
 
-// "research" sends one large prompt built from the computed stock analysis, so it gets a higher cap.
+// Report kinds send one large prompt built from the computed stock analysis, so they get a higher cap.
 const PROMPTS = {
   chat: { system: CHAT_SYSTEM_PROMPT, maxContentLength: 4000 },
   research: { system: RESEARCH_REPORT_SYSTEM_PROMPT, maxContentLength: 20000 },
+  'trading-plan': { system: TRADING_PLAN_SYSTEM_PROMPT, maxContentLength: 20000 },
+  bandar: { system: BANDAR_SYSTEM_PROMPT, maxContentLength: 20000 },
+  foreign: { system: FOREIGN_FLOW_SYSTEM_PROMPT, maxContentLength: 20000 },
+  valuation: { system: VALUATION_SYSTEM_PROMPT, maxContentLength: 20000 },
+  compare: { system: COMPARE_SYSTEM_PROMPT, maxContentLength: 20000 },
 } as const;
 
 type Kind = keyof typeof PROMPTS;
+
+function isKind(value: unknown): value is Kind {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PROMPTS, value);
+}
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
@@ -35,7 +52,7 @@ export async function POST(request: Request) {
   let kind: Kind = 'chat';
   try {
     const body = (await request.json()) as { kind?: unknown; messages?: unknown };
-    if (body.kind === 'research') kind = 'research';
+    if (isKind(body.kind)) kind = body.kind;
     messages = sanitize(body.messages, PROMPTS[kind].maxContentLength);
   } catch {}
   if (!messages) {

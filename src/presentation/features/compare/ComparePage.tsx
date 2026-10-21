@@ -19,6 +19,7 @@ import { StockSummary } from '@/domain/models/Stock';
 import { useStockAnalysis } from '@/presentation/features/analysis/useStockAnalysis';
 import { AppShell } from '../screener/components/AppShell';
 import { Card, Skeleton } from '../screener/detail/components/ui';
+import { AiCompareCard } from './AiCompareCard';
 import { ComparisonResultCard } from './ComparisonResultCard';
 import { FundamentalsComparisonTable } from './FundamentalsComparisonTable';
 import { COLOR_A, COLOR_B, PriceComparisonChart } from './PriceComparisonChart';
@@ -130,7 +131,16 @@ export function ComparePage({ initialTickerA, initialTickerB }: ComparePageProps
         <main className="flex min-w-0 flex-col gap-4">
           <PriceComparisonChart tickerA={tickerA} tickerB={tickerB} />
           {bothReady && decision ? (
-            <FundamentalsComparisonTable summaryA={sideA.summary!} summaryB={sideB.summary!} fundamentalsA={fundamentalsA} fundamentalsB={fundamentalsB} />
+            <>
+              <FundamentalsComparisonTable summaryA={sideA.summary!} summaryB={sideB.summary!} fundamentalsA={fundamentalsA} fundamentalsB={fundamentalsB} />
+              <AiCompareCard
+                key={`${tickerA}-${tickerB}`}
+                sides={[
+                  { summary: sideA.summary!, fundamentals: fundamentalsA },
+                  { summary: sideB.summary!, fundamentals: fundamentalsB },
+                ]}
+              />
+            </>
           ) : (
             <PanelSkeleton />
           )}
