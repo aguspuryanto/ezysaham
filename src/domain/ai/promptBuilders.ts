@@ -10,6 +10,7 @@
  */
 
 import { BandarScoreResult } from '@/domain/analysis/bandarScore';
+import { RETAIL_STRATEGY_CONFIG, RetailRiskProfile, RetailStrategyResult } from '@/domain/analysis/retailStrategy';
 import { FundamentalScreeningResult, TechnicalScreeningResult } from '@/domain/analysis/aiStockEngine';
 import { roundToTick } from '@/domain/analysis/idxTick';
 import { SmartMoneyMeasures } from '@/domain/analysis/smartMoneyHunter';
@@ -22,7 +23,7 @@ import { StockAnalysis } from '@/domain/models/StockAnalysis';
 import { closes, sma } from '@/domain/indicators/movingAverages';
 import { formatCompact } from '@/lib/format';
 
-export type AiReportKind = 'research' | 'trading-plan' | 'bandar' | 'foreign' | 'valuation' | 'compare';
+export type AiReportKind = 'research' | 'trading-plan' | 'bandar' | 'foreign' | 'valuation' | 'compare' | 'retail-strategy';
 
 // ─── Formatting ───────────────────────────────────────────────────────────────
 const NA = 'N/A';
@@ -399,4 +400,57 @@ export function buildComparePrompt(sides: CompareSide[]): string {
   return `${sides.map(block).join('\n\n')}
 
 Bandingkan ${sides.map((s) => s.summary.ticker).join(' vs ')} sesuai format.`;
+}
+
+// ─── Strategi retail EOD (docs/features_strategi_retail.md) ───────────────────
+export interface RetailStrategyPromptInput {
+  /** Already ordered by rankRetailStrategy(), at most RETAIL_STRATEGY_CONFIG.maxStocks. */
+  results: RetailStrategyResult[];
+  profile: RetailRiskProfile;
+  /** Broker summary & foreign flow were requested (costs Index Alpha quota). */
+  flowsRequested: boolean;
+}
+
+function retailBlock(r: RetailStrategyResult, rank: number): string {
+  const m = r.measures;
+  const p = r.plan;
+  const c = r.candle;
+  const flows = m.flowsAsOf
+    ? `- Broker summary 5 sesi s/d ${m.flowsAsOf} (Index Alpha): broker net buy terbesar ${m.brokerTopCode ?? NA} ${idr(m.brokerTopNet)}, porsi ${has(m.brokerTopShare) ? `${(m.brokerTopShare * 100).toFixed(0)}%` : NA} nilai beli; imbalance top-3 ${num(m.brokerImbalance, 2, 'x')}; konsisten 5 & 20 sesi: ${m.brokerConsistent == null ? NA : m.brokerConsistent ? 'ya' : 'tidak'}
+- Foreign flow: net 5 sesi ${idr(m.foreignNet5)} | net 20 sesi ${idr(m.foreignNet20)} | hari net buy ${has(m.foreignBuyDays) && has(m.foreignDays) ? `${m.foreignBuyDays}/${m.foreignDays}` : NA}`
+    : '- Broker summary: TIDAK TERSEDIA\n- Foreign flow: TIDAK TERSEDIA';
+  const plan = p
+    ? `- Trigger: ${p.trigger ?? 'BELUM ADA'} — ${p.triggerNote}
+- Entry ${rp(p.entry)} | Stop-loss ${rp(p.stop)} (${num(p.riskPct * 100)}%, ${num(r.stopAtr, 2)}×ATR) | Target ${rp(p.target)} (${p.targetBasis}, ${pct(p.returnPct * 100)})
+- R:R kotor 1:${num(p.rr, 2)} | Net R:R setelah biaya 1:${num(r.netRR, 2)} | Biaya pulang-pergi ±${rp(r.costPerShare)}/lembar
+- Ukuran posisi: ${r.position ? `${r.position.lots} lot (${r.position.shares.toLocaleString('id-ID')} lembar, nilai ${rp(r.position.value)}), rugi maks bila SL ${rp(r.position.maxLoss)} — dibatasi ${r.position.limitedBy === 'risk' ? 'batas risiko' : 'modal'}` : NA}`
+    : '- Trade plan: TIDAK TERSEDIA (histori/indikator tidak cukup)';
+
+  return `=== #${rank} ${r.ticker} — ${r.name} | STATUS SISTEM: ${r.status} ===
+- Tanggal data harga: ${m.priceDate ?? NA} (Yahoo Finance EOD)${m.stale ? ' — DATA BASI' : ''}
+- Close ${rp(m.close)} (${has(m.change1D) ? pct(m.change1D * 100, 2) : NA}) | Candle: ${c ? `O ${rp(c.open)} H ${rp(c.high)} L ${rp(c.low)} C ${rp(c.close)} — ${c.label}` : NA}
+- EMA8 ${rp(m.ema8)} | EMA18 ${rp(m.ema18)} | EMA200 ${rp(m.ema200)} | RSI14 ${num(m.rsi14)} | ATR14 ${rp(m.atr14)}
+- Volume ${has(m.lastVolume) ? formatCompact(m.lastVolume) : NA} vs rata-rata 20 hari ${has(r.volumeMa20) ? formatCompact(r.volumeMa20) : NA} → RVOL ${num(r.rvol1, 2, 'x')} | RVOL 5 sesi ${num(m.rvol5, 2, 'x')} | Likuiditas rata-rata 20 hari ${idr(m.adtv20)}
+- Support ${rp(m.low20)} (low 20 sesi) | Resistance ${rp(m.priorHigh20)} (high 20 sesi), ${rp(m.high60)} (high 60 sesi)
+${flows}
+${plan}
+- Hard gate:
+${r.gates.map((g) => `  - [${g.result}] ${g.label}: ${g.reason}`).join('\n')}
+- Alasan pembatalan / belum lolos: ${r.cancelReasons.length ? r.cancelReasons.join(' | ') : '-'}`;
+}
+
+export function buildRetailStrategyPrompt({ results, profile, flowsRequested }: RetailStrategyPromptInput): string {
+  const cfg = RETAIL_STRATEGY_CONFIG;
+  const passed = results.filter((r) => r.status === 'LOLOS').map((r) => r.ticker);
+  return `=== PARAMETER ===
+- Modal: ${rp(profile.capital)} | Risiko per transaksi: ${(profile.riskPerTrade * 100).toFixed(2)}% (${rp(profile.capital * profile.riskPerTrade)})
+- Biaya: beli ${(cfg.buyFee * 100).toFixed(2)}%, jual ${(cfg.sellFee * 100).toFixed(2)}% (termasuk PPh final) | 1 lot = ${cfg.lotSize} lembar
+- Broker summary & foreign flow: ${flowsRequested ? 'diminta dari Index Alpha (bisa sebagian gagal karena kuota)' : 'TIDAK DIMINTA — anggap TIDAK TERSEDIA'}
+- Expectancy strategi: TIDAK TERSEDIA (belum ada statistik backtest win rate / rata-rata profit-loss untuk strategi ini)
+- Urutan saham di bawah sudah diurutkan sistem berdasarkan status, kelengkapan gate, lalu net R:R.
+- Saham berstatus LOLOS menurut sistem: ${passed.length ? passed.join(', ') : 'TIDAK ADA'}
+
+${results.map((r, i) => retailBlock(r, i + 1)).join('\n\n')}
+
+Susun laporan strategi retail EOD sesuai format.`;
 }

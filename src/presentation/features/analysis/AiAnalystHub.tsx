@@ -51,7 +51,7 @@ interface Props {
   allSummaries: StockSummary[];
 }
 
-type Mode = Exclude<AiReportKind, 'compare'>;
+type Mode = Exclude<AiReportKind, 'compare' | 'retail-strategy'>;
 
 const MODES: Array<{ kind: Mode; label: string; icon: React.ReactNode; description: string; cta: string }> = [
   { kind: 'research', label: 'Riset', icon: <FileText className="size-3.5" strokeWidth={2.5} />, description: 'Laporan riset naratif: teknikal, fundamental & katalis sentimen, hingga ringkasan strategi trading.', cta: 'Buat Laporan Riset' },

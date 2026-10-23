@@ -36,6 +36,7 @@ import { ScreenerResult } from './components/ResultsTable';
 import { ScreenerFilters } from './components/ScreenerFilters';
 import { ScreenerHeader } from './components/ScreenerHeader';
 import { ScreenerNav } from './components/ScreenerNav';
+import { RetailStrategyCard } from './components/RetailStrategyCard';
 import { ScreenerPagination, ScreenerSort, ScreenerSortKey, ScreenerTable, VERDICT_SORT_KEYS } from './components/ScreenerTable';
 import { ScreenerTabItem, ScreenerTabs } from './components/ScreenerTabs';
 import { SwingTradingTable } from './components/SwingTradingTable';
@@ -600,6 +601,8 @@ export function ScreenerPage() {
                 onToggleCompare={compare.toggle}
               />
             )}
+
+            {status === 'done' && !isSetupTab && sortedRows.length > 0 && <RetailStrategyCard rows={sortedRows} />}
 
             {status !== 'error' && !isSetupTab && (
               <ScreenerTable

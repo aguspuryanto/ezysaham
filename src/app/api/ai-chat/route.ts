@@ -4,6 +4,7 @@ import {
   COMPARE_SYSTEM_PROMPT,
   FOREIGN_FLOW_SYSTEM_PROMPT,
   RESEARCH_REPORT_SYSTEM_PROMPT,
+  RETAIL_STRATEGY_SYSTEM_PROMPT,
   TRADING_PLAN_SYSTEM_PROMPT,
   VALUATION_SYSTEM_PROMPT,
 } from '@/lib/aiPrompts';
@@ -22,6 +23,8 @@ const PROMPTS = {
   foreign: { system: FOREIGN_FLOW_SYSTEM_PROMPT, maxContentLength: 20000 },
   valuation: { system: VALUATION_SYSTEM_PROMPT, maxContentLength: 20000 },
   compare: { system: COMPARE_SYSTEM_PROMPT, maxContentLength: 20000 },
+  // Up to 10 stocks × ~1.5 KB of gate data each.
+  'retail-strategy': { system: RETAIL_STRATEGY_SYSTEM_PROMPT, maxContentLength: 30000 },
 } as const;
 
 type Kind = keyof typeof PROMPTS;
