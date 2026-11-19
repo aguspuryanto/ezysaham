@@ -89,6 +89,8 @@ export interface PasardanaStockItem {
   FreeFloatPct: number;
   AdjustedAnnualHighPrice: number;
   AdjustedAnnualLowPrice: number;
+  /** Trading day of `Last`, e.g. "2026-11-18T00:00:00" (no timezone; a WIB calendar date). */
+  LastDate?: string;
 }
 
 export function mapToStockSummary(item: PasardanaStockItem): StockSummary {

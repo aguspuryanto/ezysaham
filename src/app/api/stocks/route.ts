@@ -1,11 +1,16 @@
 import { PASARDANA_LIST_URL } from '@/data/external/pasardana';
 
-export const revalidate = 300; // 5 minutes cache in Next.js
+// Run per request instead of ISR-prerendering: a prerendered response is served stale
+// to the first visitor after each window (e.g. the first load after EOD showed the
+// previous day). Upstream is still shared-cached for 60s via the fetch data cache + CDN.
+export const dynamic = 'force-dynamic';
+
+const UPSTREAM_REVALIDATE_SECONDS = 60;
 
 export async function GET() {
   try {
     const response = await fetch(PASARDANA_LIST_URL, {
-      next: { revalidate: 300 },
+      next: { revalidate: UPSTREAM_REVALIDATE_SECONDS },
     });
     if (!response.ok) {
       throw new Error(`Network response was not ok: ${response.statusText}`);
@@ -14,7 +19,9 @@ export async function GET() {
     return Response.json(data, {
       headers: {
         'X-Fetched-At': new Date().toISOString(),
-        'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
+        // No browser caching (max-age=0) so Refresh / a reopened tab always reaches the
+        // server; the CDN may share a response for up to a minute.
+        'Cache-Control': `public, max-age=0, s-maxage=${UPSTREAM_REVALIDATE_SECONDS}, stale-while-revalidate=${UPSTREAM_REVALIDATE_SECONDS}`,
       },
     });
   } catch (error) {

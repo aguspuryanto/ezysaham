@@ -17,7 +17,12 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getStockFundamentals, getStockHistory, getStockSummariesWithTimestamp } from '@/data/repositories/StockRepository';
+import {
+  getStockFundamentals,
+  getStockHistory,
+  getStockSummariesWithTimestamp,
+  isNewerEodExpected,
+} from '@/data/repositories/StockRepository';
 import { NewJournalEntryInput } from '@/domain/models/JournalEntry';
 import { StockSummary } from '@/domain/models/Stock';
 import { ScreenerPresetId, SCREENER_PRESETS } from '@/domain/screener/presets';
@@ -61,6 +66,8 @@ const JOURNAL_TOP_N = 5;
 const HISTORY_CONCURRENCY = 6;
 const PAGE_SIZE = 25;
 const SAVED_SCREENER_KEY = 'ezysaham.screener.saved.v1';
+/** How often an open, visible tab re-checks for a newer EOD once one is due. */
+const EOD_RECHECK_MS = 10 * 60 * 1000;
 
 type FilterId = 'all' | ScreenerPresetId;
 type ScanStatus = 'idle' | 'loading-summary' | 'scanning' | 'done' | 'error';
@@ -135,10 +142,10 @@ export function ScreenerPage() {
     };
   }, [drawerOpen]);
 
-  const loadSummaries = useCallback((restoreSaved: boolean) => {
+  const loadSummaries = useCallback((restoreSaved: boolean, fresh = false) => {
     setStatus('loading-summary');
     setErrorMessage(null);
-    getStockSummariesWithTimestamp()
+    getStockSummariesWithTimestamp({ fresh })
       .then(({ summaries, lastUpdatedAt }) => {
         if (restoreSaved) {
           const saved = readSavedScreener();
@@ -246,8 +253,46 @@ export function ScreenerPage() {
   const handleRefresh = useCallback(() => {
     resetVerdicts();
     setPage(1);
-    loadSummaries(false);
+    loadSummaries(false, true);
   }, [loadSummaries, resetVerdicts]);
+
+  // A tab left open (or restored from bfcache) across a market close keeps showing the
+  // previous EOD. While visible, and whenever it becomes visible again, check whether a
+  // newer EOD should exist; if the server has it, swap it in (which re-runs the scan).
+  const lastUpdatedAtRef = useRef<Date | null>(null);
+  useEffect(() => {
+    lastUpdatedAtRef.current = lastUpdatedAt;
+  }, [lastUpdatedAt]);
+  useEffect(() => {
+    let inFlight = false;
+    const checkForNewEod = () => {
+      const current = lastUpdatedAtRef.current;
+      if (inFlight || document.visibilityState !== 'visible' || !current || !isNewerEodExpected(current)) return;
+      inFlight = true;
+      getStockSummariesWithTimestamp({ fresh: true })
+        .then((next) => {
+          const latest = lastUpdatedAtRef.current;
+          if (latest && next.lastUpdatedAt.getTime() <= latest.getTime()) return;
+          resetVerdicts();
+          setSummaries(next.summaries);
+          setLastUpdatedAt(next.lastUpdatedAt);
+        })
+        .catch(() => {
+          // Silent background check — the visible data stays as is; the next tick retries.
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    const interval = window.setInterval(checkForNewEod, EOD_RECHECK_MS);
+    document.addEventListener('visibilitychange', checkForNewEod);
+    window.addEventListener('pageshow', checkForNewEod);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', checkForNewEod);
+      window.removeEventListener('pageshow', checkForNewEod);
+    };
+  }, [resetVerdicts]);
 
   const handleSaveScreener = useCallback(() => {
     try {

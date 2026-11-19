@@ -65,19 +65,51 @@ function getLastIdxCloseTime(): Date {
 }
 
 /**
- * Fetches stock summaries and pairs them with the last IDX end-of-day close
- * time (15:00 WIB on the most recent trading day), not the fetch timestamp.
+ * EOD close time of the trading day the data actually belongs to: the most common
+ * `LastDate` across the list (suspended/delisted tickers keep an old date, so the
+ * mode — not the max of a few outliers — is the dataset's real date). Falls back to
+ * the clock-based last close when the feed carries no date.
  */
-export async function getStockSummariesWithTimestamp(): Promise<{
+function getDataEodTime(data: PasardanaStockItem[]): Date {
+  const counts = new Map<string, number>();
+  for (const item of data) {
+    const day = item.LastDate?.slice(0, 10);
+    if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  for (const [day, n] of counts) if (best == null || n > counts.get(best)!) best = day;
+  if (!best) return getLastIdxCloseTime();
+  const [y, m, d] = best.split('-').map(Number);
+  // 15:00 WIB (UTC+7) on that day, matching getLastIdxCloseTime().
+  return new Date(Date.UTC(y, m - 1, d, 15 - 7, 0, 0, 0));
+}
+
+/**
+ * True when a newer EOD dataset than `dataEodTime` should exist by now (a trading
+ * day has closed since). On exchange holidays this stays true but refetching is
+ * harmless — callers only swap data in when the returned date is actually newer.
+ */
+export function isNewerEodExpected(dataEodTime: Date): boolean {
+  return getLastIdxCloseTime().getTime() > dataEodTime.getTime();
+}
+
+/**
+ * Fetches stock summaries and pairs them with the EOD date of the data itself
+ * (from Pasardana's `LastDate`), not the fetch time or the wall clock — so the
+ * header never claims "today" for yesterday's numbers.
+ *
+ * `fresh` bypasses the browser HTTP cache (manual refresh / post-EOD refetch).
+ */
+export async function getStockSummariesWithTimestamp(options: { fresh?: boolean } = {}): Promise<{
   summaries: StockSummary[];
   lastUpdatedAt: Date;
 }> {
-  const response = await fetch('/api/stocks');
+  const response = await fetch('/api/stocks', options.fresh ? { cache: 'no-store' } : undefined);
   if (!response.ok) {
     throw new Error('Failed to fetch stock list');
   }
-  const lastUpdatedAt = getLastIdxCloseTime();
   const data: PasardanaStockItem[] = await response.json();
+  const lastUpdatedAt = getDataEodTime(data);
   const summaries = data.filter((item) => item.Code && item.Last > 0).map(mapToStockSummary);
   return { summaries, lastUpdatedAt };
 }
