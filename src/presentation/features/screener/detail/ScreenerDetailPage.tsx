@@ -22,6 +22,7 @@ import { screenerInter } from '../fonts';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { AIInsight } from './components/AIInsight';
 import { Breadcrumb } from './components/Breadcrumb';
+import { BuyChecklistReport, BuyChecklistReportSkeleton } from './components/BuyChecklistReport';
 import {
   FundamentalCard,
   InsightPanelSkeleton,
@@ -204,6 +205,20 @@ export function ScreenerDetailPage({ ticker }: { ticker: string }) {
                           {/* {detail.pillars && (
                             <SaraDecisionCard key={ticker} ticker={ticker} price={data.header.price} pillars={detail.pillars} analysis={analysis} />
                           )} */}
+                          {detail.summary ? (
+                            <BuyChecklistReport
+                              summary={detail.summary}
+                              bars={detail.bars}
+                              longBars={data.chartBars}
+                              analysis={analysis}
+                              fundamentals={detail.fundamentals}
+                              news={detail.newsItems}
+                              newsLoading={detail.newsLoading}
+                              ihsgBars={market.ihsgBars}
+                            />
+                          ) : (
+                            <BuyChecklistReportSkeleton />
+                          )}
                           {detail.summary && detail.fundamentalScreening ? (
                             // <TradingModesReport
                             //   summary={detail.summary}
