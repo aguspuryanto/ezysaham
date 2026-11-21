@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EzySaham (Next.js)
 
-## Getting Started
+Website pendamping aplikasi mobile EzySaham: screener saham BEI, chart candlestick + indikator, portofolio, dan tips untuk pemula. Dibangun mengikuti `PLAN.txt`.
 
-First, run the development server:
+## Menjalankan
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
+npm run build && npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Opsional: salin `.env.example` ke `.env.local` untuk mengganti `EZYSAHAM_API_BASE`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Login (magic link) & portofolio di Supabase
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Tanpa env Supabase, website tetap berjalan dalam mode tamu (portofolio di localStorage, tombol Masuk disembunyikan).
 
-## Learn More
+1. Buat project di https://supabase.com, lalu isi `.env.local` (lihat `.env.example`):
+   `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (atau `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Restart `npm run dev`.
+2. **SQL Editor** → jalankan `supabase/migrations/0001_portfolio_holdings.sql`.
+3. **Authentication → URL Configuration**
+   - Site URL: `http://localhost:3000` (ganti dengan domain produksi saat deploy)
+   - Redirect URLs: `http://localhost:3000/auth/callback` dan `https://<domain-produksi>/auth/callback`
+4. **Authentication → Sign In / Providers → Email**: pastikan aktif (default).
+5. *(Disarankan)* **Authentication → Email Templates → Magic Link**, ganti link menjadi
+   `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email`
+   agar link bisa dibuka di perangkat/browser lain (template bawaan memakai PKCE yang harus dibuka di browser yang sama).
+6. *(Produksi)* **Project Settings → Authentication → SMTP**: pasang SMTP sendiri (mis. Resend). SMTP bawaan Supabase dibatasi beberapa email per jam.
 
-To learn more about Next.js, take a look at the following resources:
+Alur: `/login` → email berisi link → `/auth/callback` memverifikasi → valid: redirect ke `/`, tidak valid/kedaluwarsa: kembali ke `/login` dengan pesan error.
+Setelah login pertama, holding yang tersimpan di localStorage ditawarkan untuk diimpor ke akun.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Struktur
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/app/(dashboard)/          page.tsx (Pasar), screener/, stock/[symbol]/, portfolio/, news/
+src/app/api/stocks/...        BFF proxy ke ezysaham (stocks, history, fundamentals)
+src/components/               ui/, layout/, dashboard/, charts/, portfolio/
+src/lib/                      api.ts, indicators.ts, screener.ts, dividends.ts, types.ts, format.ts, articles.ts
+src/hooks/                    usePortfolio.ts (localStorage), useStockList.ts
+```
 
-## Deploy on Vercel
+## Catatan data
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Respons API asli berbeda dari contoh di PLAN; `lib/api.ts` menormalisasinya ke tipe `Stock`, `Candle`, dan `Fundamentals`.
+- Cache: daftar saham 5 menit, history 10 menit, fundamental 1 jam.
+- Dividend yield hanya ada di endpoint fundamentals, jadi **Top Dividen** dihitung dari 40 saham berkapitalisasi terbesar.
+- **Top Akumulasi** memakai heuristik: harga sideways (±5% sebulan, ±3% sepekan), transaksi ramai, dan harga ditutup dekat high harian.

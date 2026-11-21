@@ -1,24 +1,18 @@
-import { PASARDANA_LIST_URL } from '@/data/external/pasardana';
+import { NextResponse, type NextRequest } from "next/server";
+import { fetchStocks } from "@/lib/api";
 
-export const revalidate = 300; // 5 minutes cache in Next.js
-
-export async function GET() {
+/** BFF proxy: GET /api/stocks[?lite=1] — menghindari CORS & menyembunyikan URL asli. */
+export async function GET(req: NextRequest) {
   try {
-    const response = await fetch(PASARDANA_LIST_URL, {
-      next: { revalidate: 300 },
+    const stocks = await fetchStocks();
+    const lite = req.nextUrl.searchParams.get("lite");
+    const body = lite
+      ? stocks.map((s) => ({ symbol: s.symbol, name: s.name, sector: s.sector, price: s.price, change: s.change }))
+      : stocks;
+    return NextResponse.json(body, {
+      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
     });
-    if (!response.ok) {
-      throw new Error(`Network response was not ok: ${response.statusText}`);
-    }
-    const data = await response.json();
-    return Response.json(data, {
-      headers: {
-        'X-Fetched-At': new Date().toISOString(),
-        'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching from pasardana:', error);
-    return Response.json({ error: 'Failed to fetch stocks' }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal memuat data" }, { status: 502 });
   }
 }

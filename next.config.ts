@@ -1,13 +1,10 @@
-import path from "path";
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  turbopack: {
-    // A stray package-lock.json in the user's home directory (above this
-    // project) makes Turbopack mis-infer the workspace root, which can
-    // break file-system route discovery. Pin it explicitly.
-    root: path.join(__dirname),
-  },
+  reactStrictMode: true,
+  // Ada lockfile lain di folder home; kunci root workspace ke folder ini.
+  turbopack: { root: path.resolve(__dirname) },
 };
 
 export default nextConfig;
