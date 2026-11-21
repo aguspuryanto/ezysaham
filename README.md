@@ -20,12 +20,15 @@ Tanpa env Supabase, website tetap berjalan dalam mode tamu (portofolio di localS
    `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (atau `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Restart `npm run dev`.
 2. **SQL Editor** → jalankan `supabase/migrations/0001_portfolio_holdings.sql`.
 3. **Authentication → URL Configuration**
-   - Site URL: `http://localhost:3000` (ganti dengan domain produksi saat deploy)
-   - Redirect URLs: `http://localhost:3000/auth/callback` dan `https://<domain-produksi>/auth/callback`
+   - Site URL: `https://ezysaham.vercel.app` (domain produksi)
+   - Redirect URLs: `https://ezysaham.vercel.app/auth/callback` dan `http://localhost:3000/auth/callback`
+     (alamat yang tidak terdaftar ditolak dan diganti Site URL)
 4. **Authentication → Sign In / Providers → Email**: pastikan aktif (default).
-5. *(Disarankan)* **Authentication → Email Templates → Magic Link**, ganti link menjadi
-   `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email`
-   agar link bisa dibuka di perangkat/browser lain (template bawaan memakai PKCE yang harus dibuka di browser yang sama).
+5. *(Disarankan)* **Authentication → Emails → Templates → Magic Link**, ganti link menjadi
+   `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email`
+   - `{{ .RedirectTo }}` mengikuti asal permintaan (localhost saat dev, domain produksi saat live), jadi satu template berlaku untuk keduanya.
+   - Format `token_hash` membuat link bisa dibuka di perangkat/browser lain (template bawaan memakai PKCE yang harus dibuka di browser yang sama).
+   - Jangan pakai `{{ .SiteURL }}` di sini: link akan selalu mengarah ke Site URL walau login diminta dari localhost.
 6. *(Produksi)* **Project Settings → Authentication → SMTP**: pasang SMTP sendiri (mis. Resend). SMTP bawaan Supabase dibatasi beberapa email per jam.
 
 Alur: `/login` → email berisi link → `/auth/callback` memverifikasi → valid: redirect ke `/`, tidak valid/kedaluwarsa: kembali ke `/login` dengan pesan error.
