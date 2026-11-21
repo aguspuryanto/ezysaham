@@ -1,7 +1,13 @@
 import "server-only";
-import type { Candle, Fundamentals, HistoryRange, RawStock, Stock } from "./types";
+import type { Candle, Fundamentals, HistoryRange, MarketIndex, RawStock, Stock } from "./types";
+import { fetchPasardanaStocks } from "./sources/pasardana";
+import { fetchYahooChart, fetchYahooFundamentals } from "./sources/yahoo";
 
-const BASE = process.env.EZYSAHAM_API_BASE ?? "https://ezysaham.vercel.app/api";
+/*
+ * Semua data diambil langsung dari sumber aslinya (Pasardana & Yahoo Finance),
+ * tidak lagi lewat ezysaham.vercel.app/api — sehingga aplikasi tidak bergantung
+ * pada deployment lain (dan tidak bisa memanggil dirinya sendiri).
+ */
 
 const pct = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : v * 100);
 const num = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : v);
@@ -45,11 +51,9 @@ export function normalizeStock(r: RawStock): Stock {
   };
 }
 
-/** Daftar semua saham. Cache 5 menit. */
+/** Daftar semua saham (Pasardana). Cache 5 menit. */
 export async function fetchStocks(): Promise<Stock[]> {
-  const res = await fetch(`${BASE}/stocks`, { next: { revalidate: 300 } });
-  if (!res.ok) throw new Error("Gagal memuat data saham");
-  const raw = (await res.json()) as RawStock[];
+  const raw = await fetchPasardanaStocks();
   return raw.filter((r) => r.Code && r.Last != null).map(normalizeStock);
 }
 
@@ -58,83 +62,45 @@ export async function fetchStock(symbol: string): Promise<Stock | null> {
   return all.find((s) => s.symbol === symbol.toUpperCase()) ?? null;
 }
 
-interface RawBar {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number | null;
-}
-
-/** Data OHLCV historis. Cache 10 menit. */
+/** OHLCV harian (Yahoo). Cache 10 menit. */
 export async function fetchHistory(symbol: string, range: HistoryRange = "1y"): Promise<Candle[]> {
-  try {
-    const res = await fetch(
-      `${BASE}/stocks/${encodeURIComponent(symbol.toUpperCase())}/history?range=${range}`,
-      { next: { revalidate: 600 } },
-    );
-    if (!res.ok) return [];
-    const json = (await res.json()) as { ok?: boolean; bars?: RawBar[] } | null;
-    if (!json?.bars) return [];
-    const byDate = new Map<string, Candle>();
-    for (const b of json.bars) {
-      if (!b?.date || b.close == null) continue;
-      byDate.set(b.date, {
-        time: b.date,
-        open: b.open ?? b.close,
-        high: b.high ?? b.close,
-        low: b.low ?? b.close,
-        close: b.close,
-        volume: b.volume ?? 0,
-      });
-    }
-    return [...byDate.values()].sort((a, b) => (a.time < b.time ? -1 : 1));
-  } catch {
-    return [];
-  }
+  const chart = await fetchYahooChart(symbol.toUpperCase(), range, 600);
+  return (chart?.bars ?? []).map((b) => ({
+    time: b.date,
+    open: b.open,
+    high: b.high,
+    low: b.low,
+    close: b.close,
+    volume: b.volume,
+  }));
 }
 
-interface RawFundamentals {
-  ticker?: string;
-  dividendYield?: number | null;
-  dividendPayoutRatio?: number | null;
-  dividendPerShareTtm?: number | null;
-  dividendHistory?: { date: string; amount: number }[] | null;
-  debtToEquity?: number | null;
-  currentRatio?: number | null;
-  netMargin?: number | null;
-  revenueGrowth?: number | null;
-  earningsGrowth?: number | null;
-  source?: string | null;
-  fetchedAt?: string | null;
-}
-
-/** Data fundamental & dividen. Cache 1 jam. Mengembalikan null bila tidak tersedia. */
+/** Fundamental & dividen (Yahoo quoteSummary). Cache 6 jam. null bila tidak tersedia. */
 export async function fetchFundamentals(symbol: string): Promise<Fundamentals | null> {
-  try {
-    const res = await fetch(
-      `${BASE}/stocks/${encodeURIComponent(symbol.toUpperCase())}/fundamentals`,
-      { next: { revalidate: 3600 } },
-    );
-    if (!res.ok) return null;
-    const f = (await res.json()) as RawFundamentals | null;
-    if (!f) return null;
-    return {
-      symbol: f.ticker ?? symbol.toUpperCase(),
-      dividendYield: num(f.dividendYield),
-      payoutRatio: num(f.dividendPayoutRatio),
-      dividendPerShare: num(f.dividendPerShareTtm),
-      dividendHistory: f.dividendHistory ?? [],
-      der: num(f.debtToEquity),
-      currentRatio: num(f.currentRatio),
-      netMargin: num(f.netMargin),
-      revenueGrowth: num(f.revenueGrowth),
-      earningsGrowth: num(f.earningsGrowth),
-      source: f.source ?? null,
-      fetchedAt: f.fetchedAt ?? null,
-    };
-  } catch {
-    return null;
-  }
+  const f = await fetchYahooFundamentals(symbol.toUpperCase());
+  if (!f) return null;
+  return { symbol: symbol.toUpperCase(), ...f, source: "yahoo", fetchedAt: new Date().toISOString() };
+}
+
+export const MARKET_INDICES = [
+  { symbol: "^JKSE", name: "IHSG" },
+  { symbol: "^JKLQ45", name: "LQ45" },
+  { symbol: "IDR=X", name: "USD/IDR" },
+] as const;
+
+/** Indeks / kurs dengan data harian untuk sparkline & chart. Cache 15 menit. */
+export async function fetchMarketIndex(symbol: string, name: string, range = "6mo"): Promise<MarketIndex | null> {
+  const chart = await fetchYahooChart(symbol, range, 900);
+  if (!chart || chart.price == null || !chart.bars.length) return null;
+  const prev = chart.prevClose ?? chart.price;
+  return {
+    symbol,
+    name,
+    price: chart.price,
+    change: chart.price - prev,
+    changePct: prev ? ((chart.price - prev) / prev) * 100 : 0,
+    high: chart.dayHigh,
+    low: chart.dayLow,
+    points: chart.bars.map((b) => ({ time: b.date, value: b.close })),
+  };
 }

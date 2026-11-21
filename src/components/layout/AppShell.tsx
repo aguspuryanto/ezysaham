@@ -51,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <p className="mt-auto px-3 text-xs leading-relaxed text-muted-foreground">
-          Data dari ezysaham API, diperbarui berkala (5–15 menit). Bukan rekomendasi jual/beli.
+          Data dari Pasardana & Yahoo Finance, diperbarui berkala (5–15 menit). Bukan rekomendasi jual/beli.
         </p>
       </aside>
 

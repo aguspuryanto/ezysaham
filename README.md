@@ -10,7 +10,7 @@ npm run dev        # http://localhost:3000
 npm run build && npm start
 ```
 
-Opsional: salin `.env.example` ke `.env.local` untuk mengganti `EZYSAHAM_API_BASE`.
+Salin `.env.example` ke `.env.local` untuk mengisi key Supabase (opsional).
 
 ## Login (magic link) & portofolio di Supabase
 
@@ -35,7 +35,8 @@ Setelah login pertama, holding yang tersimpan di localStorage ditawarkan untuk d
 
 ```
 src/app/(dashboard)/          page.tsx (Pasar), screener/, stock/[symbol]/, portfolio/, news/
-src/app/api/stocks/...        BFF proxy ke ezysaham (stocks, history, fundamentals)
+src/app/api/stocks/...        BFF untuk browser (stocks, history, fundamentals)
+src/lib/sources/              pasardana.ts, yahoo.ts (pengambil data dari sumber asli)
 src/components/               ui/, layout/, dashboard/, charts/, portfolio/
 src/lib/                      api.ts, indicators.ts, screener.ts, dividends.ts, types.ts, format.ts, articles.ts
 src/hooks/                    usePortfolio.ts (localStorage), useStockList.ts
@@ -43,7 +44,7 @@ src/hooks/                    usePortfolio.ts (localStorage), useStockList.ts
 
 ## Catatan data
 
-- Respons API asli berbeda dari contoh di PLAN; `lib/api.ts` menormalisasinya ke tipe `Stock`, `Candle`, dan `Fundamentals`.
-- Cache: daftar saham 5 menit, history 10 menit, fundamental 1 jam.
+- Data diambil langsung dari sumbernya: daftar saham dari Pasardana, history/indeks/kurs/fundamental dari Yahoo Finance (`src/lib/sources/`). Tidak bergantung pada ezysaham.vercel.app.
+- Cache: daftar saham 5 menit, history 10 menit, indeks 15 menit, fundamental 6 jam.
 - Dividend yield hanya ada di endpoint fundamentals, jadi **Top Dividen** dihitung dari 40 saham berkapitalisasi terbesar.
 - **Top Akumulasi** memakai heuristik: harga sideways (±5% sebulan, ±3% sepekan), transaksi ramai, dan harga ditutup dekat high harian.

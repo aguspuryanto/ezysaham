@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { Activity, Flame, Gem, Layers, Rocket, TrendingDown, TrendingUp } from "lucide-react";
-import { fetchStocks } from "@/lib/api";
+import { MARKET_INDICES, fetchMarketIndex, fetchStocks } from "@/lib/api";
+import { BreadthCard, IndexCard, IndexTrendCard, marketRegime } from "@/components/dashboard/MarketStats";
 import { SCREENERS, fundamentalScore, marketBreadth, sectorPerformance } from "@/lib/screener";
 import { formatCompact, formatDate, formatPercent } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,12 +23,13 @@ const ICONS: Record<string, React.ReactNode> = {
 };
 
 export default async function MarketOverviewPage() {
-  const stocks = await fetchStocks();
+  const [stocks, ihsg, lq45, usd] = await Promise.all([
+    fetchStocks(),
+    ...MARKET_INDICES.map((m) => fetchMarketIndex(m.symbol, m.name).catch(() => null)),
+  ]);
   const breadth = marketBreadth(stocks);
   const sectors = sectorPerformance(stocks);
   const bigCaps = [...stocks].filter((s) => s.volume > 0).sort((a, b) => b.marketCap - a.marketCap).slice(0, 20);
-  const upPct = breadth.total ? (breadth.up / breadth.total) * 100 : 0;
-  const downPct = breadth.total ? (breadth.down / breadth.total) * 100 : 0;
   const capWeighted = sectors.reduce((a, s) => a + s.change * s.marketCap, 0) / (sectors.reduce((a, s) => a + s.marketCap, 0) || 1);
 
   const byKey = Object.fromEntries(SCREENERS.map((s) => [s.key, s.run(stocks)]));
@@ -46,24 +48,29 @@ export default async function MarketOverviewPage() {
 
       <MarketTicker stocks={bigCaps} />
 
-      {/* Statistik pasar */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Kinerja pasar" value={formatPercent(capWeighted)} tone={capWeighted} hint="Tertimbang kapitalisasi (proksi IHSG)" />
-        <StatCard label="Nilai transaksi" value={`Rp${formatCompact(breadth.totalValue)}`} hint={`${formatCompact(breadth.totalFrequency)} kali transaksi`} />
-        <StatCard label="Volume" value={`${formatCompact(breadth.totalVolume / 100)} lot`} hint={`${breadth.total} saham aktif`} />
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground">Naik / Turun / Tetap</p>
-          <p className="mt-1 text-lg font-bold tabular-nums sm:text-xl">
-            <span className="text-up">{breadth.up}</span>
-            <span className="text-muted-foreground"> / </span>
-            <span className="text-down">{breadth.down}</span>
-            <span className="text-muted-foreground"> / {breadth.flat}</span>
-          </p>
-          <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
-            <div className="bg-up" style={{ width: `${upPct}%` }} />
-            <div className="ml-auto bg-down" style={{ width: `${downPct}%` }} />
+      {/* Statistik pasar: IHSG, LQ45, USD/IDR, breadth, tren IHSG 3 bulan */}
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+        {ihsg ? (
+          <IndexCard index={ihsg} />
+        ) : (
+          <StatCard label="Kinerja pasar" value={formatPercent(capWeighted)} tone={capWeighted} hint="Tertimbang kapitalisasi (proksi IHSG)" />
+        )}
+        {lq45 ? (
+          <IndexCard index={lq45} />
+        ) : (
+          <StatCard label="Volume" value={`${formatCompact(breadth.totalVolume / 100)} lot`} hint={`${breadth.total} saham aktif`} />
+        )}
+        {usd ? (
+          <IndexCard index={usd} digits={0} />
+        ) : (
+          <StatCard label="Nilai transaksi" value={`Rp${formatCompact(breadth.totalValue)}`} hint={`${formatCompact(breadth.totalFrequency)} kali transaksi`} />
+        )}
+        <BreadthCard breadth={breadth} />
+        {ihsg && ihsg.points.length > 20 && (
+          <div className="col-span-2 md:col-span-4 xl:col-span-2">
+            <IndexTrendCard index={ihsg} regime={marketRegime(ihsg, breadth)} />
           </div>
-        </Card>
+        )}
       </section>
 
       {/* Screener ringkas */}

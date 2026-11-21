@@ -114,6 +114,18 @@ export function isHistoryRange(v: string | null | undefined): v is HistoryRange 
   return HISTORY_RANGES.some((r) => r.value === v);
 }
 
+export interface MarketIndex {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePct: number;
+  high: number | null;
+  low: number | null;
+  /** Harga penutupan harian, urut naik */
+  points: { time: string; value: number }[];
+}
+
 export interface DividendPick {
   stock: Stock;
   dividendYield: number;
