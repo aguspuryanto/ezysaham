@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, Check, Clock, Heart, Loader2 } from "lucide-react";
+import { BadgeCheck, Check, Clock, Coffee, Heart, Loader2 } from "lucide-react";
 import { Button, buttonClass } from "@/components/ui/button";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useMembership } from "@/hooks/useMembership";
@@ -87,6 +87,18 @@ export function PricingCards({ paymentsEnabled }: { paymentsEnabled: boolean }) 
           <ProAction billing={billing} paymentsEnabled={paymentsEnabled} />
           <FeatureList features={PRO_FEATURES} label="Semua di Starter, plus" />
         </div>
+      </div>
+
+      <div className="flex flex-col items-center gap-2 text-center">
+        <p className="text-sm text-muted-foreground">Ingin mendukung tanpa berlangganan?</p>
+        <a
+          href="https://saweria.co/ezysaham"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(buttonClass("outline"), "gap-1.5")}
+        >
+          <Coffee /> Dukung via Saweria
+        </a>
       </div>
     </section>
   );
