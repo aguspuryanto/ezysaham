@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChartCandlestick } from "lucide-react";
+import { ChartCandlestick, Coffee } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS, isActive } from "./nav";
 import { ThemeToggle } from "./ThemeToggle";
@@ -50,9 +50,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <p className="mt-auto px-3 text-xs leading-relaxed text-muted-foreground">
-          Data dari Pasardana & Yahoo Finance, diperbarui berkala (5–15 menit). Bukan rekomendasi jual/beli.
-        </p>
+        <div className="mt-auto flex flex-col gap-3 px-3">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Data dari Pasardana & Yahoo Finance, diperbarui berkala (5–15 menit). Bukan rekomendasi jual/beli.
+          </p>
+          <a
+            href="https://saweria.co/ezysaham"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Coffee className="size-4" />
+            Dukung via Saweria
+          </a>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -70,7 +81,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-4 pb-28 sm:px-6 sm:pt-6 lg:pb-10">{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-4 pb-28 sm:px-6 sm:pt-6 lg:pb-10">
+          {children}
+
+          {/* Footer mobile */}
+          <footer className="mt-10 flex flex-col items-center gap-3 border-t pt-6 text-center lg:hidden">
+            <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+              Data dari Pasardana & Yahoo Finance, diperbarui berkala (5–15 menit). Bukan rekomendasi jual/beli.
+            </p>
+            <a
+              href="https://saweria.co/ezysaham"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-1.5 rounded-lg border px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Coffee className="size-4" />
+              Dukung via Saweria
+            </a>
+          </footer>
+        </main>
       </div>
 
       {/* Bottom navigation mobile */}
