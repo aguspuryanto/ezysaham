@@ -109,7 +109,7 @@ function ProAction({ billing, paymentsEnabled }: { billing: Billing; paymentsEna
       });
       const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!res.ok || !data.url) throw new Error(data.error ?? "Gagal membuat tagihan.");
-      window.location.href = data.url; // halaman pembayaran Xendit
+      window.location.href = data.url; // halaman pembayaran DOKU Checkout
     } catch (e) {
       setError(e instanceof Error ? e.message : "Terjadi kesalahan.");
       setBusy(false);
@@ -154,7 +154,7 @@ function ProAction({ billing, paymentsEnabled }: { billing: Billing; paymentsEna
       {error ? (
         <p role="alert" className="mt-2 text-center text-xs text-down">{error}</p>
       ) : (
-        <p className="mt-2 text-center text-xs text-muted-foreground">QRIS · Virtual Account · E-wallet · Kartu — via Xendit</p>
+        <p className="mt-2 text-center text-xs text-muted-foreground">QRIS · Virtual Account · E-wallet · Kartu — via DOKU</p>
       )}
     </>
   );

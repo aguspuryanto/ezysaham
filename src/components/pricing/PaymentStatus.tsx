@@ -1,63 +1,69 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CircleCheck, Loader2, TriangleAlert } from "lucide-react";
+import { CircleCheck, Info, Loader2 } from "lucide-react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useMembership } from "@/hooks/useMembership";
 
+type Phase = "checking" | "active" | "waiting" | "none";
+
 /**
- * Pesan setelah kembali dari halaman Xendit (?status=success|failed).
- * Webhook bisa datang beberapa detik setelah redirect, jadi status Pro dicek ulang berkala.
+ * Ditampilkan saat user kembali dari DOKU Checkout (?status=return).
+ * Redirect DOKU tidak membawa hasil pembayaran, jadi kita cek sendiri:
+ * minta server sinkronkan status ke DOKU (/api/payments/sync), lalu baca membership.
  */
 export function PaymentStatus() {
   const status = useSearchParams().get("status");
-  const { isPro, refresh } = useMembership();
-  const [confirmed, setConfirmed] = useState(false);
-  const [gaveUp, setGaveUp] = useState(false);
+  const { user, loading: authLoading } = useAuth();
+  const { refresh } = useMembership();
+  const [phase, setPhase] = useState<Phase>("checking");
 
   useEffect(() => {
-    if (status !== "success") return;
-    let tries = 0;
+    if (status !== "return" || authLoading || !user) return;
     let cancelled = false;
+    let tries = 0;
     const tick = async () => {
       if (cancelled) return;
-      if (await refresh()) return setConfirmed(true);
-      if (++tries >= 10) return setGaveUp(true);
-      setTimeout(tick, 3000);
+      const res = await fetch("/api/payments/sync", { method: "POST" }).catch(() => null);
+      const data = (await res?.json().catch(() => null)) as { status?: string } | null;
+      if (await refresh()) return setPhase("active");
+      if (data?.status === "none") return setPhase("none"); // tidak ada pembayaran pending
+      if (data?.status === "FAILED" || data?.status === "EXPIRED") return setPhase("none");
+      if (++tries >= 8) return setPhase("waiting");
+      setTimeout(tick, 4000);
     };
     void tick();
     return () => {
       cancelled = true;
     };
-  }, [status, refresh]);
+  }, [status, authLoading, user, refresh]);
 
-  if (status === "failed") {
+  if (status !== "return") return null;
+
+  if (phase === "active") {
     return (
-      <div role="alert" className="flex gap-3 rounded-xl border border-down/30 bg-down-soft p-4 text-sm">
-        <TriangleAlert className="mt-0.5 size-5 shrink-0 text-down" />
-        <p>Pembayaran dibatalkan atau gagal. Tidak ada dana yang ditarik — kamu bisa mencoba lagi kapan saja.</p>
+      <div role="status" className="flex gap-3 rounded-xl border border-up/30 bg-up-soft p-4 text-sm">
+        <CircleCheck className="mt-0.5 size-5 shrink-0 text-up" />
+        <p><span className="font-semibold">Terima kasih atas dukunganmu! 💚</span> Paket Pro sudah aktif di akunmu.</p>
       </div>
     );
   }
-  if (status !== "success") return null;
-
+  if (phase === "checking") {
+    return (
+      <div role="status" className="flex gap-3 rounded-xl border bg-card p-4 text-sm">
+        <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-primary" />
+        <p>Sedang mengecek status pembayaranmu…</p>
+      </div>
+    );
+  }
   return (
-    <div role="status" className="flex gap-3 rounded-xl border border-up/30 bg-up-soft p-4 text-sm">
-      {confirmed || isPro ? (
-        <>
-          <CircleCheck className="mt-0.5 size-5 shrink-0 text-up" />
-          <p><span className="font-semibold">Terima kasih atas dukunganmu! 💚</span> Paket Pro sudah aktif di akunmu.</p>
-        </>
-      ) : gaveUp ? (
-        <>
-          <CircleCheck className="mt-0.5 size-5 shrink-0 text-up" />
-          <p>Pembayaran diterima dan sedang dikonfirmasi. Status Pro akan aktif dalam beberapa menit — muat ulang halaman ini nanti.</p>
-        </>
-      ) : (
-        <>
-          <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-up" />
-          <p>Terima kasih! Sedang mengonfirmasi pembayaranmu…</p>
-        </>
-      )}
+    <div role="status" className="flex gap-3 rounded-xl border bg-card p-4 text-sm">
+      <Info className="mt-0.5 size-5 shrink-0 text-primary" />
+      <p>
+        {phase === "waiting"
+          ? "Pembayaran belum terkonfirmasi. Jika kamu sudah membayar (mis. lewat virtual account), status Pro akan aktif otomatis dalam beberapa menit — muat ulang halaman ini nanti."
+          : "Belum ada pembayaran yang selesai. Tidak ada dana yang ditarik — kamu bisa mencoba lagi kapan saja."}
+      </p>
     </div>
   );
 }

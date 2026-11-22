@@ -3,11 +3,11 @@ import { Suspense } from "react";
 import { HandHeart, RefreshCcw, ShieldCheck, Sprout } from "lucide-react";
 import { PricingCards } from "@/components/pricing/PricingCards";
 import { PaymentStatus } from "@/components/pricing/PaymentStatus";
-import { isXenditConfigured } from "@/lib/xendit";
+import { isDokuConfigured } from "@/lib/doku";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/admin";
 
-// Tombol bayar aktif hanya bila Xendit & Supabase service key sudah diisi di env
-const paymentsEnabled = isXenditConfigured && isSupabaseAdminConfigured;
+// Tombol bayar aktif hanya bila DOKU & Supabase secret key sudah diisi di env
+const paymentsEnabled = isDokuConfigured && isSupabaseAdminConfigured;
 
 export const metadata: Metadata = {
   title: "Paket Membership",

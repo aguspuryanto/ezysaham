@@ -1,19 +1,18 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { EXTERNAL_ID_PREFIX, createInvoice, isXenditConfigured } from "@/lib/xendit";
+import { createCheckout, isDokuConfigured, newInvoiceNumber } from "@/lib/doku";
 import { PRO_PRICE } from "@/lib/plans";
 
 type Period = keyof typeof PRO_PRICE;
 
 /**
- * Buat invoice Xendit untuk paket Pro. Harga SELALU diambil dari server (plans.ts),
+ * Buat sesi DOKU Checkout untuk paket Pro. Harga SELALU diambil dari server (plans.ts),
  * tidak pernah dari body request.
  */
 export async function POST(request: NextRequest) {
   const admin = getSupabaseAdmin();
-  if (!isXenditConfigured || !admin) {
+  if (!isDokuConfigured || !admin) {
     return NextResponse.json({ error: "Pembayaran belum tersedia." }, { status: 503 });
   }
 
@@ -29,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
   const amount = PRO_PRICE[period];
 
-  // Pakai ulang invoice yang masih menunggu pembayaran (hindari tagihan dobel bila tombol diklik berulang)
+  // Pakai ulang link pembayaran yang masih berlaku (hindari tagihan dobel bila tombol diklik berulang)
   const { data: pending } = await admin
     .from("payments")
     .select("invoice_url")
@@ -43,32 +42,32 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (pending?.invoice_url) return NextResponse.json({ url: pending.invoice_url });
 
-  const externalId = `${EXTERNAL_ID_PREFIX}pro-${period}-${randomUUID()}`;
+  const invoiceNumber = newInvoiceNumber(period);
   const { error: insertError } = await admin
     .from("payments")
-    .insert({ user_id: user.id, external_id: externalId, period, amount });
+    .insert({ user_id: user.id, external_id: invoiceNumber, gateway: "doku", period, amount });
   if (insertError) {
+    console.error("[checkout] insert", insertError);
     return NextResponse.json({ error: "Gagal membuat tagihan." }, { status: 500 });
   }
 
-  const origin = request.nextUrl.origin;
   try {
-    const invoice = await createInvoice({
-      externalId,
+    const checkout = await createCheckout({
+      invoiceNumber,
       amount,
-      description: `EzySaham Pro — ${period === "yearly" ? "1 tahun" : "1 bulan"}`,
-      payerEmail: user.email,
-      successUrl: `${origin}/harga?status=success`,
-      failureUrl: `${origin}/harga?status=failed`,
+      itemName: `EzySaham Pro ${period === "yearly" ? "1 Tahun" : "1 Bulan"}`,
+      // DOKU tidak memberi tahu hasil lewat redirect; halaman /harga mengecek statusnya sendiri.
+      callbackUrl: `${request.nextUrl.origin}/harga?status=return`,
+      customer: { id: user.id, email: user.email },
     });
     await admin
       .from("payments")
-      .update({ xendit_invoice_id: invoice.id, invoice_url: invoice.invoice_url, invoice_expires_at: invoice.expiry_date })
-      .eq("external_id", externalId);
-    return NextResponse.json({ url: invoice.invoice_url });
+      .update({ gateway_ref: checkout.tokenId, invoice_url: checkout.url, invoice_expires_at: checkout.expiresAt })
+      .eq("external_id", invoiceNumber);
+    return NextResponse.json({ url: checkout.url });
   } catch (e) {
-    await admin.from("payments").update({ status: "failed" }).eq("external_id", externalId);
+    await admin.from("payments").update({ status: "failed" }).eq("external_id", invoiceNumber);
     console.error("[checkout]", e);
-    return NextResponse.json({ error: "Gagal terhubung ke Xendit. Coba lagi sebentar." }, { status: 502 });
+    return NextResponse.json({ error: "Gagal terhubung ke DOKU. Coba lagi sebentar." }, { status: 502 });
   }
 }

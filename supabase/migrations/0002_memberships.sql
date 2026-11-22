@@ -1,5 +1,5 @@
--- Membership Pro + riwayat pembayaran Xendit. Jalankan di Supabase Dashboard → SQL Editor
--- (setelah 0001_portfolio_holdings.sql).
+-- Membership Pro + riwayat pembayaran (DOKU Checkout). Jalankan di Supabase Dashboard → SQL Editor
+-- (setelah 0001_portfolio_holdings.sql). Aman dijalankan ulang.
 --
 -- Penulisan HANYA dilakukan server (service role) dari webhook/checkout.
 -- User hanya bisa MEMBACA baris miliknya sendiri.
@@ -37,9 +37,10 @@ create policy "memberships_select_own" on public.memberships
 create table if not exists public.payments (
   id                 uuid primary key default gen_random_uuid(),
   user_id            uuid not null references auth.users (id) on delete cascade,
-  external_id        text not null unique,
-  xendit_invoice_id  text unique,
-  plan               text not null default 'pro' check (plan in ('pro')),
+  external_id        text not null unique,          -- invoice_number yang dikirim ke DOKU
+  gateway            text not null default 'doku',
+  gateway_ref        text,                          -- token_id DOKU Checkout
+  plan              text not null default 'pro' check (plan in ('pro')),
   period             text not null check (period in ('monthly', 'yearly')),
   amount             bigint not null check (amount > 0),
   currency           text not null default 'IDR',
@@ -52,6 +53,17 @@ create table if not exists public.payments (
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now()
 );
+
+-- Bila versi lama (kolom Xendit) sudah sempat dijalankan, sesuaikan skemanya
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'payments' and column_name = 'xendit_invoice_id') then
+    alter table public.payments drop constraint if exists payments_xendit_invoice_id_key;
+    alter table public.payments rename column xendit_invoice_id to gateway_ref;
+  end if;
+end $$;
+alter table public.payments add column if not exists gateway text not null default 'doku';
 
 create index if not exists payments_user_created_idx on public.payments (user_id, created_at desc);
 
@@ -67,11 +79,12 @@ create policy "payments_select_own" on public.payments
   for select to authenticated using ((select auth.uid()) = user_id);
 
 -- ---------- Aktivasi atomik & idempoten ----------
--- Dipanggil webhook saat invoice PAID. Bila invoice sudah pernah diproses → return null (tidak dobel).
+-- Dipanggil server saat transaksi SUCCESS. Bila sudah pernah diproses → return null (tidak dobel).
 -- Masa aktif diperpanjang dari tanggal berakhir saat ini (bila masih aktif) atau dari sekarang.
-create or replace function public.activate_membership(
+drop function if exists public.activate_membership(text, text, bigint, timestamptz, text, text);
+create function public.activate_membership(
   p_external_id text,
-  p_invoice_id  text,
+  p_gateway_ref text,
   p_paid_amount bigint,
   p_paid_at     timestamptz,
   p_method      text,
@@ -92,7 +105,7 @@ begin
   update payments
      set status = 'paid',
          paid_at = coalesce(p_paid_at, now()),
-         xendit_invoice_id = coalesce(xendit_invoice_id, p_invoice_id),
+         gateway_ref = coalesce(gateway_ref, p_gateway_ref),
          payment_method = p_method,
          payment_channel = p_channel
    where external_id = p_external_id
