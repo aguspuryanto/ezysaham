@@ -18,7 +18,7 @@ export const STARTER_FEATURES: PlanFeature[] = [
   { text: "Screener lengkap: gainer, momentum, dividen, fundamental, akumulasi" },
   { text: "Chart candlestick + SMA, RSI, MACD hingga 5 tahun" },
   { text: "Analisa teknikal & fundamental untuk pemula" },
-  { text: "Portofolio tersimpan di akun, bisa dibuka di semua perangkat" },
+  { text: "Portofolio & watchlist tersimpan di akun, bisa dibuka di semua perangkat" },
   { text: "Statistik pasar: IHSG, LQ45, USD/IDR, market breadth" },
   { text: "Tips & insight pasar harian" },
 ];
@@ -27,7 +27,7 @@ export const PRO_FEATURES: PlanFeature[] = [
   { text: "Badge Pendukung di akunmu" },
   { text: "Ikut menentukan fitur berikutnya (akses awal & voting)" },
   { text: "Alert email saat harga / sinyal saham berubah", soon: true },
-  { text: "Watchlist dengan catatan & target harga", soon: true },
+  { text: "Watchlist dengan catatan & target harga" },
   { text: "Export CSV hasil screener & portofolio", soon: true },
 ];
 

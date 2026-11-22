@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/misc";
 import { ChangeText } from "@/components/dashboard/ChangeText";
 import { StockChartPanel } from "@/components/charts/StockChartPanel";
 import { AddToPortfolioButton } from "@/components/portfolio/AddToPortfolioButton";
+import { WatchlistButton } from "@/components/watchlist/WatchlistButton";
 import { cn } from "@/lib/utils";
 
 export const revalidate = 300;
@@ -65,7 +66,10 @@ export default async function StockDetailPage({ params }: Props) {
           </div>
           <p className="mt-1 text-xs text-muted-foreground">Data per {formatDate(stock.lastDate)}</p>
         </div>
-        <AddToPortfolioButton symbol={stock.symbol} price={stock.price} />
+        <div className="flex flex-wrap items-center gap-2">
+          <WatchlistButton symbol={stock.symbol} />
+          <AddToPortfolioButton symbol={stock.symbol} price={stock.price} />
+        </div>
       </section>
 
       {/* Statistik harian */}
