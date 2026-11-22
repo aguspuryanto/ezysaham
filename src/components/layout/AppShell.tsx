@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
       >
         <div className="mx-auto grid max-w-md grid-cols-4">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {NAV_ITEMS.filter((n) => n.mobile).map(({ href, label, icon: Icon }) => {
             const active = isActive(pathname, href);
             return (
               <Link

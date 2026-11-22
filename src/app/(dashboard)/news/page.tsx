@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, ChevronRight, Lightbulb } from "lucide-react";
+import { BookOpen, ChevronRight, HandHeart, Lightbulb } from "lucide-react";
 import { ARTICLES } from "@/lib/articles";
 import { fetchStocks } from "@/lib/api";
 import { SCREENERS, marketBreadth, sectorPerformance } from "@/lib/screener";
@@ -87,6 +87,15 @@ export default async function NewsPage() {
           </Link>
         ))}
       </section>
+
+      <Link href="/harga" className="flex items-center gap-3 rounded-xl border bg-card p-4 hover:border-primary/50">
+        <HandHeart className="size-5 shrink-0 text-primary" />
+        <span className="flex-1 text-sm">
+          <span className="font-semibold">EzySaham gratis untuk semua.</span>{" "}
+          <span className="text-muted-foreground">Kalau terasa bermanfaat, kamu bisa ikut mendukung lewat paket Pro.</span>
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      </Link>
 
       <p className="text-xs text-muted-foreground">
         Konten edukasi ini bersifat umum dan bukan ajakan membeli atau menjual saham tertentu. Lakukan riset mandiri sebelum berinvestasi.

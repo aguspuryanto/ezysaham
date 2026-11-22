@@ -55,6 +55,9 @@ export function UserMenu() {
           <Link href="/portfolio" onClick={() => setOpen(false)} className="block rounded-lg px-2 py-2 text-sm hover:bg-accent">
             Portofolio saya
           </Link>
+          <Link href="/harga" onClick={() => setOpen(false)} className="block rounded-lg px-2 py-2 text-sm hover:bg-accent">
+            Paket membership
+          </Link>
           <form action="/auth/signout" method="post">
             <button type="submit" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-down hover:bg-accent">
               <LogOut className="size-4" /> Keluar
