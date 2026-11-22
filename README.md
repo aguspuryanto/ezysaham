@@ -39,7 +39,7 @@ Setelah login pertama, holding yang tersimpan di localStorage ditawarkan untuk d
 Paket Pro bersifat sukarela: bayar sekali per periode (1 bulan / 1 tahun) lewat **DOKU Checkout**, tanpa auto-debit.
 Selama env di bawah belum lengkap, tombol bayar di `/harga` tetap nonaktif.
 
-1. **Supabase → SQL Editor** → jalankan `supabase/migrations/0002_memberships.sql` (tabel `memberships`, `payments`, fungsi `activate_membership`).
+1. **Supabase → SQL Editor** → jalankan `supabase/migrations/0002_memberships.sql` (tabel `memberships`, `membership_payments`, fungsi `activate_membership`).
 2. **Supabase → Project Settings → API Keys** → salin *secret key* ke `SUPABASE_SECRET_KEY` (server only).
 3. **DOKU Back Office** (mulai di sandbox: https://dashboard-sandbox.doku.com):
    - Aktifkan produk **DOKU Checkout** dan metode pembayaran yang diinginkan (QRIS, VA, e-wallet, kartu).

@@ -25,6 +25,6 @@ export async function applyTransaction(admin: SupabaseClient, tx: DokuTransactio
 
   const next = tx.status === "FAILED" ? "failed" : tx.status === "EXPIRED" || tx.status === "TIMEOUT" ? "expired" : null;
   if (!next) return "ignored"; // PENDING / REDIRECT: belum final
-  await admin.from("payments").update({ status: next }).eq("external_id", tx.invoiceNumber).eq("status", "pending");
+  await admin.from("membership_payments").update({ status: next }).eq("external_id", tx.invoiceNumber).eq("status", "pending");
   return "marked";
 }

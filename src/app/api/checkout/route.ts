@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
   // Pakai ulang link pembayaran yang masih berlaku (hindari tagihan dobel bila tombol diklik berulang)
   const { data: pending } = await admin
-    .from("payments")
+    .from("membership_payments")
     .select("invoice_url")
     .eq("user_id", user.id)
     .eq("period", period)
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
   const invoiceNumber = newInvoiceNumber(period);
   const { error: insertError } = await admin
-    .from("payments")
+    .from("membership_payments")
     .insert({ user_id: user.id, external_id: invoiceNumber, gateway: "doku", period, amount });
   if (insertError) {
     console.error("[checkout] insert", insertError);
@@ -61,12 +61,12 @@ export async function POST(request: NextRequest) {
       customer: { id: user.id, email: user.email },
     });
     await admin
-      .from("payments")
+      .from("membership_payments")
       .update({ gateway_ref: checkout.tokenId, invoice_url: checkout.url, invoice_expires_at: checkout.expiresAt })
       .eq("external_id", invoiceNumber);
     return NextResponse.json({ url: checkout.url });
   } catch (e) {
-    await admin.from("payments").update({ status: "failed" }).eq("external_id", invoiceNumber);
+    await admin.from("membership_payments").update({ status: "failed" }).eq("external_id", invoiceNumber);
     console.error("[checkout]", e);
     return NextResponse.json({ error: "Gagal terhubung ke DOKU. Coba lagi sebentar." }, { status: 502 });
   }

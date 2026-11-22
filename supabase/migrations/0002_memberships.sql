@@ -1,6 +1,9 @@
 -- Membership Pro + riwayat pembayaran (DOKU Checkout). Jalankan di Supabase Dashboard → SQL Editor
 -- (setelah 0001_portfolio_holdings.sql). Aman dijalankan ulang.
 --
+-- Catatan: project Supabase ini juga dipakai aplikasi lain yang sudah punya tabel `public.payments`,
+-- jadi tabel pembayaran ezysaham diberi nama `membership_payments` (tabel `payments` tidak disentuh).
+--
 -- Penulisan HANYA dilakukan server (service role) dari webhook/checkout.
 -- User hanya bisa MEMBACA baris miliknya sendiri.
 
@@ -33,14 +36,14 @@ drop policy if exists "memberships_select_own" on public.memberships;
 create policy "memberships_select_own" on public.memberships
   for select to authenticated using ((select auth.uid()) = user_id);
 
--- ---------- Riwayat invoice / pembayaran ----------
-create table if not exists public.payments (
+-- ---------- Riwayat pembayaran membership ----------
+create table if not exists public.membership_payments (
   id                 uuid primary key default gen_random_uuid(),
   user_id            uuid not null references auth.users (id) on delete cascade,
   external_id        text not null unique,          -- invoice_number yang dikirim ke DOKU
   gateway            text not null default 'doku',
   gateway_ref        text,                          -- token_id DOKU Checkout
-  plan              text not null default 'pro' check (plan in ('pro')),
+  plan               text not null default 'pro' check (plan in ('pro')),
   period             text not null check (period in ('monthly', 'yearly')),
   amount             bigint not null check (amount > 0),
   currency           text not null default 'IDR',
@@ -54,28 +57,18 @@ create table if not exists public.payments (
   updated_at         timestamptz not null default now()
 );
 
--- Bila versi lama (kolom Xendit) sudah sempat dijalankan, sesuaikan skemanya
-do $$
-begin
-  if exists (select 1 from information_schema.columns
-             where table_schema = 'public' and table_name = 'payments' and column_name = 'xendit_invoice_id') then
-    alter table public.payments drop constraint if exists payments_xendit_invoice_id_key;
-    alter table public.payments rename column xendit_invoice_id to gateway_ref;
-  end if;
-end $$;
-alter table public.payments add column if not exists gateway text not null default 'doku';
+create index if not exists membership_payments_user_created_idx
+  on public.membership_payments (user_id, created_at desc);
 
-create index if not exists payments_user_created_idx on public.payments (user_id, created_at desc);
-
-drop trigger if exists payments_updated_at on public.payments;
-create trigger payments_updated_at
-  before update on public.payments
+drop trigger if exists membership_payments_updated_at on public.membership_payments;
+create trigger membership_payments_updated_at
+  before update on public.membership_payments
   for each row execute function public.set_updated_at();
 
-alter table public.payments enable row level security;
+alter table public.membership_payments enable row level security;
 
-drop policy if exists "payments_select_own" on public.payments;
-create policy "payments_select_own" on public.payments
+drop policy if exists "membership_payments_select_own" on public.membership_payments;
+create policy "membership_payments_select_own" on public.membership_payments
   for select to authenticated using ((select auth.uid()) = user_id);
 
 -- ---------- Aktivasi atomik & idempoten ----------
@@ -102,7 +95,7 @@ declare
   v_add     interval;
   v_expires timestamptz;
 begin
-  update payments
+  update membership_payments
      set status = 'paid',
          paid_at = coalesce(p_paid_at, now()),
          gateway_ref = coalesce(gateway_ref, p_gateway_ref),

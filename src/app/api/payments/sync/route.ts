@@ -17,7 +17,7 @@ export async function POST() {
   if (!data.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: pending } = await admin
-    .from("payments")
+    .from("membership_payments")
     .select("external_id")
     .eq("user_id", data.user.id)
     .eq("status", "pending")
