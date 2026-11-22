@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { RefreshCw, Trash2, TriangleAlert, Wallet } from "lucide-react";
+import { Plus, RefreshCw, Trash2, TriangleAlert, Wallet, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/misc";
@@ -20,6 +20,7 @@ export function PortfolioView() {
   const { holdings, ready, removeHolding, clear } = usePortfolio();
   const { data: market, loading, error, updatedAt, refresh } = useStockList();
   const [view, setView] = useState<"sector" | "stock">("stock");
+  const [showForm, setShowForm] = useState(false);
 
   const rows = useMemo(() => {
     const bySymbol = new Map((market ?? []).map((s) => [s.symbol, s]));
@@ -70,9 +71,32 @@ export function PortfolioView() {
       .filter((s) => s.pct > SECTOR_LIMIT);
   }, [rows, totals.value]);
 
+  const header = (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Portofolio Saya</h1>
+        <p className="text-sm text-muted-foreground">
+          Catat saham yang kamu miliki untuk memantau nilai pasar, untung/rugi, dan diversifikasi.
+        </p>
+      </div>
+      {/* Saat kosong, tombol utama ada di kartu "Portofolio masih kosong" (hindari 2 CTA yang sama) */}
+      {ready && (holdings.length > 0 || showForm) && (
+        <Button
+          variant={showForm ? "outline" : "default"}
+          onClick={() => setShowForm((v) => !v)}
+          aria-expanded={showForm}
+          aria-controls="add-holding"
+        >
+          {showForm ? <X /> : <Plus />} {showForm ? "Tutup" : "Tambah Portofolio"}
+        </Button>
+      )}
+    </div>
+  );
+
   if (!ready) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-5">
+        {header}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
         </div>
@@ -83,28 +107,46 @@ export function PortfolioView() {
 
   return (
     <div className="space-y-5">
+      {header}
+
+      {/* Form muncul tepat di bawah tombol yang membukanya */}
+      {showForm && (
+        <Card id="add-holding">
+          <CardHeader className="flex-row items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Tambah Saham</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Membeli saham yang sama lagi? Tambahkan saja — harga rata-rata dihitung otomatis.
+              </p>
+            </div>
+            <Button variant="ghost" size="icon-sm" aria-label="Tutup form" onClick={() => setShowForm(false)}>
+              <X />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <PortfolioForm autoFocus onDone={() => setShowForm(false)} />
+          </CardContent>
+        </Card>
+      )}
+
       <StorageBanner />
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Tambah Saham</CardTitle>
-          <p className="text-xs text-muted-foreground">Membeli saham yang sama lagi? Tambahkan saja — harga rata-rata dihitung otomatis.</p>
-        </CardHeader>
-        <CardContent>
-          <PortfolioForm />
-        </CardContent>
-      </Card>
 
       {holdings.length === 0 ? (
-        <Card className="flex flex-col items-center gap-3 p-10 text-center">
-          <span className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
-            <Wallet className="size-6" />
-          </span>
-          <p className="font-semibold">Portofolio masih kosong</p>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Tambahkan saham pertamamu di atas, atau cari ide dari{" "}
-            <Link href="/screener?tab=fundamental" className="font-medium text-primary hover:underline">screener fundamental</Link>.
-          </p>
-        </Card>
+        !showForm && (
+          <Card className="flex flex-col items-center gap-3 p-10 text-center">
+            <span className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
+              <Wallet className="size-6" />
+            </span>
+            <p className="font-semibold">Portofolio masih kosong</p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Catat saham pertamamu, atau cari ide dari{" "}
+              <Link href="/screener?tab=fundamental" className="font-medium text-primary hover:underline">screener fundamental</Link>.
+            </p>
+            <Button className="mt-1" onClick={() => setShowForm(true)}>
+              <Plus /> Tambah saham pertama
+            </Button>
+          </Card>
+        )
       ) : (
         <>
           {/* Ringkasan */}

@@ -11,11 +11,14 @@ export function PortfolioForm({
   defaultSymbol = "",
   defaultPrice,
   lockSymbol = false,
+  autoFocus = false,
   onDone,
 }: {
   defaultSymbol?: string;
   defaultPrice?: number;
   lockSymbol?: boolean;
+  /** Fokuskan kolom kode saham saat form muncul */
+  autoFocus?: boolean;
   onDone?: (symbol: string) => void;
 }) {
   const { addHolding } = usePortfolio();
@@ -53,6 +56,7 @@ export function PortfolioForm({
           <Label htmlFor="pf-symbol">Kode saham</Label>
           <Input
             id="pf-symbol"
+            autoFocus={autoFocus && !lockSymbol}
             list={lockSymbol ? undefined : "pf-symbols"}
             value={symbol}
             disabled={lockSymbol}

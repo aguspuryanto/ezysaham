@@ -14,7 +14,8 @@ type Billing = "monthly" | "yearly";
 export function PricingCards({ paymentsEnabled }: { paymentsEnabled: boolean }) {
   const [billing, setBilling] = useState<Billing>("yearly");
   const { user, configured } = useAuth();
-  const perMonth = billing === "monthly" ? PRO_PRICE.monthly : Math.round(PRO_PRICE.yearly / 12);
+  const yearly = billing === "yearly";
+  const perMonthOfYearly = Math.round(PRO_PRICE.yearly / 12);
 
   return (
     <section className="space-y-6">
@@ -70,13 +71,13 @@ export function PricingCards({ paymentsEnabled }: { paymentsEnabled: boolean }) 
           <p className="mt-1 text-sm text-muted-foreground">Untuk kamu yang merasa terbantu dan ingin EzySaham terus berkembang.</p>
           <p className="mt-5 flex items-baseline gap-1">
             <span className="text-sm font-semibold text-muted-foreground">Rp</span>
-            <span className="text-4xl font-bold tracking-tight text-primary tabular-nums">{formatPrice(perMonth)}</span>
-            <span className="text-sm text-muted-foreground">/bulan</span>
+            <span className="text-4xl font-bold tracking-tight text-primary tabular-nums">{formatPrice(PRO_PRICE[billing])}</span>
+            <span className="text-sm text-muted-foreground">{yearly ? "/tahun" : "/bulan"}</span>
           </p>
           <p className="mt-1 h-5 text-xs text-muted-foreground">
-            {billing === "yearly" ? (
+            {yearly ? (
               <>
-                Dibayar Rp{formatPrice(PRO_PRICE.yearly)} per tahun ·{" "}
+                Setara Rp{formatPrice(perMonthOfYearly)}/bulan ·{" "}
                 <span className="line-through">Rp{formatPrice(PRO_PRICE.monthly * 12)}</span>
               </>
             ) : (

@@ -9,9 +9,9 @@ export interface PlanFeature {
 }
 
 export const PRO_PRICE = {
-  monthly: 49_000,
-  /** Total per tahun (setara Rp39.000/bulan) */
-  yearly: 468_000,
+  monthly: 19_000,
+  /** Total per tahun (setara ±Rp15.800/bulan, gratis 2 bulan) */
+  yearly: 190_000,
 };
 
 export const STARTER_FEATURES: PlanFeature[] = [
