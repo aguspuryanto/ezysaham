@@ -26,7 +26,7 @@ export function UserMenu() {
   if (!user) {
     return (
       <Link href="/login" className={buttonClass("outline", "sm")}>
-        <LogIn /> <span className="hidden sm:inline">Masuk</span>
+        <LogIn /> <span className="hidden sm:inline">Masuk / Daftar</span>
       </Link>
     );
   }

@@ -82,9 +82,10 @@ export function LoginForm() {
           <ChartCandlestick className="size-7" />
         </span>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Masuk ke EzySaham</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Masuk atau Daftar</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Tanpa password. Kami kirim link login ke email kamu. Portofolio tersimpan di akun dan bisa diakses dari perangkat mana pun.
+            Tanpa password. Cukup masukkan email — kami kirim link untuk masuk. Belum punya akun? Akun dibuat otomatis saat kamu
+            membuka link pertama kali. Portofolio tersimpan di akun dan bisa diakses dari perangkat mana pun.
           </p>
         </div>
       </div>
@@ -134,7 +135,7 @@ export function LoginForm() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={status === "sending" || !email.trim()}>
-              {status === "sending" ? "Mengirim…" : "Kirim link login"}
+              {status === "sending" ? "Mengirim…" : "Kirim link masuk"}
             </Button>
           </form>
         )}
