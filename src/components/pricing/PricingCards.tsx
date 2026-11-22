@@ -1,16 +1,17 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Clock, Heart } from "lucide-react";
+import { BadgeCheck, Check, Clock, Heart, Loader2 } from "lucide-react";
 import { Button, buttonClass } from "@/components/ui/button";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { useMembership } from "@/hooks/useMembership";
 import { PRO_FEATURES, PRO_PRICE, STARTER_FEATURES, yearlySavingPct, type PlanFeature } from "@/lib/plans";
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Billing = "monthly" | "yearly";
 
-export function PricingCards() {
+export function PricingCards({ paymentsEnabled }: { paymentsEnabled: boolean }) {
   const [billing, setBilling] = useState<Billing>("yearly");
   const { user, configured } = useAuth();
   const perMonth = billing === "monthly" ? PRO_PRICE.monthly : Math.round(PRO_PRICE.yearly / 12);
@@ -82,15 +83,80 @@ export function PricingCards() {
               "Dibayar per bulan, tanpa perpanjangan otomatis."
             )}
           </p>
-          {/* Tombol bayar diaktifkan setelah payment gateway terpasang */}
-          <Button className="mt-5 w-full" disabled title="Pembayaran segera tersedia">
-            <Heart /> Dukung dengan Pro
-          </Button>
-          <p className="mt-2 text-center text-xs text-muted-foreground">Pembayaran segera tersedia.</p>
+          <ProAction billing={billing} paymentsEnabled={paymentsEnabled} />
           <FeatureList features={PRO_FEATURES} label="Semua di Starter, plus" />
         </div>
       </div>
     </section>
+  );
+}
+
+/** Tombol bayar Pro + status Pro aktif. */
+function ProAction({ billing, paymentsEnabled }: { billing: Billing; paymentsEnabled: boolean }) {
+  const { user, configured, loading: authLoading } = useAuth();
+  const { isPro, expiresAt } = useMembership();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const checkout = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period: billing }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Gagal membuat tagihan.");
+      window.location.href = data.url; // halaman pembayaran Xendit
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Terjadi kesalahan.");
+      setBusy(false);
+    }
+  };
+
+  const until = expiresAt ? new Date(expiresAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "";
+
+  if (!paymentsEnabled || !configured) {
+    return (
+      <>
+        <Button className="mt-5 w-full" disabled title="Pembayaran segera tersedia">
+          <Heart /> Dukung dengan Pro
+        </Button>
+        <p className="mt-2 text-center text-xs text-muted-foreground">Pembayaran segera tersedia.</p>
+      </>
+    );
+  }
+
+  if (!authLoading && !user) {
+    return (
+      <>
+        <Link href="/login" className={cn(buttonClass("default"), "mt-5 w-full")}>
+          <Heart /> Masuk untuk mendukung
+        </Link>
+        <p className="mt-2 text-center text-xs text-muted-foreground">Pro terhubung ke akun emailmu.</p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {isPro && (
+        <p className="mt-5 flex items-center justify-center gap-1.5 rounded-lg bg-up-soft px-3 py-2 text-sm font-medium text-up">
+          <BadgeCheck className="size-4" /> Pro aktif sampai {until}
+        </p>
+      )}
+      <Button className={cn("w-full", isPro ? "mt-3" : "mt-5")} variant={isPro ? "outline" : "default"} onClick={checkout} disabled={busy || authLoading}>
+        {busy ? <Loader2 className="animate-spin" /> : <Heart />}
+        {busy ? "Membuka pembayaran…" : isPro ? `Perpanjang ${billing === "yearly" ? "1 tahun" : "1 bulan"}` : "Dukung dengan Pro"}
+      </Button>
+      {error ? (
+        <p role="alert" className="mt-2 text-center text-xs text-down">{error}</p>
+      ) : (
+        <p className="mt-2 text-center text-xs text-muted-foreground">QRIS · Virtual Account · E-wallet · Kartu — via Xendit</p>
+      )}
+    </>
   );
 }
 

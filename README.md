@@ -34,6 +34,28 @@ Tanpa env Supabase, website tetap berjalan dalam mode tamu (portofolio di localS
 Alur: `/login` → email berisi link → `/auth/callback` memverifikasi → valid: redirect ke `/`, tidak valid/kedaluwarsa: kembali ke `/login` dengan pesan error.
 Setelah login pertama, holding yang tersimpan di localStorage ditawarkan untuk diimpor ke akun.
 
+## Membership Pro (Xendit)
+
+Paket Pro bersifat sukarela: bayar sekali per periode (1 bulan / 1 tahun) lewat **Xendit Invoice**, tanpa auto-debit.
+Selama env di bawah belum lengkap, tombol bayar di `/harga` tetap nonaktif.
+
+1. **Supabase → SQL Editor** → jalankan `supabase/migrations/0002_memberships.sql` (tabel `memberships`, `payments`, fungsi `activate_membership`).
+2. **Supabase → Project Settings → API Keys** → salin *secret key* ke `SUPABASE_SECRET_KEY` (server only).
+3. **Xendit Dashboard** (mulai di mode *Test*):
+   - Settings → API Keys → buat *Secret key* dengan izin **Money-in: Write** → `XENDIT_SECRET_KEY`
+   - Settings → Webhooks → salin **Verification token** → `XENDIT_CALLBACK_TOKEN`
+   - Settings → Webhooks → **Invoices paid** → `https://ezysaham.vercel.app/api/webhooks/xendit`
+4. Isi ketiga env di `.env.local` dan **Vercel → Environment Variables**, lalu redeploy.
+5. Uji: login → `/harga` → *Dukung dengan Pro* → bayar dengan metode simulasi Xendit (mode Test) → kembali ke `/harga?status=success` → status "Pro aktif sampai …".
+
+Alur: `/api/checkout` (buat invoice, harga dari server) → halaman bayar Xendit → webhook `/api/webhooks/xendit`
+(cek `x-callback-token` → verifikasi ulang invoice ke API Xendit → `activate_membership`, atomik & idempoten).
+Harga & fitur paket: `src/lib/plans.ts`.
+
+> Satu akun Xendit hanya punya satu URL webhook Invoice. Jika akun yang sama dipakai aplikasi lain,
+> webhook ini mengabaikan invoice yang `external_id`-nya tidak diawali `ezysaham-`, tetapi aplikasi lain
+> tidak akan menerima webhook-nya — gunakan akun/sub-account Xendit terpisah.
+
 ## Struktur
 
 ```

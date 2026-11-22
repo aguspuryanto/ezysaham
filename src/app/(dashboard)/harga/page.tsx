@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { HandHeart, RefreshCcw, ShieldCheck, Sprout } from "lucide-react";
 import { PricingCards } from "@/components/pricing/PricingCards";
+import { PaymentStatus } from "@/components/pricing/PaymentStatus";
+import { isXenditConfigured } from "@/lib/xendit";
+import { isSupabaseAdminConfigured } from "@/lib/supabase/admin";
+
+// Tombol bayar aktif hanya bila Xendit & Supabase service key sudah diisi di env
+const paymentsEnabled = isXenditConfigured && isSupabaseAdminConfigured;
 
 export const metadata: Metadata = {
   title: "Paket Membership",
@@ -42,7 +49,11 @@ export default function PricingPage() {
         </p>
       </section>
 
-      <PricingCards />
+      <Suspense>
+        <PaymentStatus />
+      </Suspense>
+
+      <PricingCards paymentsEnabled={paymentsEnabled} />
 
       <section className="grid gap-3 sm:grid-cols-3">
         {[

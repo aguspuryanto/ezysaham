@@ -39,6 +39,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Lewati aset statis, gambar, dan proxy data saham (tidak butuh session).
-    "/((?!_next/static|_next/image|api/stocks|icon.svg|manifest.webmanifest|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|api/stocks|api/webhooks|icon.svg|manifest.webmanifest|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

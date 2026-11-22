@@ -1,13 +1,15 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LogIn, LogOut, UserRound } from "lucide-react";
+import { Heart, LogIn, LogOut, UserRound } from "lucide-react";
+import { useMembership } from "@/hooks/useMembership";
 import { Button, buttonClass } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/misc";
 import { useAuth } from "./AuthProvider";
 
 export function UserMenu() {
   const { user, loading, configured } = useAuth();
+  const { isPro } = useMembership();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -51,6 +53,11 @@ export function UserMenu() {
           <div className="px-2 py-1.5">
             <p className="text-xs text-muted-foreground">Masuk sebagai</p>
             <p className="truncate text-sm font-medium">{email}</p>
+            {isPro && (
+              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-bold text-primary">
+                <Heart className="size-3 fill-current" /> Pendukung Pro
+              </span>
+            )}
           </div>
           <Link href="/portfolio" onClick={() => setOpen(false)} className="block rounded-lg px-2 py-2 text-sm hover:bg-accent">
             Portofolio saya
