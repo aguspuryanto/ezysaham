@@ -14,11 +14,13 @@ import { PortfolioDonut } from "@/components/charts/PortfolioDonut";
 import { ChangePill } from "@/components/dashboard/ChangeText";
 import { PortfolioForm } from "./PortfolioForm";
 import { StorageBanner } from "./StorageBanner";
+import { SellForm } from "./SellForm";
+import { SalesHistory } from "./SalesHistory";
 
 const SECTOR_LIMIT = 40;
 
 export function PortfolioView() {
-  const { holdings, ready, removeHolding, clear } = usePortfolio();
+  const { holdings, sales, ready, removeHolding, clear } = usePortfolio();
   const { data: market, loading: marketLoading, error, updatedAt: marketUpdatedAt, refresh: refreshMarket } = useStockList();
   const live = useLiveQuotes(holdings.map((h) => h.symbol));
   const loading = marketLoading || live.loading;
@@ -29,6 +31,12 @@ export function PortfolioView() {
   };
   const [view, setView] = useState<"sector" | "stock">("stock");
   const [showForm, setShowForm] = useState(false);
+  const [selling, setSelling] = useState<string | null>(null);
+  const openSell = (symbol: string) => {
+    setShowForm(false);
+    setSelling(symbol);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const rows = useMemo(() => {
     const bySymbol = new Map((market ?? []).map((s) => [s.symbol, s]));
@@ -81,6 +89,8 @@ export function PortfolioView() {
       .filter((s) => s.pct > SECTOR_LIMIT);
   }, [rows, totals.value]);
 
+  const sellingRow = selling ? rows.find((r) => r.symbol === selling) : undefined;
+
   const header = (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
@@ -93,7 +103,10 @@ export function PortfolioView() {
       {ready && (holdings.length > 0 || showForm) && (
         <Button
           variant={showForm ? "outline" : "default"}
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => {
+            setSelling(null);
+            setShowForm((v) => !v);
+          }}
           aria-expanded={showForm}
           aria-controls="add-holding"
         >
@@ -139,6 +152,25 @@ export function PortfolioView() {
         </Card>
       )}
 
+      {sellingRow && (
+        <Card id="sell-holding">
+          <CardHeader className="flex-row items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Jual {sellingRow.symbol}</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Penjualan tercatat di Riwayat Penjualan beserta untung/ruginya. Bila terjual semua, saham hilang dari kepemilikan.
+              </p>
+            </div>
+            <Button variant="ghost" size="icon-sm" aria-label="Tutup form jual" onClick={() => setSelling(null)}>
+              <X />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <SellForm key={sellingRow.symbol} holding={sellingRow} currentPrice={sellingRow.price} onDone={() => setSelling(null)} />
+          </CardContent>
+        </Card>
+      )}
+
       <StorageBanner />
 
       {holdings.length === 0 ? (
@@ -147,13 +179,13 @@ export function PortfolioView() {
             <span className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
               <Wallet className="size-6" />
             </span>
-            <p className="font-semibold">Portofolio masih kosong</p>
+            <p className="font-semibold">{sales.length ? "Tidak ada saham yang sedang dimiliki" : "Portofolio masih kosong"}</p>
             <p className="max-w-sm text-sm text-muted-foreground">
-              Catat saham pertamamu, atau cari ide dari{" "}
+              {sales.length ? "Semua saham sudah terjual — lihat hasilnya di Riwayat Penjualan. Catat pembelian baru, atau cari ide dari " : "Catat saham pertamamu, atau cari ide dari "}
               <Link href="/screener?tab=fundamental" className="font-medium text-primary hover:underline">screener fundamental</Link>.
             </p>
             <Button className="mt-1" onClick={() => setShowForm(true)}>
-              <Plus /> Tambah saham pertama
+              <Plus /> {sales.length ? "Tambah saham" : "Tambah saham pertama"}
             </Button>
           </Card>
         )
@@ -203,7 +235,7 @@ export function PortfolioView() {
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground"
-                  onClick={() => confirm("Hapus semua saham dari portofolio?") && clear()}
+                  onClick={() => confirm("Hapus semua saham dari portofolio? (Riwayat penjualan tidak ikut terhapus.)") && clear()}
                 >
                   Hapus semua
                 </Button>
@@ -242,9 +274,12 @@ export function PortfolioView() {
                             <p className="text-xs">{formatPercent(r.plPct)}</p>
                           </td>
                           <td className="px-3 py-2.5">
-                            <Button variant="ghost" size="icon-sm" aria-label={`Hapus ${r.symbol}`} onClick={() => removeHolding(r.symbol)}>
-                              <Trash2 />
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="outline" size="sm" onClick={() => openSell(r.symbol)}>Jual</Button>
+                              <Button variant="ghost" size="icon-sm" aria-label={`Hapus ${r.symbol}`} title="Hapus (salah input) — tidak tercatat sebagai penjualan" onClick={() => removeHolding(r.symbol)}>
+                                <Trash2 />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -271,9 +306,10 @@ export function PortfolioView() {
                           <Trash2 />
                         </Button>
                       </div>
-                      <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+                      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                         <span>Harga {formatPrice(r.price)} <ChangePill value={r.dayChange} className="ml-1 min-w-0" /></span>
                         <span className="tabular-nums">Nilai {formatRupiah(r.value, true)}</span>
+                        <Button variant="outline" size="sm" onClick={() => openSell(r.symbol)}>Jual</Button>
                       </div>
                     </li>
                   ))}
@@ -306,6 +342,8 @@ export function PortfolioView() {
           </div>
         </>
       )}
+
+      <SalesHistory />
     </div>
   );
 }

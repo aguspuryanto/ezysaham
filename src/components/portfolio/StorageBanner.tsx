@@ -8,18 +8,23 @@ import { usePortfolio } from "@/hooks/usePortfolio";
 /** Menjelaskan di mana portofolio disimpan + tawaran impor data lokal setelah login. */
 export function StorageBanner() {
   const { configured, user } = useAuth();
-  const { mode, syncing, error, pendingImport, importLocal, dismissImport, retry } = usePortfolio();
+  const { mode, syncing, error, pendingImport, pendingSales, importLocal, dismissImport, retry } = usePortfolio();
 
   return (
     <div className="space-y-3">
-      {pendingImport.length > 0 && (
+      {(pendingImport.length > 0 || pendingSales.length > 0) && (
         <div className="flex flex-col gap-3 rounded-xl border border-primary/40 bg-primary/5 p-4 sm:flex-row sm:items-center">
           <Upload className="size-5 shrink-0 text-primary" />
           <div className="flex-1 text-sm">
             <p className="font-semibold">Impor portofolio dari perangkat ini?</p>
             <p className="text-muted-foreground">
-              Ada {pendingImport.length} saham ({pendingImport.map((h) => h.symbol).slice(0, 5).join(", ")}
-              {pendingImport.length > 5 ? ", …" : ""}) yang tersimpan di browser ini sebelum login. Saham yang sama akan digabung dengan harga rata-rata.
+              {pendingImport.length > 0 && (
+                <>
+                  Ada {pendingImport.length} saham ({pendingImport.map((h) => h.symbol).slice(0, 5).join(", ")}
+                  {pendingImport.length > 5 ? ", …" : ""}) yang tersimpan di browser ini sebelum login. Saham yang sama akan digabung dengan harga rata-rata.{" "}
+                </>
+              )}
+              {pendingSales.length > 0 && <>{pendingSales.length} catatan penjualan juga akan ikut diimpor.</>}
             </p>
           </div>
           <div className="flex gap-2">
