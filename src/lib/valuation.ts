@@ -87,5 +87,7 @@ export function fairValues(stock: Stock, all: Stock[]) {
     list.push({ method: "PBV sektor", detail: `${peers.pbv.toFixed(2).replace(".", ",")}x × BVPS`, value: peers.pbv * graham.bvps });
   }
   const average = list.length ? list.reduce((a, f) => a + f.value, 0) / list.length : null;
-  return { graham, peers, list, average };
+  /** Median metode — tahan terhadap satu metode yang meleset jauh (mis. PBV sektor bank). */
+  const middle = median(list.map((f) => f.value));
+  return { graham, peers, list, average, median: middle };
 }
