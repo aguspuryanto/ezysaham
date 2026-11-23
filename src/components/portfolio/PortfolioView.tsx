@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/misc";
 import { LOT_SIZE, usePortfolio } from "@/hooks/usePortfolio";
 import { useStockList } from "@/hooks/useStockList";
+import { useLiveQuotes } from "@/hooks/useLiveQuotes";
 import { changeColor, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PortfolioDonut } from "@/components/charts/PortfolioDonut";
@@ -18,7 +19,14 @@ const SECTOR_LIMIT = 40;
 
 export function PortfolioView() {
   const { holdings, ready, removeHolding, clear } = usePortfolio();
-  const { data: market, loading, error, updatedAt, refresh } = useStockList();
+  const { data: market, loading: marketLoading, error, updatedAt: marketUpdatedAt, refresh: refreshMarket } = useStockList();
+  const live = useLiveQuotes(holdings.map((h) => h.symbol));
+  const loading = marketLoading || live.loading;
+  const updatedAt = Math.max(marketUpdatedAt ?? 0, live.updatedAt ?? 0) || null;
+  const refresh = () => {
+    void refreshMarket();
+    void live.refresh();
+  };
   const [view, setView] = useState<"sector" | "stock">("stock");
   const [showForm, setShowForm] = useState(false);
 
@@ -26,7 +34,9 @@ export function PortfolioView() {
     const bySymbol = new Map((market ?? []).map((s) => [s.symbol, s]));
     return holdings.map((h) => {
       const m = bySymbol.get(h.symbol);
-      const price = m?.price ?? null;
+      const q = live.quotes.get(h.symbol);
+      // Harga intraday Yahoo (60 dtk) lebih segar daripada daftar Pasardana (5 mnt).
+      const price = q?.price ?? m?.price ?? null;
       const cost = h.avgPrice * h.shares;
       const value = price != null ? price * h.shares : null;
       const pl = value != null ? value - cost : null;
@@ -35,14 +45,14 @@ export function PortfolioView() {
         name: m?.name ?? "",
         sector: m?.sector ?? "Lainnya",
         price,
-        dayChange: m?.change ?? null,
+        dayChange: q?.change ?? m?.change ?? null,
         cost,
         value,
         pl,
         plPct: pl != null && cost ? (pl / cost) * 100 : null,
       };
     });
-  }, [holdings, market]);
+  }, [holdings, market, live.quotes]);
 
   const totals = useMemo(() => {
     const cost = rows.reduce((a, r) => a + r.cost, 0);
@@ -164,7 +174,7 @@ export function PortfolioView() {
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              {error ? <span className="text-down">{error}</span> : updatedAt ? `Harga diperbarui ${new Date(updatedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : "Memuat harga…"}
+              {error ? <span className="text-down">{error}</span> : updatedAt ? `Harga diperbarui ${new Date(updatedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}${live.marketOpen ? " · otomatis tiap menit selama jam bursa" : " · bursa tutup"}` : "Memuat harga…"}
             </span>
             <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw className={cn(loading && "animate-spin")} /> Refresh harga
