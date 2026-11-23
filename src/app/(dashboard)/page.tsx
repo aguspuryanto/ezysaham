@@ -1,17 +1,18 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { Activity, Flame, Gem, Layers, Rocket, TrendingDown, TrendingUp } from "lucide-react";
-import { MARKET_INDICES, fetchMarketIndex, fetchStocks } from "@/lib/api";
+import { MARKET_INDICES, fetchMarketIndex, fetchQuotes, fetchStocks, withQuotes } from "@/lib/api";
 import { BreadthCard, IndexCard, IndexTrendCard, marketRegime } from "@/components/dashboard/MarketStats";
 import { SCREENERS, fundamentalScore, marketBreadth, sectorPerformance } from "@/lib/screener";
 import { formatCompact, formatDate, formatPercent } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MarketTicker } from "@/components/dashboard/MarketTicker";
+import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { ScreenerCard } from "@/components/dashboard/ScreenerCard";
 import { DividendCard, ScreenerCardSkeleton } from "@/components/dashboard/DividendCard";
 import { cn } from "@/lib/utils";
 
-export const revalidate = 300;
+export const revalidate = 60;
 
 const ICONS: Record<string, React.ReactNode> = {
   gainer: <TrendingUp className="size-4 text-up" />,
@@ -29,7 +30,9 @@ export default async function MarketOverviewPage() {
   ]);
   const breadth = marketBreadth(stocks);
   const sectors = sectorPerformance(stocks);
-  const bigCaps = [...stocks].filter((s) => s.volume > 0).sort((a, b) => b.marketCap - a.marketCap).slice(0, 20);
+  const topCaps = [...stocks].filter((s) => s.volume > 0).sort((a, b) => b.marketCap - a.marketCap).slice(0, 20);
+  // Pasardana = data penutupan sebelumnya; harga ticker ditimpa harga intraday Yahoo.
+  const bigCaps = withQuotes(topCaps, await fetchQuotes(topCaps.map((s) => s.symbol)).catch(() => []));
   const capWeighted = sectors.reduce((a, s) => a + s.change * s.marketCap, 0) / (sectors.reduce((a, s) => a + s.marketCap, 0) || 1);
 
   const byKey = Object.fromEntries(SCREENERS.map((s) => [s.key, s.run(stocks)]));
@@ -37,6 +40,7 @@ export default async function MarketOverviewPage() {
 
   return (
     <div className="space-y-6">
+      <AutoRefresh />
       <section className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Ringkasan Pasar</h1>

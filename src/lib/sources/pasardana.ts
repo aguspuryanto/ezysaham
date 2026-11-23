@@ -8,7 +8,7 @@ export const PASARDANA_LIST_URL =
 export async function fetchPasardanaStocks(): Promise<RawStock[]> {
   const res = await fetch(PASARDANA_LIST_URL, {
     headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
-    next: { revalidate: 300 }, // 5 menit
+    next: { revalidate: 60 }, // 60 detik
   });
   if (!res.ok) throw new Error(`Gagal memuat data saham (Pasardana HTTP ${res.status})`);
   const data = (await res.json()) as unknown;

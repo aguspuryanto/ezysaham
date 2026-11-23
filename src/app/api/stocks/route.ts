@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
       ? stocks.map((s) => ({ symbol: s.symbol, name: s.name, sector: s.sector, price: s.price, change: s.change }))
       : stocks;
     return NextResponse.json(body, {
-      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
+      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
     });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal memuat data" }, { status: 502 });

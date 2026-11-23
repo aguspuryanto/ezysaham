@@ -51,7 +51,7 @@ export function normalizeStock(r: RawStock): Stock {
   };
 }
 
-/** Daftar semua saham (Pasardana). Cache 5 menit. */
+/** Daftar semua saham (Pasardana). Cache 60 detik. */
 export async function fetchStocks(): Promise<Stock[]> {
   const raw = await fetchPasardanaStocks();
   return raw.filter((r) => r.Code && r.Last != null).map(normalizeStock);
@@ -88,9 +88,43 @@ export const MARKET_INDICES = [
   { symbol: "IDR=X", name: "USD/IDR" },
 ] as const;
 
-/** Indeks / kurs dengan data harian untuk sparkline & chart. Cache 15 menit. */
+/** Harga intraday terkini dari Yahoo, maks. 60 simbol. */
+export interface Quote {
+  symbol: string;
+  price: number;
+  change: number | null;
+}
+
+/**
+ * Harga intraday (Yahoo, tertunda ±10 menit) untuk saham tertentu. Pasardana hanya
+ * memberi data penutupan hari bursa sebelumnya, jadi ini dipakai untuk harga live.
+ * Cache 30 detik: dengan stale-while-revalidate, data yang tampil maks. ±1 siklus refresh.
+ */
+export async function fetchQuotes(symbols: string[]): Promise<Quote[]> {
+  const list = [...new Set(symbols.map((s) => s.toUpperCase()))].slice(0, 60);
+  const charts = await Promise.all(list.map((s) => fetchYahooChart(s, "5d", 30)));
+  return charts.flatMap((c, i) =>
+    c && c.price != null
+      ? [{ symbol: list[i], price: c.price, change: c.prevClose ? ((c.price - c.prevClose) / c.prevClose) * 100 : null }]
+      : [],
+  );
+}
+
+/** Timpa harga & perubahan harian saham dengan harga intraday Yahoo bila tersedia. */
+export function withQuotes(stocks: Stock[], quotes: Quote[]): Stock[] {
+  const map = new Map(quotes.map((q) => [q.symbol, q]));
+  return stocks.map((s) => {
+    const q = map.get(s.symbol);
+    if (!q) return s;
+    const change = q.change ?? s.change;
+    const prevClose = q.change != null ? q.price / (1 + q.change / 100) : s.prevClose;
+    return { ...s, price: q.price, change, changeValue: q.price - prevClose };
+  });
+}
+
+/** Indeks / kurs dengan data harian untuk sparkline & chart. Cache 30 detik. */
 export async function fetchMarketIndex(symbol: string, name: string, range = "6mo"): Promise<MarketIndex | null> {
-  const chart = await fetchYahooChart(symbol, range, 900);
+  const chart = await fetchYahooChart(symbol, range, 30);
   if (!chart || chart.price == null || !chart.bars.length) return null;
   const prev = chart.prevClose ?? chart.price;
   return {
