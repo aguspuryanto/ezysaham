@@ -5,6 +5,7 @@ import { ArrowLeft, Coins, Gauge, Lightbulb, LineChart } from "lucide-react";
 import { fetchFundamentals, fetchHistory, fetchStock } from "@/lib/api";
 import { summarizeTechnicals, type Signal } from "@/lib/indicators";
 import { fundamentalScore } from "@/lib/screener";
+import { grahamNumber } from "@/lib/valuation";
 import { formatCompact, formatDate, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/misc";
@@ -38,6 +39,7 @@ export default async function StockDetailPage({ params }: Props) {
 
   const tech = summarizeTechnicals(history);
   const score = fundamentalScore(stock);
+  const graham = grahamNumber(stock);
   const range52 =
     stock.high52 && stock.low52 && stock.high52 > stock.low52
       ? ((stock.price - stock.low52) / (stock.high52 - stock.low52)) * 100
@@ -169,6 +171,46 @@ export default async function StockDetailPage({ params }: Props) {
               <Ratio label="Pertumbuhan laba" hint="Year over year." value={fundamentals?.earningsGrowth ?? null} fmt={(v) => formatPercent(v, 1)} rate={(v) => (v >= 10 ? "good" : v >= 0 ? "ok" : "bad")} />
               <Ratio label="Beta 1 tahun" hint="Sensitivitas terhadap pasar. >1 lebih fluktuatif." value={stock.beta} fmt={(v) => formatNumber(v, 2)} />
               <Ratio label="Free float" hint="Porsi saham yang beredar di publik." value={stock.freeFloat} fmt={(v) => `${formatNumber(v, 1)}%`} />
+            </div>
+
+            {/* Harga wajar — Graham Number */}
+            <div className="mt-4 rounded-xl border bg-muted/40 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Harga Wajar (Graham Number)</p>
+                  <p className="text-xs text-muted-foreground">√(22,5 × EPS × BVPS) — estimasi konservatif dari laba & nilai buku.</p>
+                </div>
+                {graham && (
+                  <div className="text-right">
+                    <p className="text-xl font-bold tabular-nums">{formatPrice(graham.fairValue)}</p>
+                    <p
+                      className={cn(
+                        "text-xs font-semibold tabular-nums",
+                        graham.marginOfSafety >= 0 ? "text-up" : "text-down",
+                      )}
+                    >
+                      {graham.marginOfSafety >= 0
+                        ? `Diskon ${formatNumber(graham.marginOfSafety, 1)}% dari harga wajar`
+                        : `Premium ${formatNumber((stock.price / graham.fairValue - 1) * 100, 1)}% di atas harga wajar`}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {graham ? (
+                <dl className="mt-3 grid grid-cols-3 gap-3 text-sm">
+                  <Metric label="EPS (Harga / PER)" value={formatNumber(graham.eps, 0)} />
+                  <Metric label="BVPS (Harga / PBV)" value={formatNumber(graham.bvps, 0)} />
+                  <Metric label="Harga sekarang" value={formatPrice(stock.price)} />
+                </dl>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Tidak dapat dihitung: butuh PER dan PBV positif (laba & ekuitas tidak boleh negatif).
+                </p>
+              )}
+              <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+                Cocok untuk perusahaan yang labanya stabil; kurang pas untuk saham bertumbuh tinggi, siklikal, atau bank.
+                Bandingkan juga dengan PER/PBV rata-rata sektornya. Bukan rekomendasi jual/beli.
+              </p>
             </div>
           </CardContent>
         </Card>
