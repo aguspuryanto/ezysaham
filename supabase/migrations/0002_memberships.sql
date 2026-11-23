@@ -7,8 +7,13 @@
 -- Penulisan HANYA dilakukan server (service role) dari webhook/checkout.
 -- User hanya bisa MEMBACA baris miliknya sendiri.
 
+-- Semua objek ezysaham ada di schema `ezysaham` (bukan `public`), karena project Supabase ini
+-- juga dipakai aplikasi lain. Schema ini harus ditambahkan ke Settings → Data API → Exposed schemas.
+create schema if not exists ezysaham;
+grant usage on schema ezysaham to authenticated, service_role;
+
 -- updated_at otomatis (aman dijalankan ulang)
-create or replace function public.set_updated_at()
+create or replace function ezysaham.set_updated_at()
 returns trigger language plpgsql as $$
 begin
   new.updated_at = now();
@@ -17,7 +22,7 @@ end;
 $$;
 
 -- ---------- Status membership per user ----------
-create table if not exists public.memberships (
+create table if not exists ezysaham.memberships (
   user_id     uuid primary key references auth.users (id) on delete cascade,
   plan        text not null default 'pro' check (plan in ('pro')),
   expires_at  timestamptz not null,
@@ -25,19 +30,19 @@ create table if not exists public.memberships (
   updated_at  timestamptz not null default now()
 );
 
-drop trigger if exists memberships_updated_at on public.memberships;
+drop trigger if exists memberships_updated_at on ezysaham.memberships;
 create trigger memberships_updated_at
-  before update on public.memberships
-  for each row execute function public.set_updated_at();
+  before update on ezysaham.memberships
+  for each row execute function ezysaham.set_updated_at();
 
-alter table public.memberships enable row level security;
+alter table ezysaham.memberships enable row level security;
 
-drop policy if exists "memberships_select_own" on public.memberships;
-create policy "memberships_select_own" on public.memberships
+drop policy if exists "memberships_select_own" on ezysaham.memberships;
+create policy "memberships_select_own" on ezysaham.memberships
   for select to authenticated using ((select auth.uid()) = user_id);
 
 -- ---------- Riwayat pembayaran membership ----------
-create table if not exists public.membership_payments (
+create table if not exists ezysaham.membership_payments (
   id                 uuid primary key default gen_random_uuid(),
   user_id            uuid not null references auth.users (id) on delete cascade,
   external_id        text not null unique,          -- invoice_number yang dikirim ke DOKU
@@ -58,24 +63,24 @@ create table if not exists public.membership_payments (
 );
 
 create index if not exists membership_payments_user_created_idx
-  on public.membership_payments (user_id, created_at desc);
+  on ezysaham.membership_payments (user_id, created_at desc);
 
-drop trigger if exists membership_payments_updated_at on public.membership_payments;
+drop trigger if exists membership_payments_updated_at on ezysaham.membership_payments;
 create trigger membership_payments_updated_at
-  before update on public.membership_payments
-  for each row execute function public.set_updated_at();
+  before update on ezysaham.membership_payments
+  for each row execute function ezysaham.set_updated_at();
 
-alter table public.membership_payments enable row level security;
+alter table ezysaham.membership_payments enable row level security;
 
-drop policy if exists "membership_payments_select_own" on public.membership_payments;
-create policy "membership_payments_select_own" on public.membership_payments
+drop policy if exists "membership_payments_select_own" on ezysaham.membership_payments;
+create policy "membership_payments_select_own" on ezysaham.membership_payments
   for select to authenticated using ((select auth.uid()) = user_id);
 
 -- ---------- Aktivasi atomik & idempoten ----------
 -- Dipanggil server saat transaksi SUCCESS. Bila sudah pernah diproses → return null (tidak dobel).
 -- Masa aktif diperpanjang dari tanggal berakhir saat ini (bila masih aktif) atau dari sekarang.
-drop function if exists public.activate_membership(text, text, bigint, timestamptz, text, text);
-create function public.activate_membership(
+drop function if exists ezysaham.activate_membership(text, text, bigint, timestamptz, text, text);
+create function ezysaham.activate_membership(
   p_external_id text,
   p_gateway_ref text,
   p_paid_amount bigint,
@@ -86,7 +91,7 @@ create function public.activate_membership(
 returns timestamptz
 language plpgsql
 security definer
-set search_path = public
+set search_path = ezysaham
 as $$
 declare
   v_user    uuid;
@@ -125,5 +130,9 @@ begin
 end;
 $$;
 
-revoke all on function public.activate_membership(text, text, bigint, timestamptz, text, text) from public, anon, authenticated;
-grant execute on function public.activate_membership(text, text, bigint, timestamptz, text, text) to service_role;
+revoke all on function ezysaham.activate_membership(text, text, bigint, timestamptz, text, text) from public, anon, authenticated;
+grant execute on function ezysaham.activate_membership(text, text, bigint, timestamptz, text, text) to service_role;
+
+-- Hak akses tabel: user hanya membaca (RLS), penulisan lewat service role
+grant select on ezysaham.memberships, ezysaham.membership_payments to authenticated;
+grant all on ezysaham.memberships, ezysaham.membership_payments to service_role;

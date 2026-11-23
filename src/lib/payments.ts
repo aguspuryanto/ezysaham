@@ -1,5 +1,5 @@
 import "server-only";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { EzyClient } from "@/lib/supabase/config";
 import type { DokuTransaction } from "./doku";
 
 export type ApplyResult = "activated" | "already_processed" | "marked" | "ignored";
@@ -9,7 +9,7 @@ export type ApplyResult = "activated" | "already_processed" | "marked" | "ignore
  * SUCCESS → activate_membership (atomik & idempoten, memvalidasi jumlah bayar).
  * FAILED / EXPIRED / TIMEOUT → tandai pembayaran pending.
  */
-export async function applyTransaction(admin: SupabaseClient, tx: DokuTransaction): Promise<ApplyResult> {
+export async function applyTransaction(admin: EzyClient, tx: DokuTransaction): Promise<ApplyResult> {
   if (tx.status === "SUCCESS") {
     const { data, error } = await admin.rpc("activate_membership", {
       p_external_id: tx.invoiceNumber,
