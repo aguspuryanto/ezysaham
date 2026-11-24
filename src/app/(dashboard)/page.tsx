@@ -10,6 +10,7 @@ import { MarketTicker } from "@/components/dashboard/MarketTicker";
 import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { ScreenerCard } from "@/components/dashboard/ScreenerCard";
 import { DividendCard, ScreenerCardSkeleton } from "@/components/dashboard/DividendCard";
+import { SectorBars } from "@/components/dashboard/SectorBars";
 import { cn } from "@/lib/utils";
 
 export const revalidate = 60;
@@ -126,11 +127,16 @@ export default async function MarketOverviewPage() {
       {/* Sektor */}
       <section>
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Activity className="size-4 text-primary" /> Kinerja Sektor
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Perubahan harian tertimbang kapitalisasi pasar.</p>
+          <CardHeader className="flex-row items-start justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="size-4 text-primary" /> Kinerja Sektor
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Perubahan harian tertimbang kapitalisasi pasar. Klik sektor untuk melihat sahamnya.</p>
+            </div>
+            <Link href="/sektor" className="shrink-0 text-xs font-medium text-primary hover:underline">
+              Semua sektor
+            </Link>
           </CardHeader>
           <CardContent>
             <SectorBars sectors={sectors} />
@@ -155,31 +161,5 @@ function StatCard({ label, value, hint, tone }: { label: string; value: string; 
       </p>
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </Card>
-  );
-}
-
-function SectorBars({ sectors }: { sectors: ReturnType<typeof sectorPerformance> }) {
-  const max = Math.max(...sectors.map((s) => Math.abs(s.change)), 0.5);
-  return (
-    <ul className="space-y-2.5">
-      {sectors.map((s) => {
-        const w = (Math.abs(s.change) / max) * 50;
-        return (
-          <li key={s.sector} className="grid grid-cols-[minmax(0,9rem)_1fr_4.5rem] items-center gap-3 text-sm sm:grid-cols-[14rem_1fr_5rem]">
-            <span className="truncate text-muted-foreground" title={s.sector}>{s.sector}</span>
-            <div className="relative h-2.5 rounded-full bg-muted" aria-hidden>
-              <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
-              <div
-                className={cn("absolute inset-y-0 rounded-full", s.change >= 0 ? "left-1/2 bg-up" : "right-1/2 bg-down")}
-                style={{ width: `${w}%` }}
-              />
-            </div>
-            <span className={cn("text-right font-medium tabular-nums", s.change >= 0 ? "text-up" : "text-down")}>
-              {formatPercent(s.change)}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
   );
 }

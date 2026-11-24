@@ -129,13 +129,14 @@ export function StockTable({
             aria-label="Filter saham"
           />
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex">
-          <Select value={sector} onChange={(e) => { setSector(e.target.value); setLimit(PAGE); }} aria-label="Filter sektor" className="sm:w-52">
+        <div className={cn("grid gap-2 sm:flex", sectors.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
+          {/* Filter sektor tidak berguna bila daftar hanya berisi satu sektor (mis. halaman /sektor) */}
+          {sectors.length > 1 && <Select value={sector} onChange={(e) => { setSector(e.target.value); setLimit(PAGE); }} aria-label="Filter sektor" className="sm:w-52">
             <option value="">Semua sektor</option>
             {sectors.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
-          </Select>
+          </Select>}
           {/* Pengurutan untuk mobile (desktop memakai header tabel) */}
           <Select
             className="md:hidden"

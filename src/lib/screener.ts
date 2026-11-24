@@ -152,6 +152,11 @@ export interface SectorPerf {
   marketCap: number;
 }
 
+/** URL halaman daftar saham per sektor (sama dengan format versi lama: /sektor?sector=...). */
+export function sectorHref(sector: string) {
+  return `/sektor?sector=${encodeURIComponent(sector)}`;
+}
+
 export function sectorPerformance(stocks: Stock[]): SectorPerf[] {
   const map = new Map<string, { w: number; cap: number; count: number }>();
   for (const s of stocks) {

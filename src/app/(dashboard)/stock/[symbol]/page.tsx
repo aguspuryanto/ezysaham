@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Coins, Gauge, Lightbulb, LineChart } from "lucide-react";
 import { fetchFundamentals, fetchHistory, fetchQuotes, fetchStock, fetchStocks, withQuotes } from "@/lib/api";
 import { summarizeTechnicals, type Signal } from "@/lib/indicators";
-import { fundamentalScore } from "@/lib/screener";
+import { fundamentalScore, sectorHref } from "@/lib/screener";
 import { fairValues } from "@/lib/valuation";
 import { entrySignal } from "@/lib/entrySignal";
 import { EntrySignalCard } from "@/components/stock/EntrySignalCard";
@@ -70,7 +70,9 @@ export default async function StockDetailPage({ params }: Props) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{stock.symbol}</h1>
-            <Badge variant="outline">{stock.sector}</Badge>
+            <Link href={sectorHref(stock.sector)} title={`Lihat semua saham sektor ${stock.sector}`}>
+              <Badge variant="outline" className="hover:border-primary/50 hover:text-foreground">{stock.sector}</Badge>
+            </Link>
           </div>
           <p className="text-sm text-muted-foreground">{stock.name}</p>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
