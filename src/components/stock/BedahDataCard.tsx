@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { CircleAlert, CircleCheck, Info, ScanSearch, TriangleAlert } from "lucide-react";
+import { CircleAlert, CircleCheck, Info, ScanSearch, Sparkles, TriangleAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/misc";
 import { TermTooltip } from "@/components/ui/TermTooltip";
 import type { BedahSection, PointTone } from "@/lib/bedahData";
+import type { BedahResult } from "@/lib/bedahAi";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -14,13 +16,20 @@ const TONE: Record<PointTone, { icon: typeof Info; className: string; label: str
   good: { icon: CircleCheck, className: "text-up", label: "Tidak ada masalah" },
 };
 
-/** Narasi edukatif berbasis aturan: kontradiksi data, fundamental vs harga, dan sinyal risiko. */
-export function BedahDataCard({ symbol, sections, asOf }: { symbol: string; sections: BedahSection[]; asOf: string | null }) {
+/** Narasi edukatif (AI atau aturan): kontradiksi data, fundamental vs harga, dan sinyal risiko. */
+export function BedahDataCard({ symbol, result, asOf }: { symbol: string; result: BedahResult; asOf: string | null }) {
+  const sections: BedahSection[] = result.sections;
+  const ai = result.source === "ai";
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <ScanSearch className="size-4 text-primary" /> Bedah Data {symbol}
+          {ai && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-1.5 py-0.5 text-xs font-medium text-violet-600 dark:text-violet-400">
+              <Sparkles className="size-3" aria-hidden /> AI
+            </span>
+          )}
         </CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">
           Membaca angka-angka di atas: mana yang janggal, apakah harga sejalan dengan kinerja, dan sinyal risiko apa yang perlu diwaspadai.
@@ -59,9 +68,40 @@ export function BedahDataCard({ symbol, sections, asOf }: { symbol: string; sect
           </section>
         ))}
         <p className="border-t pt-3 text-[11px] leading-relaxed text-muted-foreground">
-          Disusun otomatis dari data per {formatDate(asOf)} dengan aturan tetap, bukan oleh analis. Ini bahan belajar, bukan rekomendasi
-          jual/beli. Istilah lain ada di <Link href="/glosarium" className="font-medium text-primary hover:underline">glosarium</Link>.
+          {ai ? (
+            <>
+              Ditulis AI ({result.model}) dari data per {formatDate(asOf)}, lalu diperiksa otomatis agar tidak berisi ajakan jual/beli. AI bisa
+              keliru, jadi cocokkan dengan angka di atas.
+            </>
+          ) : (
+            <>Disusun otomatis dari data per {formatDate(asOf)} dengan aturan tetap, bukan oleh analis.</>
+          )}{" "}
+          Ini bahan belajar, bukan rekomendasi jual/beli. Istilah lain ada di{" "}
+          <Link href="/glosarium" className="font-medium text-primary hover:underline">glosarium</Link>.
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function BedahDataSkeleton({ symbol }: { symbol: string }) {
+  return (
+    <Card aria-busy="true">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ScanSearch className="size-4 text-primary" /> Bedah Data {symbol}
+        </CardTitle>
+        <p className="mt-1 text-xs text-muted-foreground">Menyusun narasi dari data terbaru…</p>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="space-y-2">
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-11/12" />
+            <Skeleton className="h-3.5 w-4/5" />
+          </div>
+        ))}
       </CardContent>
     </Card>
   );

@@ -8,8 +8,11 @@ import { fundamentalScore, sectorHref } from "@/lib/screener";
 import { fairValues } from "@/lib/valuation";
 import { entrySignal } from "@/lib/entrySignal";
 import { EntrySignalCard } from "@/components/stock/EntrySignalCard";
-import { BedahDataCard } from "@/components/stock/BedahDataCard";
-import { bedahContext, bedahData } from "@/lib/bedahData";
+import { Suspense } from "react";
+import { BedahDataCard, BedahDataSkeleton } from "@/components/stock/BedahDataCard";
+import { bedahContext, bedahData, type BedahContext, type BedahSection } from "@/lib/bedahData";
+import { getBedahNarrative } from "@/lib/bedahAi";
+import type { Fundamentals, Stock } from "@/lib/types";
 import { formatCompact, formatDate, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/misc";
@@ -55,7 +58,8 @@ export default async function StockDetailPage({ params }: Props) {
   const score = fundamentalScore(stock);
   const valuation = fairValues(stock, all);
   const signal = entrySignal(stock, fundamentals, valuation.median, tech);
-  const bedah = bedahData(stock, fundamentals, bedahContext(stock, all, history));
+  const bedahCtx = bedahContext(stock, all, history);
+  const bedahRules = bedahData(stock, fundamentals, bedahCtx);
   const range52 =
     stock.high52 && stock.low52 && stock.high52 > stock.low52
       ? ((stock.price - stock.low52) / (stock.high52 - stock.low52)) * 100
@@ -211,7 +215,10 @@ export default async function StockDetailPage({ params }: Props) {
             </CardContent>
           </Card>
 
-          <BedahDataCard symbol={stock.symbol} sections={bedah} asOf={stock.lastDate} />
+          <Suspense fallback={<BedahDataSkeleton symbol={stock.symbol} />}>
+            {/* AI memakai data penutupan harian (bukan harga intraday) agar cache per hari stabil */}
+            <BedahDataAsync stock={closing} fundamentals={fundamentals} ctx={bedahCtx} rules={bedahRules} />
+          </Suspense>
         </div>
 
         <div className="space-y-5">
@@ -327,6 +334,22 @@ export default async function StockDetailPage({ params }: Props) {
       </div>
     </div>
   );
+}
+
+/** Narasi AI (TokenKoding) bila kredit tersedia; otomatis kembali ke versi aturan bila tidak. */
+async function BedahDataAsync({
+  stock,
+  fundamentals,
+  ctx,
+  rules,
+}: {
+  stock: Stock;
+  fundamentals: Fundamentals | null;
+  ctx: BedahContext;
+  rules: BedahSection[];
+}) {
+  const result = await getBedahNarrative(stock, fundamentals, ctx, rules);
+  return <BedahDataCard symbol={stock.symbol} result={result} asOf={stock.lastDate} />;
 }
 
 function toneBorder(t: Signal) {
