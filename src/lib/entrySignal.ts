@@ -55,7 +55,8 @@ export function roundToTick(price: number) {
   return Math.max(t, Math.floor(price / t) * t);
 }
 
-const isFinancial = (s: Stock) => /keuangan|financ|bank/i.test(`${s.sector} ${s.subSector} ${s.industry}`);
+/** Bank/keuangan: DER & current ratio tidak relevan (bisnisnya memang mengelola dana pihak lain). */
+export const isFinancial = (s: Pick<Stock, "sector" | "subSector" | "industry">) => /keuangan|financ|bank/i.test(`${s.sector} ${s.subSector} ${s.industry}`);
 
 function rate(v: number | null | undefined, good: number, ok: number): CheckStatus | null {
   if (v == null || !Number.isFinite(v)) return null;

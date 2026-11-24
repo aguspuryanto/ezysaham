@@ -8,6 +8,8 @@ import { fundamentalScore, sectorHref } from "@/lib/screener";
 import { fairValues } from "@/lib/valuation";
 import { entrySignal } from "@/lib/entrySignal";
 import { EntrySignalCard } from "@/components/stock/EntrySignalCard";
+import { BedahDataCard } from "@/components/stock/BedahDataCard";
+import { bedahContext, bedahData } from "@/lib/bedahData";
 import { formatCompact, formatDate, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/misc";
@@ -53,6 +55,7 @@ export default async function StockDetailPage({ params }: Props) {
   const score = fundamentalScore(stock);
   const valuation = fairValues(stock, all);
   const signal = entrySignal(stock, fundamentals, valuation.median, tech);
+  const bedah = bedahData(stock, fundamentals, bedahContext(stock, all, history));
   const range52 =
     stock.high52 && stock.low52 && stock.high52 > stock.low52
       ? ((stock.price - stock.low52) / (stock.high52 - stock.low52)) * 100
@@ -207,6 +210,8 @@ export default async function StockDetailPage({ params }: Props) {
               </div>
             </CardContent>
           </Card>
+
+          <BedahDataCard symbol={stock.symbol} sections={bedah} asOf={stock.lastDate} />
         </div>
 
         <div className="space-y-5">
