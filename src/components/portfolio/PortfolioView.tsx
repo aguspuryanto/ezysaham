@@ -9,6 +9,7 @@ import { LOT_SIZE, usePortfolio } from "@/hooks/usePortfolio";
 import { useStockList } from "@/hooks/useStockList";
 import { useLiveQuotes } from "@/hooks/useLiveQuotes";
 import { changeColor, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
+import { BUY_FEE_RATE, saleFees } from "@/lib/fees";
 import { cn } from "@/lib/utils";
 import { PortfolioDonut } from "@/components/charts/PortfolioDonut";
 import { ChangePill } from "@/components/dashboard/ChangeText";
@@ -45,7 +46,8 @@ export function PortfolioView() {
       const q = live.quotes.get(h.symbol);
       // Harga intraday Yahoo (60 dtk) lebih segar daripada daftar Pasardana (5 mnt).
       const price = q?.price ?? m?.price ?? null;
-      const cost = h.avgPrice * h.shares;
+      // Modal termasuk fee beli — sama dengan perhitungan saat dijual (lib/fees), agar U/R konsisten.
+      const cost = h.avgPrice * h.shares + saleFees(h.shares, h.avgPrice, 0).buyFee;
       const value = price != null ? price * h.shares : null;
       const pl = value != null ? value - cost : null;
       return {
@@ -194,7 +196,7 @@ export function PortfolioView() {
           {/* Ringkasan */}
           <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Summary label="Nilai pasar" value={formatRupiah(totals.value)} />
-            <Summary label="Modal" value={formatRupiah(totals.cost)} />
+            <Summary label="Modal" value={formatRupiah(totals.cost)} sub={`termasuk fee beli ${formatNumber(BUY_FEE_RATE * 100)}%`} />
             <Summary
               label="Untung/Rugi (unrealized)"
               value={`${totals.pl > 0 ? "+" : ""}${formatRupiah(totals.pl)}`}
@@ -353,7 +355,7 @@ function Summary({ label, value, sub, tone }: { label: string; value: string; su
     <Card className="p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn("mt-1 truncate text-base font-bold tabular-nums sm:text-lg", tone != null && changeColor(tone))}>{value}</p>
-      {sub && <p className={cn("text-xs font-medium tabular-nums", tone != null && changeColor(tone))}>{sub}</p>}
+      {sub && <p className={cn("text-xs font-medium tabular-nums", tone != null ? changeColor(tone) : "text-muted-foreground")}>{sub}</p>}
     </Card>
   );
 }
