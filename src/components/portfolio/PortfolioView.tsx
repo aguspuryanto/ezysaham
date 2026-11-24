@@ -11,6 +11,7 @@ import { useLiveQuotes } from "@/hooks/useLiveQuotes";
 import { changeColor, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
 import { BUY_FEE_RATE, saleFees } from "@/lib/fees";
 import { cn } from "@/lib/utils";
+import { TermTooltip } from "@/components/ui/TermTooltip";
 import { PortfolioDonut } from "@/components/charts/PortfolioDonut";
 import { ChangePill } from "@/components/dashboard/ChangeText";
 import { PortfolioForm } from "./PortfolioForm";
@@ -196,9 +197,9 @@ export function PortfolioView() {
           {/* Ringkasan */}
           <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Summary label="Nilai pasar" value={formatRupiah(totals.value)} />
-            <Summary label="Modal" value={formatRupiah(totals.cost)} sub={`termasuk fee beli ${formatNumber(BUY_FEE_RATE * 100)}%`} />
+            <Summary label="Modal" value={formatRupiah(totals.cost)} sub={<>termasuk <TermTooltip term="fee-transaksi">fee beli</TermTooltip> {formatNumber(BUY_FEE_RATE * 100)}%</>} />
             <Summary
-              label="Untung/Rugi (unrealized)"
+              label={<TermTooltip term="untung-rugi">Untung/Rugi (unrealized)</TermTooltip>}
               value={`${totals.pl > 0 ? "+" : ""}${formatRupiah(totals.pl)}`}
               sub={formatPercent(totals.plPct)}
               tone={totals.pl}
@@ -249,11 +250,11 @@ export function PortfolioView() {
                     <thead className="border-y bg-muted/50 text-left text-xs text-muted-foreground">
                       <tr>
                         <th className="px-5 py-2.5 font-medium">Saham</th>
-                        <th className="px-3 py-2.5 text-right font-medium">Lot</th>
-                        <th className="px-3 py-2.5 text-right font-medium">Avg</th>
+                        <th className="px-3 py-2.5 text-right font-medium"><TermTooltip term="lot">Lot</TermTooltip></th>
+                        <th className="px-3 py-2.5 text-right font-medium"><TermTooltip term="harga-rata-rata">Avg</TermTooltip></th>
                         <th className="px-3 py-2.5 text-right font-medium">Harga</th>
                         <th className="px-3 py-2.5 text-right font-medium">Nilai</th>
-                        <th className="px-3 py-2.5 text-right font-medium">U/R</th>
+                        <th className="px-3 py-2.5 text-right font-medium"><TermTooltip term="untung-rugi">U/R</TermTooltip></th>
                         <th className="w-10 px-3 py-2.5"><span className="sr-only">Aksi</span></th>
                       </tr>
                     </thead>
@@ -289,7 +290,13 @@ export function PortfolioView() {
                   </table>
                 </div>
 
-                {/* Mobile */}
+                {/* Mobile: baris saham berupa link, jadi tooltip istilah diletakkan di atas daftar */}
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t px-4 py-2 text-xs text-muted-foreground md:hidden">
+                  <span>Istilah:</span>
+                  <TermTooltip term="lot">Lot</TermTooltip>
+                  <TermTooltip term="harga-rata-rata">Avg</TermTooltip>
+                  <TermTooltip term="untung-rugi">Untung/rugi</TermTooltip>
+                </p>
                 <ul className="divide-y border-t md:hidden">
                   {rows.map((r) => (
                     <li key={r.symbol} className="px-4 py-3">
@@ -350,7 +357,7 @@ export function PortfolioView() {
   );
 }
 
-function Summary({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: number }) {
+function Summary({ label, value, sub, tone }: { label: React.ReactNode; value: string; sub?: React.ReactNode; tone?: number }) {
   return (
     <Card className="p-4">
       <p className="text-xs text-muted-foreground">{label}</p>

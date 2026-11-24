@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CheckStatus, EntrySignal, Verdict } from "@/lib/entrySignal";
 import { formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { TermTooltip } from "@/components/ui/TermTooltip";
 
 const VERDICT_STYLE: Record<Verdict, { box: string; text: string }> = {
   buy: { box: "border-up/40 bg-up-soft", text: "text-up" },
@@ -45,7 +46,7 @@ export function EntrySignalCard({ signal }: { signal: EntrySignal }) {
             <p>Skor kualitas <span className="font-semibold text-foreground">{signal.quality}</span></p>
             {signal.marginOfSafety != null && (
               <p>
-                {signal.marginOfSafety >= 0 ? "Diskon" : "Premium"}{" "}
+                <TermTooltip term="margin-of-safety">{signal.marginOfSafety >= 0 ? "Diskon" : "Premium"}</TermTooltip>{" "}
                 <span className={cn("font-semibold", signal.marginOfSafety >= 0 ? "text-up" : "text-down")}>
                   {formatPercent(Math.abs(signal.marginOfSafety), 1, false)}
                 </span>

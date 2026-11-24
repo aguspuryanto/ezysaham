@@ -8,6 +8,8 @@ import { toRow } from "@/lib/rows";
 import { StockTable } from "@/components/dashboard/StockTable";
 import { DividendFormat, ScoreFormat } from "./formats";
 import { cn } from "@/lib/utils";
+import { TermTooltip } from "@/components/ui/TermTooltip";
+import type { TermId } from "@/lib/glossary";
 
 export const metadata: Metadata = { title: "Screener Saham" };
 export const revalidate = 300;
@@ -24,6 +26,18 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
+
+/** Istilah yang perlu dipahami untuk membaca tiap tab. */
+const TAB_TERMS: Record<TabKey, TermId[]> = {
+  all: ["per", "roe", "kapitalisasi", "nilai-transaksi"],
+  gainer: ["ara-arb", "fomo", "nilai-transaksi"],
+  momentum: ["momentum", "fomo", "saham-gorengan", "nilai-transaksi"],
+  dividend: ["dividend-yield", "payout-ratio", "cum-date", "dividend-trap"],
+  fundamental: ["skor-fundamental", "per", "roe", "pbv", "value-trap"],
+  accumulation: ["akumulasi", "nilai-transaksi", "saham-gorengan"],
+  active: ["nilai-transaksi", "volume"],
+  loser: ["value-trap", "ara-arb"],
+};
 
 export default async function ScreenerPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab: rawTab } = await searchParams;
@@ -91,6 +105,13 @@ export default async function ScreenerPage({ searchParams }: { searchParams: Pro
         <div>
           <h2 className="font-semibold">{title}</h2>
           <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span>Istilah terkait:</span>
+            {TAB_TERMS[tab].map((id) => (
+              <TermTooltip key={id} term={id} className="font-medium text-foreground" />
+            ))}
+            <Link href="/glosarium" className="font-medium text-primary hover:underline">Semua istilah</Link>
+          </p>
         </div>
       </div>
 

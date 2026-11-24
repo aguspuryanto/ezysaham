@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, ChevronRight, HandHeart, Lightbulb } from "lucide-react";
+import { BookA, BookOpen, ChevronRight, HandHeart, Lightbulb } from "lucide-react";
 import { ARTICLES } from "@/lib/articles";
 import { fetchStocks } from "@/lib/api";
 import { SCREENERS, marketBreadth, sectorPerformance } from "@/lib/screener";
@@ -67,6 +67,15 @@ export default async function NewsPage() {
           </CardContent>
         </Card>
       )}
+
+      <Link href="/glosarium" className="flex items-center gap-3 rounded-xl border bg-card p-4 hover:border-primary/50">
+        <BookA className="size-5 shrink-0 text-primary" />
+        <span className="flex-1 text-sm">
+          <span className="font-semibold">Glosarium istilah saham.</span>{" "}
+          <span className="text-muted-foreground">Arti PER, ROE, payout ratio, free float, value trap, dan istilah lain dalam bahasa sederhana.</span>
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      </Link>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {ARTICLES.map((a) => (

@@ -5,10 +5,10 @@ import { formatNumber } from "@/lib/format";
 
 export function DividendFormat({ rows }: { rows: StockRow[] }) {
   return (
-    <StockTable rows={rows} ranked extraLabel="Yield" extraFormat={(v) => (v == null ? "-" : `${formatNumber(v, 2)}%`)} />
+    <StockTable rows={rows} ranked extraLabel="Yield" extraTerm="dividend-yield" extraFormat={(v) => (v == null ? "-" : `${formatNumber(v, 2)}%`)} />
   );
 }
 
 export function ScoreFormat({ rows }: { rows: StockRow[] }) {
-  return <StockTable rows={rows} ranked extraLabel="Skor" extraFormat={(v) => (v == null ? "-" : String(v))} />;
+  return <StockTable rows={rows} ranked extraLabel="Skor" extraTerm="skor-fundamental" extraFormat={(v) => (v == null ? "-" : String(v))} />;
 }

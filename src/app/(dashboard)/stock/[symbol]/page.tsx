@@ -17,6 +17,8 @@ import { AddToPortfolioButton } from "@/components/portfolio/AddToPortfolioButto
 import { WatchlistButton } from "@/components/watchlist/WatchlistButton";
 import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { cn } from "@/lib/utils";
+import { GLOSSARY, type TermId } from "@/lib/glossary";
+import { TermTooltip } from "@/components/ui/TermTooltip";
 
 // 60 detik agar harga intraday (Yahoo) ikut segar saat AutoRefresh berjalan.
 export const revalidate = 60;
@@ -141,23 +143,23 @@ export default async function StockDetailPage({ params }: Props) {
             </CardHeader>
             <CardContent>
               <div className="grid gap-x-6 sm:grid-cols-2">
-                <Ratio label="PER" hint="Harga / laba per saham. Makin kecil makin murah." value={stock.peRatio} fmt={(v) => `${formatNumber(v, 1)}x`} rate={(v) => (v <= 0 ? "bad" : v < 15 ? "good" : v < 25 ? "ok" : "bad")} />
-                <Ratio label="PBV" hint="Harga / nilai buku. <1 berarti di bawah nilai buku." value={stock.pbv} fmt={(v) => `${formatNumber(v, 2)}x`} rate={(v) => (v <= 0 ? "bad" : v < 1.5 ? "good" : v < 3 ? "ok" : "bad")} />
-                <Ratio label="ROE" hint="Laba bersih / ekuitas. Efisiensi perusahaan memakai modal." value={stock.roe} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v >= 15 ? "good" : v >= 8 ? "ok" : "bad")} />
-                <Ratio label="DER" hint="Utang / ekuitas. Makin rendah makin aman." value={fundamentals?.der ?? null} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v < 50 ? "good" : v < 100 ? "ok" : "bad")} />
-                <Ratio label="Net margin" hint="Persentase laba bersih dari pendapatan." value={fundamentals?.netMargin ?? null} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v >= 15 ? "good" : v >= 5 ? "ok" : "bad")} />
-                <Ratio label="Current ratio" hint="Aset lancar / utang lancar. >1,5 likuiditas sehat." value={fundamentals?.currentRatio ?? null} fmt={(v) => `${formatNumber(v, 2)}x`} rate={(v) => (v >= 1.5 ? "good" : v >= 1 ? "ok" : "bad")} />
-                <Ratio label="Pertumbuhan pendapatan" hint="Year over year." value={fundamentals?.revenueGrowth ?? null} fmt={(v) => formatPercent(v, 1)} rate={(v) => (v >= 10 ? "good" : v >= 0 ? "ok" : "bad")} />
-                <Ratio label="Pertumbuhan laba" hint="Year over year." value={fundamentals?.earningsGrowth ?? null} fmt={(v) => formatPercent(v, 1)} rate={(v) => (v >= 10 ? "good" : v >= 0 ? "ok" : "bad")} />
-                <Ratio label="Beta 1 tahun" hint="Sensitivitas terhadap pasar. >1 lebih fluktuatif." value={stock.beta} fmt={(v) => formatNumber(v, 2)} />
-                <Ratio label="Free float" hint="Porsi saham yang beredar di publik." value={stock.freeFloat} fmt={(v) => `${formatNumber(v, 1)}%`} />
+                <Ratio label="PER" term="per" value={stock.peRatio} fmt={(v) => `${formatNumber(v, 1)}x`} rate={(v) => (v <= 0 ? "bad" : v < 15 ? "good" : v < 25 ? "ok" : "bad")} />
+                <Ratio label="PBV" term="pbv" value={stock.pbv} fmt={(v) => `${formatNumber(v, 2)}x`} rate={(v) => (v <= 0 ? "bad" : v < 1.5 ? "good" : v < 3 ? "ok" : "bad")} />
+                <Ratio label="ROE" term="roe" value={stock.roe} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v >= 15 ? "good" : v >= 8 ? "ok" : "bad")} />
+                <Ratio label="DER" term="der" value={fundamentals?.der ?? null} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v < 50 ? "good" : v < 100 ? "ok" : "bad")} />
+                <Ratio label="Net margin" term="net-margin" value={fundamentals?.netMargin ?? null} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v >= 15 ? "good" : v >= 5 ? "ok" : "bad")} />
+                <Ratio label="Current ratio" term="current-ratio" value={fundamentals?.currentRatio ?? null} fmt={(v) => `${formatNumber(v, 2)}x`} rate={(v) => (v >= 1.5 ? "good" : v >= 1 ? "ok" : "bad")} />
+                <Ratio label="Pertumbuhan pendapatan" term="yoy" value={fundamentals?.revenueGrowth ?? null} fmt={(v) => formatPercent(v, 1)} rate={(v) => (v >= 10 ? "good" : v >= 0 ? "ok" : "bad")} />
+                <Ratio label="Pertumbuhan laba" term="yoy" value={fundamentals?.earningsGrowth ?? null} fmt={(v) => formatPercent(v, 1)} rate={(v) => (v >= 10 ? "good" : v >= 0 ? "ok" : "bad")} />
+                <Ratio label="Beta 1 tahun" term="beta" value={stock.beta} fmt={(v) => formatNumber(v, 2)} />
+                <Ratio label="Free float" term="free-float" value={stock.freeFloat} fmt={(v) => `${formatNumber(v, 1)}%`} />
               </div>
 
               {/* Harga wajar: Graham Number + PER & PBV emiten sejenis */}
               <div className="mt-4 rounded-xl border bg-muted/40 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold">Estimasi Harga Wajar</p>
+                    <p className="text-sm font-semibold"><TermTooltip term="harga-wajar">Estimasi Harga Wajar</TermTooltip></p>
                     <p className="text-xs text-muted-foreground">
                       EPS {valuation.graham ? formatNumber(valuation.graham.eps, 0) : "-"} · BVPS{" "}
                       {valuation.graham ? formatNumber(valuation.graham.bvps, 0) : "-"}
@@ -294,9 +296,9 @@ export default async function StockDetailPage({ params }: Props) {
               {fundamentals?.dividendYield != null ? (
                 <>
                   <div className="grid grid-cols-3 gap-3 text-sm">
-                    <Metric label="Yield" value={`${formatNumber(fundamentals.dividendYield, 2)}%`} />
-                    <Metric label="Payout" value={fundamentals.payoutRatio == null ? "-" : `${formatNumber(fundamentals.payoutRatio, 0)}%`} />
-                    <Metric label="DPS (TTM)" value={formatNumber(fundamentals.dividendPerShare, 0)} />
+                    <Metric label="Yield" term="dividend-yield" value={`${formatNumber(fundamentals.dividendYield, 2)}%`} />
+                    <Metric label="Payout" term="payout-ratio" value={fundamentals.payoutRatio == null ? "-" : `${formatNumber(fundamentals.payoutRatio, 0)}%`} />
+                    <Metric label="DPS (TTM)" term="dps" value={formatNumber(fundamentals.dividendPerShare, 0)} />
                   </div>
                   {fundamentals.dividendHistory.length > 0 && (
                     <ul className="divide-y text-sm">
@@ -334,10 +336,10 @@ function Upside({ price, fair }: { price: number; fair: number }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, term }: { label: string; value: string; term?: TermId }) {
   return (
     <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{term ? <TermTooltip term={term}>{label}</TermTooltip> : label}</dt>
       <dd className="font-semibold tabular-nums">{value}</dd>
     </div>
   );
@@ -345,13 +347,13 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function Ratio({
   label,
-  hint,
+  term,
   value,
   fmt,
   rate,
 }: {
   label: string;
-  hint: string;
+  term: TermId;
   value: number | null;
   fmt: (v: number) => string;
   rate?: (v: number) => "good" | "ok" | "bad";
@@ -360,8 +362,10 @@ function Ratio({
   return (
     <div className="flex items-center justify-between gap-3 border-b py-2.5 last:border-0 sm:[&:nth-last-child(2)]:border-0">
       <div className="min-w-0">
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">{hint}</p>
+        <p className="text-sm font-medium">
+          <TermTooltip term={term}>{label}</TermTooltip>
+        </p>
+        <p className="text-xs text-muted-foreground">{GLOSSARY[term].short}</p>
       </div>
       <span
         className={cn(

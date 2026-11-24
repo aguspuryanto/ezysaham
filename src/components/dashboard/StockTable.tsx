@@ -6,6 +6,8 @@ import { Input, Select } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { formatCompact, formatNumber, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { TermTooltip } from "@/components/ui/TermTooltip";
+import type { TermId } from "@/lib/glossary";
 import { ChangePill, ChangeText } from "./ChangeText";
 
 /** Baris ringkas agar payload ke browser kecil. */
@@ -35,12 +37,15 @@ export function StockTable({
   rows,
   ranked = false,
   extraLabel,
+  extraTerm,
   extraFormat = (v) => formatNumber(v),
 }: {
   rows: StockRow[];
   /** true bila urutan bawaan rows adalah peringkat screener */
   ranked?: boolean;
   extraLabel?: string;
+  /** Istilah glosarium untuk kolom tambahan (mis. dividend-yield) */
+  extraTerm?: TermId;
   extraFormat?: (v: number | null | undefined) => string;
 }) {
   const [q, setQ] = useState("");
@@ -79,16 +84,19 @@ export function StockTable({
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "symbol" || key === "rank" ? 1 : -1 }));
   };
 
-  const SortHead = ({ k, children, className }: { k: SortKey; children: React.ReactNode; className?: string }) => (
-    <th scope="col" className={cn("px-3 py-2.5 font-medium", className)} aria-sort={sort.key === k ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
-      <button type="button" onClick={() => toggleSort(k)} className="inline-flex items-center gap-1 hover:text-foreground">
-        {children}
-        {sort.key === k ? (
-          sort.dir === 1 ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />
-        ) : (
-          <ArrowUpDown className="size-3 opacity-40" />
-        )}
-      </button>
+  const SortHead = ({ k, term, children, className }: { k: SortKey; term?: TermId; children: React.ReactNode; className?: string }) => (
+    <th scope="col" className={cn("px-3 py-2.5 font-medium whitespace-nowrap", className)} aria-sort={sort.key === k ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
+      <span className="inline-flex items-center gap-0.5">
+        <button type="button" onClick={() => toggleSort(k)} className="inline-flex items-center gap-1 hover:text-foreground">
+          {children}
+          {sort.key === k ? (
+            sort.dir === 1 ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />
+          ) : (
+            <ArrowUpDown className="size-3 opacity-40" />
+          )}
+        </button>
+        {term && <TermTooltip term={term} icon />}
+      </span>
     </th>
   );
 
@@ -147,7 +155,21 @@ export function StockTable({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{filtered.length} saham</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <p>{filtered.length} saham</p>
+        {/* Mobile: kartu berupa link, jadi tooltip istilah diletakkan di luar kartu */}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 md:hidden">
+          <span>Istilah:</span>
+          {extraLabel && extraTerm ? (
+            <TermTooltip term={extraTerm}>{extraLabel}</TermTooltip>
+          ) : (
+            <TermTooltip term="nilai-transaksi">Nilai</TermTooltip>
+          )}
+          <TermTooltip term="kapitalisasi">Kap.</TermTooltip>
+          <TermTooltip term="per">PER</TermTooltip>
+          <TermTooltip term="roe">ROE</TermTooltip>
+        </p>
+      </div>
 
       {/* Desktop: tabel */}
       <div className="hidden overflow-x-auto rounded-xl border bg-card md:block">
@@ -158,12 +180,12 @@ export function StockTable({
               <SortHead k="symbol">Saham</SortHead>
               <SortHead k="price" className="text-right">Harga</SortHead>
               <SortHead k="change" className="text-right">Ubah</SortHead>
-              {extraLabel && <SortHead k="extra" className="text-right">{extraLabel}</SortHead>}
-              <SortHead k="value" className="text-right">Nilai</SortHead>
-              <SortHead k="marketCap" className="text-right">Kap. Pasar</SortHead>
-              <SortHead k="peRatio" className="text-right">PER</SortHead>
-              <SortHead k="roe" className="text-right">ROE</SortHead>
-              <SortHead k="month" className="text-right">1 Bln</SortHead>
+              {extraLabel && <SortHead k="extra" term={extraTerm} className="text-right">{extraLabel}</SortHead>}
+              <SortHead k="value" term="nilai-transaksi" className="text-right">Nilai</SortHead>
+              <SortHead k="marketCap" term="kapitalisasi" className="text-right">Kap. Pasar</SortHead>
+              <SortHead k="peRatio" term="per" className="text-right">PER</SortHead>
+              <SortHead k="roe" term="roe" className="text-right">ROE</SortHead>
+              <SortHead k="month" term="return" className="text-right">1 Bln</SortHead>
             </tr>
           </thead>
           <tbody>
