@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Coins, Gauge, Lightbulb, LineChart } from "lucide-react";
-import { fetchFundamentals, fetchHistory, fetchStock, fetchStocks } from "@/lib/api";
+import { fetchFundamentals, fetchHistory, fetchQuotes, fetchStock, fetchStocks, withQuotes } from "@/lib/api";
 import { summarizeTechnicals, type Signal } from "@/lib/indicators";
 import { fundamentalScore } from "@/lib/screener";
 import { fairValues } from "@/lib/valuation";
@@ -15,9 +15,11 @@ import { ChangeText } from "@/components/dashboard/ChangeText";
 import { StockChartPanel } from "@/components/charts/StockChartPanel";
 import { AddToPortfolioButton } from "@/components/portfolio/AddToPortfolioButton";
 import { WatchlistButton } from "@/components/watchlist/WatchlistButton";
+import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { cn } from "@/lib/utils";
 
-export const revalidate = 300;
+// 60 detik agar harga intraday (Yahoo) ikut segar saat AutoRefresh berjalan.
+export const revalidate = 60;
 
 type Props = { params: Promise<{ symbol: string }> };
 
@@ -32,13 +34,18 @@ export default async function StockDetailPage({ params }: Props) {
   const symbol = raw.toUpperCase();
   if (!/^[A-Z0-9]{2,8}$/.test(symbol)) notFound();
 
-  const [all, history, fundamentals] = await Promise.all([
+  const [all, history, fundamentals, quotes] = await Promise.all([
     fetchStocks(),
     fetchHistory(symbol, "1y"),
     fetchFundamentals(symbol),
+    fetchQuotes([symbol]).catch(() => []),
   ]);
-  const stock = all.find((s) => s.symbol === symbol);
-  if (!stock) notFound();
+  const closing = all.find((s) => s.symbol === symbol);
+  if (!closing) notFound();
+  // Pasardana hanya berisi harga penutupan hari bursa sebelumnya; timpa harga dengan
+  // harga intraday Yahoo (tertunda ±10 menit) bila tersedia. Data lain tetap dari Pasardana.
+  const [stock] = withQuotes([closing], quotes);
+  const isLive = quotes.length > 0;
 
   const tech = summarizeTechnicals(history);
   const score = fundamentalScore(stock);
@@ -51,6 +58,7 @@ export default async function StockDetailPage({ params }: Props) {
 
   return (
     <div className="space-y-5">
+      <AutoRefresh />
       <Link href="/screener" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> Kembali ke screener
       </Link>
@@ -70,7 +78,9 @@ export default async function StockDetailPage({ params }: Props) {
               {formatPrice(stock.changeValue)} ({formatPercent(stock.change)})
             </span>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Data per {formatDate(stock.lastDate)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {isLive ? "Harga intraday (tertunda ±10 menit) · " : ""}Data per {formatDate(stock.lastDate)}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <WatchlistButton symbol={stock.symbol} />
