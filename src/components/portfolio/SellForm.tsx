@@ -4,8 +4,8 @@ import { HandCoins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/misc";
 import { LOT_SIZE, usePortfolio, type Holding } from "@/hooks/usePortfolio";
-import { BUY_FEE_RATE, SELL_FEE_RATE, saleFees, saleResult } from "@/lib/fees";
-import { changeColor, formatNumber, formatPercent, formatRupiah } from "@/lib/format";
+import { SELL_FEE_RATE, saleFees, saleResult } from "@/lib/fees";
+import { changeColor, formatAvg, formatNumber, formatPercent, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** Tanggal hari ini (zona waktu lokal) dalam format yyyy-mm-dd untuk <input type="date">. */
@@ -27,8 +27,8 @@ export function SellForm({ holding, currentPrice, onDone }: { holding: Holding; 
   // "Jual semua" memakai jumlah lembar persis agar tidak tersisa pecahan karena pembulatan
   const shares = l === maxLots || Math.abs(l - maxLots) < 0.005 ? holding.shares : Math.round(l * LOT_SIZE);
   const valid = p > 0 && shares > 0 && shares <= holding.shares;
-  const preview = valid ? saleResult({ shares, buyPrice: holding.avgPrice, sellPrice: p, ...saleFees(shares, holding.avgPrice, p) }) : null;
-  const fees = valid ? saleFees(shares, holding.avgPrice, p) : null;
+  const preview = valid ? saleResult({ shares, buyPrice: holding.avgPrice, sellPrice: p, ...saleFees(shares, p) }) : null;
+  const fees = valid ? saleFees(shares, p) : null;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +60,7 @@ export function SellForm({ holding, currentPrice, onDone }: { holding: Holding; 
         <div className="space-y-1.5">
           <Label htmlFor="sell-price">Harga jual / lembar</Label>
           <Input id="sell-price" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="mis. 1500" />
-          <p className="text-xs text-muted-foreground">Avg beli {formatRupiah(holding.avgPrice)}</p>
+          <p className="text-xs text-muted-foreground">Avg beli {formatAvg(holding.avgPrice)} (termasuk fee beli)</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="sell-date">Tanggal jual</Label>
@@ -71,7 +71,7 @@ export function SellForm({ holding, currentPrice, onDone }: { holding: Holding; 
       {preview && fees && (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg bg-muted/50 p-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs text-muted-foreground">Modal + fee beli ({formatNumber(BUY_FEE_RATE * 100)}%)</dt>
+            <dt className="text-xs text-muted-foreground">Modal (avg × lembar)</dt>
             <dd className="tabular-nums">{formatRupiah(preview.cost)}</dd>
           </div>
           <div>

@@ -8,8 +8,7 @@ import { Skeleton } from "@/components/ui/misc";
 import { LOT_SIZE, usePortfolio } from "@/hooks/usePortfolio";
 import { useStockList } from "@/hooks/useStockList";
 import { useLiveQuotes } from "@/hooks/useLiveQuotes";
-import { changeColor, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
-import { BUY_FEE_RATE, saleFees } from "@/lib/fees";
+import { changeColor, formatAvg, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { TermTooltip } from "@/components/ui/TermTooltip";
 import { PortfolioDonut } from "@/components/charts/PortfolioDonut";
@@ -47,8 +46,8 @@ export function PortfolioView() {
       const q = live.quotes.get(h.symbol);
       // Harga intraday Yahoo (60 dtk) lebih segar daripada daftar Pasardana (5 mnt).
       const price = q?.price ?? m?.price ?? null;
-      // Modal termasuk fee beli — sama dengan perhitungan saat dijual (lib/fees), agar U/R konsisten.
-      const cost = h.avgPrice * h.shares + saleFees(h.shares, h.avgPrice, 0).buyFee;
+      // Avg sudah termasuk fee beli (konvensi broker), jadi modal = avg × lembar — sama dengan "Invested" di broker.
+      const cost = h.avgPrice * h.shares;
       const value = price != null ? price * h.shares : null;
       const pl = value != null ? value - cost : null;
       return {
@@ -197,7 +196,7 @@ export function PortfolioView() {
           {/* Ringkasan */}
           <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Summary label="Nilai pasar" value={formatRupiah(totals.value)} />
-            <Summary label="Modal" value={formatRupiah(totals.cost)} sub={<>termasuk <TermTooltip term="fee-transaksi">fee beli</TermTooltip> {formatNumber(BUY_FEE_RATE * 100)}%</>} />
+            <Summary label="Modal" value={formatRupiah(totals.cost)} sub={<>avg × lembar, sudah termasuk <TermTooltip term="fee-transaksi">fee beli</TermTooltip></>} />
             <Summary
               label={<TermTooltip term="untung-rugi">Untung/Rugi (unrealized)</TermTooltip>}
               value={`${totals.pl > 0 ? "+" : ""}${formatRupiah(totals.pl)}`}
@@ -253,6 +252,7 @@ export function PortfolioView() {
                         <th className="px-3 py-2.5 text-right font-medium"><TermTooltip term="lot">Lot</TermTooltip></th>
                         <th className="px-3 py-2.5 text-right font-medium"><TermTooltip term="harga-rata-rata">Avg</TermTooltip></th>
                         <th className="px-3 py-2.5 text-right font-medium">Harga</th>
+                        <th className="px-3 py-2.5 text-right font-medium">Modal</th>
                         <th className="px-3 py-2.5 text-right font-medium">Nilai</th>
                         <th className="px-3 py-2.5 text-right font-medium"><TermTooltip term="untung-rugi">U/R</TermTooltip></th>
                         <th className="w-10 px-3 py-2.5"><span className="sr-only">Aksi</span></th>
@@ -266,11 +266,12 @@ export function PortfolioView() {
                             <p className="max-w-44 truncate text-xs text-muted-foreground">{r.name || r.sector}</p>
                           </td>
                           <td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(r.shares / LOT_SIZE, r.shares % LOT_SIZE ? 2 : 0)}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{formatPrice(r.avgPrice)}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{formatAvg(r.avgPrice)}</td>
                           <td className="px-3 py-2.5 text-right">
                             <p className="tabular-nums">{formatPrice(r.price)}</p>
                             <ChangePill value={r.dayChange} className="min-w-0" />
                           </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{formatRupiah(r.cost, true)}</td>
                           <td className="px-3 py-2.5 text-right tabular-nums">{formatRupiah(r.value, true)}</td>
                           <td className={cn("px-3 py-2.5 text-right tabular-nums", changeColor(r.pl))}>
                             <p className="font-medium">{r.pl == null ? "-" : `${r.pl > 0 ? "+" : ""}${formatRupiah(r.pl, true)}`}</p>
@@ -304,7 +305,7 @@ export function PortfolioView() {
                         <Link href={`/stock/${r.symbol}`} className="min-w-0 flex-1">
                           <p className="font-semibold">{r.symbol}</p>
                           <p className="truncate text-xs text-muted-foreground">
-                            {formatNumber(r.shares / LOT_SIZE, r.shares % LOT_SIZE ? 2 : 0)} lot · avg {formatPrice(r.avgPrice)}
+                            {formatNumber(r.shares / LOT_SIZE, r.shares % LOT_SIZE ? 2 : 0)} lot · avg {formatAvg(r.avgPrice)} · modal {formatRupiah(r.cost, true)}
                           </p>
                         </Link>
                         <div className={cn("text-right tabular-nums", changeColor(r.pl))}>

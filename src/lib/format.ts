@@ -5,6 +5,12 @@ export function formatPrice(v: number | null | undefined) {
   return idInt.format(Math.round(v));
 }
 
+/** Harga rata-rata: 2 desimal bila ada pecahan (mis. 212,31), bulat bila tidak. */
+export function formatAvg(v: number | null | undefined) {
+  if (v == null || !Number.isFinite(v)) return "-";
+  return Math.abs(v - Math.round(v)) < 0.005 ? formatPrice(v) : formatNumber(v, 2);
+}
+
 export function formatNumber(v: number | null | undefined, digits = 2) {
   if (v == null || !Number.isFinite(v)) return "-";
   const f = 10 ** digits;

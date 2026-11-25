@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/misc";
 import { LOT_SIZE, usePortfolio } from "@/hooks/usePortfolio";
 import { useStockList } from "@/hooks/useStockList";
-import { formatRupiah } from "@/lib/format";
+import { formatAvg, formatNumber, formatRupiah } from "@/lib/format";
+import { BUY_FEE_RATE, avgWithBuyFee } from "@/lib/fees";
 
 export function PortfolioForm({
   defaultSymbol = "",
@@ -26,6 +27,7 @@ export function PortfolioForm({
   const [symbol, setSymbol] = useState(defaultSymbol);
   const [price, setPrice] = useState(defaultPrice ? String(defaultPrice) : "");
   const [lots, setLots] = useState("1");
+  const [priceMode, setPriceMode] = useState<"execution" | "broker">("execution");
   const [error, setError] = useState<string | null>(null);
 
   const known = useMemo(() => new Map((data ?? []).map((s) => [s.symbol, s])), [data]);
@@ -33,7 +35,9 @@ export function PortfolioForm({
   const match = known.get(sym);
   const p = Number(price.replace(/\./g, "").replace(",", "."));
   const l = Number(lots);
-  const total = p > 0 && l > 0 ? p * l * LOT_SIZE : 0;
+  // Avg disimpan sudah termasuk fee beli (konvensi broker). Harga eksekusi → tambahkan fee.
+  const avg = p > 0 ? (priceMode === "execution" ? avgWithBuyFee(p) : p) : 0;
+  const total = avg > 0 && l > 0 ? avg * l * LOT_SIZE : 0;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +45,7 @@ export function PortfolioForm({
     if (!lockSymbol && data && !match) return setError(`Saham ${sym} tidak ditemukan.`);
     if (!(p > 0)) return setError("Harga beli harus lebih dari 0.");
     if (!(l > 0) || !Number.isInteger(l)) return setError("Jumlah lot harus bilangan bulat > 0.");
-    addHolding({ symbol: sym, avgPrice: p, shares: l * LOT_SIZE });
+    addHolding({ symbol: sym, avgPrice: avg, shares: l * LOT_SIZE });
     setError(null);
     if (!lockSymbol) setSymbol("");
     setPrice("");
@@ -81,8 +85,19 @@ export function PortfolioForm({
           {match && <p className="truncate text-xs text-muted-foreground">{match.name}</p>}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="pf-price">Harga beli / lembar</Label>
-          <Input id="pf-price" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="mis. 9500" />
+          <Label htmlFor="pf-price">{priceMode === "execution" ? "Harga beli / lembar" : "Avg dari broker"}</Label>
+          <Input id="pf-price" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={priceMode === "execution" ? "mis. 9500" : "mis. 212,31"} />
+          <div role="radiogroup" aria-label="Jenis harga" className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {([
+              ["execution", `Harga eksekusi (+fee ${formatNumber(BUY_FEE_RATE * 100)}%)`],
+              ["broker", "Avg broker (sudah + fee)"],
+            ] as const).map(([v, label]) => (
+              <label key={v} className="inline-flex cursor-pointer items-center gap-1">
+                <input type="radio" name="pf-price-mode" value={v} checked={priceMode === v} onChange={() => setPriceMode(v)} className="accent-primary" />
+                {label}
+              </label>
+            ))}
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="pf-lots">Jumlah lot</Label>
@@ -94,6 +109,7 @@ export function PortfolioForm({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Total modal: <span className="font-semibold text-foreground tabular-nums">{formatRupiah(total)}</span>
+          {avg > 0 && <span className="tabular-nums"> · avg {formatAvg(avg)}</span>}
         </p>
         <Button type="submit">
           <Plus /> Tambah ke portofolio

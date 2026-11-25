@@ -6,7 +6,7 @@ import { saleFees } from "@/lib/fees";
 
 export interface Holding {
   symbol: string;
-  /** Harga beli rata-rata per lembar */
+  /** Harga beli rata-rata per lembar, SUDAH termasuk fee beli (konvensi broker: modal = avg × lembar) */
   avgPrice: number;
   /** Jumlah lembar saham (1 lot = 100 lembar) */
   shares: number;
@@ -18,7 +18,7 @@ export interface Sale {
   id: string;
   symbol: string;
   shares: number;
-  /** Harga beli rata-rata saat dijual (tanpa fee) */
+  /** Harga beli rata-rata saat dijual (sudah termasuk fee beli; catatan lama: tanpa fee, fee di buyFee) */
   buyPrice: number;
   sellPrice: number;
   buyFee: number;
@@ -325,7 +325,7 @@ const actions = {
       shares,
       buyPrice: h.avgPrice,
       sellPrice,
-      ...saleFees(shares, h.avgPrice, sellPrice),
+      ...saleFees(shares, sellPrice),
       soldAt,
     };
     const holdings =

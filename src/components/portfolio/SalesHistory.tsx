@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LOT_SIZE, usePortfolio, type Sale } from "@/hooks/usePortfolio";
 import { saleResult } from "@/lib/fees";
-import { changeColor, formatDate, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
+import { changeColor, formatAvg, formatDate, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const lotText = (shares: number) => formatNumber(shares / LOT_SIZE, shares % LOT_SIZE ? 2 : 0);
@@ -35,7 +35,7 @@ export function SalesHistory() {
       <CardHeader className="flex-row flex-wrap items-end justify-between gap-2">
         <div>
           <CardTitle className="text-base">Riwayat Penjualan ({rows.length})</CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground">Untung/rugi sudah dipotong fee beli 0,15% & fee jual 0,25%.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Harga beli = avg (sudah termasuk fee beli). Untung/rugi sudah dipotong fee jual 0,25%.</p>
         </div>
         <div className="text-right">
           <p className="text-xs text-muted-foreground">Untung/Rugi terealisasi</p>
@@ -69,7 +69,7 @@ export function SalesHistory() {
                     <Link href={`/stock/${r.symbol}`} className="font-semibold hover:text-primary">{r.symbol}</Link>
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{lotText(r.shares)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{formatPrice(r.buyPrice)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{formatAvg(r.buyPrice)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{formatPrice(r.sellPrice)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{formatRupiah(r.buyFee + r.sellFee, true)}</td>
                   <td className={cn("px-3 py-2.5 text-right tabular-nums", changeColor(r.pl))}>
@@ -107,7 +107,7 @@ export function SalesHistory() {
                 </Button>
               </div>
               <p className="mt-2 text-xs text-muted-foreground tabular-nums">
-                Beli {formatPrice(r.buyPrice)} → Jual {formatPrice(r.sellPrice)} · fee {formatRupiah(r.buyFee + r.sellFee, true)}
+                Beli {formatAvg(r.buyPrice)} → Jual {formatPrice(r.sellPrice)} · fee {formatRupiah(r.buyFee + r.sellFee, true)}
               </p>
             </li>
           ))}

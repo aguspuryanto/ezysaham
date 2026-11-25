@@ -236,6 +236,7 @@ const TERMS = {
     body: [
       "Jika membeli saham yang sama beberapa kali di harga berbeda, harga rata-ratanya dihitung tertimbang jumlah lembar.",
       "Untung/rugi dihitung dari selisih harga sekarang dengan harga rata-rata ini.",
+      "Seperti di aplikasi broker, avg di EzySaham sudah termasuk fee beli, sehingga modal = avg × jumlah lembar.",
     ],
     example: "Beli 1 lot di Rp1.000 dan 1 lot di Rp800 → harga rata-rata Rp900.",
     related: ["untung-rugi", "lot"],
