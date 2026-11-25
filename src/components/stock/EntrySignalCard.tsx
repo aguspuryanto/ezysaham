@@ -59,7 +59,6 @@ export function EntrySignalCard({ signal, fits }: { signal: EntrySignal; fits?: 
 
         {fits && fits.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-semibold">Cocok untuk</p>
             <StrategyFitBadges fits={fits} />
           </div>
         )}
