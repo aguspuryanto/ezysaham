@@ -8,6 +8,7 @@ import { fundamentalScore, sectorHref } from "@/lib/screener";
 import { fairValues } from "@/lib/valuation";
 import { entrySignal } from "@/lib/entrySignal";
 import { EntrySignalCard } from "@/components/stock/EntrySignalCard";
+import { strategyFit } from "@/lib/strategyFit";
 import { Suspense } from "react";
 import { BedahDataCard, BedahDataSkeleton } from "@/components/stock/BedahDataCard";
 import { bedahContext, bedahData, type BedahContext, type BedahSection } from "@/lib/bedahData";
@@ -58,6 +59,7 @@ export default async function StockDetailPage({ params }: Props) {
   const score = fundamentalScore(stock);
   const valuation = fairValues(stock, all);
   const signal = entrySignal(stock, fundamentals, valuation.median, tech);
+  const fits = strategyFit(stock, fundamentals, tech, signal);
   const bedahCtx = bedahContext(stock, all, history);
   const bedahRules = bedahData(stock, fundamentals, bedahCtx);
   const range52 =
@@ -222,7 +224,7 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
 
         <div className="space-y-5">
-          <EntrySignalCard signal={signal} />
+          <EntrySignalCard signal={signal} fits={fits} />
 
           {/* Analisa teknikal */}
           <Card>

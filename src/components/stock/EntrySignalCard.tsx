@@ -4,6 +4,8 @@ import type { CheckStatus, EntrySignal, Verdict } from "@/lib/entrySignal";
 import { formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { TermTooltip } from "@/components/ui/TermTooltip";
+import type { StrategyFit } from "@/lib/strategyFit";
+import { StrategyFitBadges } from "./StrategyFitBadges";
 
 const VERDICT_STYLE: Record<Verdict, { box: string; text: string }> = {
   buy: { box: "border-up/40 bg-up-soft", text: "text-up" },
@@ -29,14 +31,14 @@ const CHECK_ICON: Record<CheckStatus, React.ReactNode> = {
 };
 
 /** Sinyal entry ringkas berbasis fundamental: verdict, checklist, dan catatan timing. */
-export function EntrySignalCard({ signal }: { signal: EntrySignal }) {
+export function EntrySignalCard({ signal, fits }: { signal: EntrySignal; fits?: StrategyFit[] }) {
   const style = VERDICT_STYLE[signal.verdict];
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Crosshair className="size-4 text-primary" /> Sinyal Entry (Fundamental)
+          <Crosshair className="size-4 text-primary" /> Sinyal
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -54,6 +56,13 @@ export function EntrySignalCard({ signal }: { signal: EntrySignal }) {
             )}
           </div>
         </div>
+
+        {fits && fits.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">Cocok untuk</p>
+            <StrategyFitBadges fits={fits} />
+          </div>
+        )}
 
         <div className="space-y-2">
           <p className="text-sm font-semibold">Checklist</p>
