@@ -6,6 +6,7 @@ import { fetchFundamentals, fetchHistory, fetchQuotes, fetchStock, fetchStocks, 
 import { summarizeTechnicals, type Signal } from "@/lib/indicators";
 import { fundamentalScore, sectorHref } from "@/lib/screener";
 import { fairValues } from "@/lib/valuation";
+import { isHsc } from "@/lib/hsc";
 import { entrySignal } from "@/lib/entrySignal";
 import { EntrySignalCard } from "@/components/stock/EntrySignalCard";
 import { strategyFit } from "@/lib/strategyFit";
@@ -22,6 +23,7 @@ import { StockChartPanel } from "@/components/charts/StockChartPanel";
 import { AddToPortfolioButton } from "@/components/portfolio/AddToPortfolioButton";
 import { WatchlistButton } from "@/components/watchlist/WatchlistButton";
 import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
+import { MarketStatus } from "@/components/dashboard/MarketStatus";
 import { cn } from "@/lib/utils";
 import { GLOSSARY, type TermId } from "@/lib/glossary";
 import { TermTooltip } from "@/components/ui/TermTooltip";
@@ -82,6 +84,12 @@ export default async function StockDetailPage({ params }: Props) {
             <Link href={sectorHref(stock.sector)} title={`Lihat semua saham sektor ${stock.sector}`}>
               <Badge variant="outline" className="hover:border-primary/50 hover:text-foreground">{stock.sector}</Badge>
             </Link>
+            {isHsc(stock.symbol) && (
+              <Badge variant="warn">
+                <TermTooltip term="hsc" className="no-underline">HSC</TermTooltip>
+              </Badge>
+            )}
+            <MarketStatus delayed={isLive} />
           </div>
           <p className="text-sm text-muted-foreground">{stock.name}</p>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -92,7 +100,7 @@ export default async function StockDetailPage({ params }: Props) {
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {isLive ? "Harga intraday (tertunda ±10 menit) · " : ""}Data per {formatDate(stock.lastDate)}
+            Data per {formatDate(stock.lastDate)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

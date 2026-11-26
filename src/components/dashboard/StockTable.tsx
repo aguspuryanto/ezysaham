@@ -27,6 +27,8 @@ export interface StockRow {
   month: number | null;
   /** Metrik tambahan khusus screener (mis. dividend yield / skor) */
   extra?: number | null;
+  /** Masuk daftar High Shareholding Concentration (BEI) */
+  hsc?: boolean;
 }
 
 type SortKey = "rank" | "symbol" | "price" | "change" | "value" | "marketCap" | "peRatio" | "roe" | "month" | "extra";
@@ -195,7 +197,10 @@ export function StockTable({
                 {ranked && <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{rank}</td>}
                 <td className="px-3 py-2.5">
                   <Link href={`/stock/${r.symbol}`} className="group block">
-                    <span className="font-semibold group-hover:text-primary">{r.symbol}</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="font-semibold group-hover:text-primary">{r.symbol}</span>
+                      {r.hsc && <HscTag />}
+                    </span>
                     <span className="block max-w-56 truncate text-xs text-muted-foreground">{r.name}</span>
                   </Link>
                 </td>
@@ -221,7 +226,10 @@ export function StockTable({
               <div className="flex items-center gap-3">
                 {ranked && <span className="w-5 text-xs text-muted-foreground tabular-nums">{rank}</span>}
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold">{r.symbol}</p>
+                  <p className="flex items-center gap-1.5 font-semibold">
+                    {r.symbol}
+                    {r.hsc && <HscTag />}
+                  </p>
                   <p className="truncate text-xs text-muted-foreground">{r.name}</p>
                 </div>
                 <div className="text-right">
@@ -267,5 +275,17 @@ function Stat({ label, value }: { label: string; value: string }) {
       <dt className="truncate text-muted-foreground">{label}</dt>
       <dd className="truncate font-medium tabular-nums">{value}</dd>
     </div>
+  );
+}
+
+/** Label HSC ringkas; berada di dalam Link baris sehingga memakai title, bukan TermTooltip (tombol). */
+function HscTag() {
+  return (
+    <span
+      title="High Shareholding Concentration: ≥ 92,5% saham dikuasai 10 pemegang terbesar. Tidak dihitung di IHSG."
+      className="rounded bg-warn-soft px-1 py-px text-[10px] leading-tight font-semibold text-warn"
+    >
+      HSC
+    </span>
   );
 }

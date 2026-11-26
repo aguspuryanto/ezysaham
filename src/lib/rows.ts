@@ -1,5 +1,6 @@
 import type { StockRow } from "@/components/dashboard/StockTable";
 import type { Stock } from "./types";
+import { isHsc } from "./hsc";
 
 export function toRow(s: Stock, extra?: number | null): StockRow {
   return {
@@ -16,6 +17,7 @@ export function toRow(s: Stock, extra?: number | null): StockRow {
     roe: s.roe == null ? null : Math.round(s.roe * 10) / 10,
     week: s.returns.week == null ? null : Math.round(s.returns.week * 10) / 10,
     month: s.returns.month == null ? null : Math.round(s.returns.month * 10) / 10,
+    ...(isHsc(s.symbol) ? { hsc: true } : {}),
     ...(extra !== undefined ? { extra } : {}),
   };
 }

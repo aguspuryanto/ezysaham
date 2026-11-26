@@ -294,6 +294,18 @@ const TERMS = {
     ],
     related: ["saham-gorengan", "kapitalisasi"],
   },
+  hsc: {
+    term: "HSC",
+    aliases: ["High Shareholding Concentration", "Kepemilikan saham terkonsentrasi tinggi"],
+    category: "risiko",
+    short: "Saham yang ≥ 92,5% kepemilikannya dikuasai 10 pemegang saham terbesar. Tidak dihitung di IHSG.",
+    body: [
+      "BEI dan KSEI menandai saham sebagai High Shareholding Concentration (HSC) bila 10 pemegang saham terbesarnya menguasai sedikitnya 92,5% saham. Artinya, porsi yang benar-benar beredar di publik sangat kecil.",
+      "Saham HSC dikeluarkan dari perhitungan IHSG. Karena sedikit saham yang diperdagangkan, harganya mudah digerakkan oleh segelintir pihak dan bisa sulit dijual saat dibutuhkan.",
+      "Label HSC bukan berarti perusahaannya buruk. Ini peringatan soal likuiditas dan risiko harga yang tidak wajar.",
+    ],
+    related: ["free-float", "saham-gorengan"],
+  },
   return: {
     term: "Return",
     aliases: ["1 Bln", "Kinerja harga"],
