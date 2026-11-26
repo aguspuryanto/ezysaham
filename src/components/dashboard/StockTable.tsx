@@ -52,18 +52,22 @@ export function StockTable({
 }) {
   const [q, setQ] = useState("");
   const [sector, setSector] = useState("");
+  const [hsc, setHsc] = useState<"" | "exclude" | "only">("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>(
     ranked ? { key: "rank", dir: 1 } : { key: "value", dir: -1 },
   );
   const [limit, setLimit] = useState(PAGE);
 
   const sectors = useMemo(() => [...new Set(rows.map((r) => r.sector))].sort(), [rows]);
+  const hasHsc = useMemo(() => rows.some((r) => r.hsc), [rows]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toUpperCase();
     let list = rows.map((r, i) => ({ r, rank: i + 1 }));
     if (query) list = list.filter(({ r }) => r.symbol.includes(query) || r.name.toUpperCase().includes(query));
     if (sector) list = list.filter(({ r }) => r.sector === sector);
+    if (hsc === "exclude") list = list.filter(({ r }) => !r.hsc);
+    else if (hsc === "only") list = list.filter(({ r }) => r.hsc);
     if (sort.key !== "rank") {
       const k = sort.key;
       list = [...list].sort((a, b) => {
@@ -79,7 +83,7 @@ export function StockTable({
       list = [...list].reverse();
     }
     return list;
-  }, [rows, q, sector, sort]);
+  }, [rows, q, sector, hsc, sort]);
 
   const toggleSort = (key: SortKey) => {
     setLimit(PAGE);
@@ -131,7 +135,12 @@ export function StockTable({
             aria-label="Filter saham"
           />
         </div>
-        <div className={cn("grid gap-2 sm:flex", sectors.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
+        <div
+          className={cn(
+            "grid gap-2 sm:flex",
+            ["grid-cols-1", "grid-cols-2", "grid-cols-3"][(sectors.length > 1 ? 1 : 0) + (hasHsc ? 1 : 0)],
+          )}
+        >
           {/* Filter sektor tidak berguna bila daftar hanya berisi satu sektor (mis. halaman /sektor) */}
           {sectors.length > 1 && <Select value={sector} onChange={(e) => { setSector(e.target.value); setLimit(PAGE); }} aria-label="Filter sektor" className="sm:w-52">
             <option value="">Semua sektor</option>
@@ -139,6 +148,23 @@ export function StockTable({
               <option key={s} value={s}>{s}</option>
             ))}
           </Select>}
+          {/* Filter HSC hanya muncul bila daftar memuat saham HSC */}
+          {hasHsc && (
+            <Select
+              value={hsc}
+              onChange={(e) => {
+                setHsc(e.target.value as typeof hsc);
+                setLimit(PAGE);
+              }}
+              aria-label="Filter saham HSC"
+              title="HSC: saham yang ≥ 92,5% kepemilikannya dikuasai 10 pemegang terbesar"
+              className="sm:w-40"
+            >
+              <option value="">Semua (HSC)</option>
+              <option value="exclude">Tanpa HSC</option>
+              <option value="only">Hanya HSC</option>
+            </Select>
+          )}
           {/* Pengurutan untuk mobile (desktop memakai header tabel) */}
           <Select
             className="md:hidden"
