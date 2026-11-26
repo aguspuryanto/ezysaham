@@ -10,6 +10,7 @@ import { isHsc } from "@/lib/hsc";
 import { entrySignal } from "@/lib/entrySignal";
 import { EntrySignalCard } from "@/components/stock/EntrySignalCard";
 import { strategyFit } from "@/lib/strategyFit";
+import { phaseFlag } from "@/lib/phaseFlag";
 import { Suspense } from "react";
 import { BedahDataCard, BedahDataSkeleton } from "@/components/stock/BedahDataCard";
 import { bedahContext, bedahData, type BedahContext, type BedahSection } from "@/lib/bedahData";
@@ -62,6 +63,7 @@ export default async function StockDetailPage({ params }: Props) {
   const valuation = fairValues(stock, all);
   const signal = entrySignal(stock, fundamentals, valuation.median, tech);
   const fits = strategyFit(stock, fundamentals, tech, signal);
+  const flag = phaseFlag(stock, fundamentals, history);
   const bedahCtx = bedahContext(stock, all, history);
   const bedahRules = bedahData(stock, fundamentals, bedahCtx);
   const range52 =
@@ -232,7 +234,7 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
 
         <div className="space-y-5">
-          <EntrySignalCard signal={signal} fits={fits} />
+          <EntrySignalCard signal={signal} fits={fits} flag={flag} />
 
           {/* Analisa teknikal */}
           <Card>
