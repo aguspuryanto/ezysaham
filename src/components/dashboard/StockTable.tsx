@@ -8,6 +8,7 @@ import { formatCompact, formatNumber, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { TermTooltip } from "@/components/ui/TermTooltip";
 import type { TermId } from "@/lib/glossary";
+import { capTier, type CapTierKey } from "@/lib/screener";
 import { ChangePill, ChangeText } from "./ChangeText";
 
 /** Baris ringkas agar payload ke browser kecil. */
@@ -53,6 +54,7 @@ export function StockTable({
   const [q, setQ] = useState("");
   const [sector, setSector] = useState("");
   const [hsc, setHsc] = useState<"" | "exclude" | "only">("");
+  const [tier, setTier] = useState<"" | CapTierKey>("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>(
     ranked ? { key: "rank", dir: 1 } : { key: "value", dir: -1 },
   );
@@ -60,6 +62,8 @@ export function StockTable({
 
   const sectors = useMemo(() => [...new Set(rows.map((r) => r.sector))].sort(), [rows]);
   const hasHsc = useMemo(() => rows.some((r) => r.hsc), [rows]);
+  // Filter liner hanya berguna bila daftar memuat lebih dari satu golongan kapitalisasi
+  const hasTiers = useMemo(() => new Set(rows.map((r) => capTier(r.marketCap)?.key ?? "")).size > 1, [rows]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toUpperCase();
@@ -68,6 +72,7 @@ export function StockTable({
     if (sector) list = list.filter(({ r }) => r.sector === sector);
     if (hsc === "exclude") list = list.filter(({ r }) => !r.hsc);
     else if (hsc === "only") list = list.filter(({ r }) => r.hsc);
+    if (tier) list = list.filter(({ r }) => capTier(r.marketCap)?.key === tier);
     if (sort.key !== "rank") {
       const k = sort.key;
       list = [...list].sort((a, b) => {
@@ -83,7 +88,7 @@ export function StockTable({
       list = [...list].reverse();
     }
     return list;
-  }, [rows, q, sector, hsc, sort]);
+  }, [rows, q, sector, hsc, tier, sort]);
 
   const toggleSort = (key: SortKey) => {
     setLimit(PAGE);
@@ -138,7 +143,10 @@ export function StockTable({
         <div
           className={cn(
             "grid gap-2 sm:flex",
-            ["grid-cols-1", "grid-cols-2", "grid-cols-3"][(sectors.length > 1 ? 1 : 0) + (hasHsc ? 1 : 0)],
+            // Jumlah kontrol di mobile: urutkan + filter yang tampil; 4 kontrol disusun 2×2
+            ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-2"][
+              (sectors.length > 1 ? 1 : 0) + (hasHsc ? 1 : 0) + (hasTiers ? 1 : 0)
+            ],
           )}
         >
           {/* Filter sektor tidak berguna bila daftar hanya berisi satu sektor (mis. halaman /sektor) */}
@@ -163,6 +171,23 @@ export function StockTable({
               <option value="">Semua (HSC)</option>
               <option value="exclude">Tanpa HSC</option>
               <option value="only">Hanya HSC</option>
+            </Select>
+          )}
+          {hasTiers && (
+            <Select
+              value={tier}
+              onChange={(e) => {
+                setTier(e.target.value as typeof tier);
+                setLimit(PAGE);
+              }}
+              aria-label="Filter golongan kapitalisasi"
+              title="First Liner ≥ Rp50 T · Second Liner Rp10 T – <Rp50 T · Third Liner < Rp10 T"
+              className="sm:w-40"
+            >
+              <option value="">Semua liner</option>
+              <option value="first">First Liner</option>
+              <option value="second">Second Liner</option>
+              <option value="third">Third Liner</option>
             </Select>
           )}
           {/* Pengurutan untuk mobile (desktop memakai header tabel) */}
@@ -234,7 +259,10 @@ export function StockTable({
                 <td className="px-3 py-2.5 text-right"><ChangePill value={r.change} /></td>
                 {extraLabel && <td className="px-3 py-2.5 text-right font-medium tabular-nums">{extraFormat(r.extra)}</td>}
                 <td className="px-3 py-2.5 text-right tabular-nums">{formatCompact(r.value)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{formatCompact(r.marketCap)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {formatCompact(r.marketCap)}
+                  <TierLabel marketCap={r.marketCap} />
+                </td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(r.peRatio, 1)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{r.roe == null ? "-" : `${formatNumber(r.roe, 1)}%`}</td>
                 <td className="px-3 py-2.5 text-right"><ChangeText value={r.month} digits={1} /></td>
@@ -301,6 +329,17 @@ function Stat({ label, value }: { label: string; value: string }) {
       <dt className="truncate text-muted-foreground">{label}</dt>
       <dd className="truncate font-medium tabular-nums">{value}</dd>
     </div>
+  );
+}
+
+/** Golongan kapitalisasi (First/Second/Third Liner) di bawah nilai Kap. Pasar. */
+function TierLabel({ marketCap }: { marketCap: number }) {
+  const t = capTier(marketCap);
+  if (!t) return null;
+  return (
+    <span title={t.note} className="block text-[10px] leading-tight text-muted-foreground">
+      {t.label}
+    </span>
   );
 }
 

@@ -157,6 +157,19 @@ export function sectorHref(sector: string) {
   return `/sektor?sector=${encodeURIComponent(sector)}`;
 }
 
+export type CapTierKey = "first" | "second" | "third";
+export type CapTier = { key: CapTierKey; label: "First Liner" | "Second Liner" | "Third Liner"; note: string };
+
+/** Klasifikasi berdasarkan nominal kapitalisasi pasar (Rupiah). Null bila kapitalisasi tidak tersedia. */
+export function capTier(marketCap: number): CapTier | null {
+  if (!(marketCap > 0)) return null;
+  if (marketCap >= 50e12)
+    return { key: "first", label: "First Liner", note: "Blue chip (kap. pasar ≥ Rp50 T): perusahaan besar, relatif mapan, likuiditas tinggi." };
+  if (marketCap >= 10e12)
+    return { key: "second", label: "Second Liner", note: "Mid cap (Rp10 T – <Rp50 T): potensi pertumbuhan dan pergerakan harga lebih besar." };
+  return { key: "third", label: "Third Liner", note: "Small cap (< Rp10 T): potensi tumbuh tinggi, tetapi volatilitas dan risiko likuiditas lebih tinggi." };
+}
+
 export function sectorPerformance(stocks: Stock[]): SectorPerf[] {
   const map = new Map<string, { w: number; cap: number; count: number }>();
   for (const s of stocks) {

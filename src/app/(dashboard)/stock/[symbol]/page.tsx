@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Coins, Gauge, Lightbulb, LineChart } from "lucide-react";
 import { fetchFundamentals, fetchHistory, fetchQuotes, fetchStock, fetchStocks, withQuotes } from "@/lib/api";
 import { summarizeTechnicals, type Signal } from "@/lib/indicators";
-import { fundamentalScore, sectorHref } from "@/lib/screener";
+import { capTier, fundamentalScore, sectorHref } from "@/lib/screener";
 import { fairValues } from "@/lib/valuation";
 import { isHsc } from "@/lib/hsc";
 import { entrySignal } from "@/lib/entrySignal";
@@ -15,6 +15,9 @@ import { Suspense } from "react";
 import { BedahDataCard, BedahDataSkeleton } from "@/components/stock/BedahDataCard";
 import { bedahContext, bedahData, type BedahContext, type BedahSection } from "@/lib/bedahData";
 import { getBedahNarrative } from "@/lib/bedahAi";
+import { anomalyRules, avgTradedValue, type AnomalyContext, type AnomalyReport } from "@/lib/anomaly";
+import { getAnomalyReport } from "@/lib/anomalyAi";
+import { AnomalyCard, AnomalySkeleton } from "@/components/stock/AnomalyCard";
 import type { Fundamentals, Stock } from "@/lib/types";
 import { formatCompact, formatDate, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,12 +63,20 @@ export default async function StockDetailPage({ params }: Props) {
 
   const tech = summarizeTechnicals(history);
   const score = fundamentalScore(stock);
+  const tier = capTier(stock.marketCap);
   const valuation = fairValues(stock, all);
   const signal = entrySignal(stock, fundamentals, valuation.median, tech);
   const fits = strategyFit(stock, fundamentals, tech, signal);
   const flag = phaseFlag(stock, fundamentals, history);
   const bedahCtx = bedahContext(stock, all, history);
   const bedahRules = bedahData(stock, fundamentals, bedahCtx);
+  const anomalyCtx: AnomalyContext = {
+    ...bedahCtx,
+    peers: valuation.peers,
+    fairMedian: valuation.median,
+    avgValue20: avgTradedValue(history),
+  };
+  const anomalyFallback = anomalyRules(closing, fundamentals, anomalyCtx);
   const range52 =
     stock.high52 && stock.low52 && stock.high52 > stock.low52
       ? ((stock.price - stock.low52) / (stock.high52 - stock.low52)) * 100
@@ -86,6 +97,11 @@ export default async function StockDetailPage({ params }: Props) {
             <Link href={sectorHref(stock.sector)} title={`Lihat semua saham sektor ${stock.sector}`}>
               <Badge variant="outline" className="hover:border-primary/50 hover:text-foreground">{stock.sector}</Badge>
             </Link>
+            {tier && (
+              <Badge variant="default" title={tier.note}>
+                {tier.label}
+              </Badge>
+            )}
             {isHsc(stock.symbol) && (
               <Badge variant="warn">
                 <TermTooltip term="hsc" className="no-underline">HSC</TermTooltip>
@@ -227,6 +243,11 @@ export default async function StockDetailPage({ params }: Props) {
             </CardContent>
           </Card>
 
+          {/* Deteksi anomali oleh AI bila kredit tersedia; otomatis kembali ke versi aturan bila tidak. */}
+          {/* <Suspense fallback={<AnomalySkeleton symbol={stock.symbol} />}>
+            <AnomalyAsync stock={closing} fundamentals={fundamentals} ctx={anomalyCtx} rules={anomalyFallback} />
+          </Suspense> */}
+
           <Suspense fallback={<BedahDataSkeleton symbol={stock.symbol} />}>
             {/* AI memakai data penutupan harian (bukan harga intraday) agar cache per hari stabil */}
             <BedahDataAsync stock={closing} fundamentals={fundamentals} ctx={bedahCtx} rules={bedahRules} />
@@ -362,6 +383,22 @@ async function BedahDataAsync({
 }) {
   const result = await getBedahNarrative(stock, fundamentals, ctx, rules);
   return <BedahDataCard symbol={stock.symbol} result={result} asOf={stock.lastDate} />;
+}
+
+/** Deteksi anomali oleh AI bila kredit tersedia; otomatis kembali ke versi aturan bila tidak. */
+async function AnomalyAsync({
+  stock,
+  fundamentals,
+  ctx,
+  rules,
+}: {
+  stock: Stock;
+  fundamentals: Fundamentals | null;
+  ctx: AnomalyContext;
+  rules: AnomalyReport;
+}) {
+  const result = await getAnomalyReport(stock, fundamentals, ctx, rules);
+  return <AnomalyCard symbol={stock.symbol} result={result} asOf={stock.lastDate} />;
 }
 
 function toneBorder(t: Signal) {
