@@ -1,8 +1,12 @@
-import { createBrowserClient } from '@supabase/ssr';
+"use client";
+import { createBrowserClient } from "@supabase/ssr";
+import { DB_SCHEMA, type EzyClient, SUPABASE_KEY, SUPABASE_URL, isSupabaseConfigured } from "./config";
 
-export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  );
+let client: EzyClient | null = null;
+
+/** Client Supabase untuk browser (singleton). null bila env belum diisi. */
+export function getSupabaseBrowser(): EzyClient | null {
+  if (!isSupabaseConfigured) return null;
+  client ??= createBrowserClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: DB_SCHEMA } });
+  return client;
 }

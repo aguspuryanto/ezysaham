@@ -1,44 +1,41 @@
-import type { Metadata } from "next";
-import { Space_Grotesk, Geist_Mono } from "next/font/google";
-import { SITE_NAME } from "@/lib/site";
-import { AIChatWidget } from "@/presentation/features/ai-chat/AIChatWidget";
+import type { Metadata, Viewport } from "next";
+import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/layout/ThemeProvider";
+import { AuthProvider } from "@/components/auth/AuthProvider";
+import { PortfolioSync } from "@/components/portfolio/PortfolioSync";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta", display: "swap" });
+const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-face", display: "swap" });
 
 export const metadata: Metadata = {
-  title: SITE_NAME,
-  description: "Screening saham IDX, jadi lebih mudah dan cepat",
-  keywords: ["saham", "IDX", "AI", "screening", "trading", "investing", "investasi", "trading saham", "screener saham", "skrining saham", "skrining saham idx"],
-  authors: [{ name: SITE_NAME }],
-  robots: {
-    index: true,
-    follow: true,
-  },
+  title: { default: "EzySaham — Screener & Portofolio Saham Indonesia", template: "%s · EzySaham" },
+  description:
+    "Screener saham BEI, chart candlestick dengan indikator teknikal, manajemen portofolio, dan tips investasi untuk pemula.",
+  applicationName: "EzySaham",
+  appleWebApp: { capable: true, title: "EzySaham", statusBarStyle: "default" },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#14161c" },
+  ],
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${spaceGrotesk.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        {children}
-        <AIChatWidget />
+    <html lang="id" suppressHydrationWarning className={`${jakarta.variable} ${mono.variable}`}>
+      <body className="min-h-dvh font-sans antialiased">
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <AuthProvider>
+            <PortfolioSync />
+            {children}
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

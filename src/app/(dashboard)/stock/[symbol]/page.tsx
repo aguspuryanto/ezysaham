@@ -1,0 +1,478 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Coins, Gauge, Lightbulb, LineChart } from "lucide-react";
+import { fetchFundamentals, fetchHistory, fetchQuotes, fetchStock, fetchStocks, withQuotes } from "@/lib/api";
+import { summarizeTechnicals, type Signal } from "@/lib/indicators";
+import { capTier, fundamentalScore, sectorHref } from "@/lib/screener";
+import { fairValues } from "@/lib/valuation";
+import { isHsc } from "@/lib/hsc";
+import { entrySignal } from "@/lib/entrySignal";
+import { EntrySignalCard } from "@/components/stock/EntrySignalCard";
+import { strategyFit } from "@/lib/strategyFit";
+import { phaseFlag } from "@/lib/phaseFlag";
+import { fomoDetector } from "@/lib/fomoDetector";
+import { detectSuspension } from "@/lib/suspension";
+import { Suspense } from "react";
+import { BedahDataCard, BedahDataSkeleton } from "@/components/stock/BedahDataCard";
+import { bedahContext, bedahData, type BedahContext, type BedahSection } from "@/lib/bedahData";
+import { getBedahNarrative } from "@/lib/bedahAi";
+import { anomalyRules, avgTradedValue, type AnomalyContext, type AnomalyReport } from "@/lib/anomaly";
+import { getAnomalyReport } from "@/lib/anomalyAi";
+import { AnomalyCard, AnomalySkeleton } from "@/components/stock/AnomalyCard";
+import type { Fundamentals, Stock } from "@/lib/types";
+import { formatCompact, formatDate, formatNumber, formatPercent, formatPrice, formatRupiah } from "@/lib/format";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/misc";
+import { ChangeText } from "@/components/dashboard/ChangeText";
+import { StockChartPanel } from "@/components/charts/StockChartPanel";
+import { AddToPortfolioButton } from "@/components/portfolio/AddToPortfolioButton";
+import { WatchlistButton } from "@/components/watchlist/WatchlistButton";
+import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
+import { MarketStatus } from "@/components/dashboard/MarketStatus";
+import { cn } from "@/lib/utils";
+import { GLOSSARY, type TermId } from "@/lib/glossary";
+import { TermTooltip } from "@/components/ui/TermTooltip";
+
+// 60 detik agar harga intraday (Yahoo) ikut segar saat AutoRefresh berjalan.
+export const revalidate = 60;
+
+type Props = { params: Promise<{ symbol: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { symbol } = await params;
+  const s = await fetchStock(symbol);
+  return { title: s ? `${s.symbol} — ${s.name}` : symbol.toUpperCase() };
+}
+
+export default async function StockDetailPage({ params }: Props) {
+  const { symbol: raw } = await params;
+  const symbol = raw.toUpperCase();
+  if (!/^[A-Z0-9]{2,8}$/.test(symbol)) notFound();
+
+  const [all, history, fundamentals, quotes] = await Promise.all([
+    fetchStocks(),
+    fetchHistory(symbol, "1y"),
+    fetchFundamentals(symbol),
+    fetchQuotes([symbol]).catch(() => []),
+  ]);
+  const closing = all.find((s) => s.symbol === symbol);
+  if (!closing) notFound();
+  // Pasardana hanya berisi harga penutupan hari bursa sebelumnya; timpa harga dengan
+  // harga intraday Yahoo (tertunda ±10 menit) bila tersedia. Data lain tetap dari Pasardana.
+  const [stock] = withQuotes([closing], quotes);
+  const isLive = quotes.length > 0;
+
+  const tech = summarizeTechnicals(history);
+  const score = fundamentalScore(stock);
+  const tier = capTier(stock.marketCap);
+  const valuation = fairValues(stock, all);
+  const signal = entrySignal(stock, fundamentals, valuation.median, tech);
+  const fits = strategyFit(stock, fundamentals, tech, signal);
+  const flag = phaseFlag(stock, fundamentals, history);
+  const fomo = fomoDetector(stock, history, signal);
+  const suspension = detectSuspension(stock, history);
+  const bedahCtx = bedahContext(stock, all, history);
+  const bedahRules = bedahData(stock, fundamentals, bedahCtx);
+  const anomalyCtx: AnomalyContext = {
+    ...bedahCtx,
+    peers: valuation.peers,
+    fairMedian: valuation.median,
+    avgValue20: avgTradedValue(history),
+  };
+  const anomalyFallback = anomalyRules(closing, fundamentals, anomalyCtx);
+  const range52 =
+    stock.high52 && stock.low52 && stock.high52 > stock.low52
+      ? ((stock.price - stock.low52) / (stock.high52 - stock.low52)) * 100
+      : null;
+
+  return (
+    <div className="space-y-5">
+      <AutoRefresh />
+      <Link href="/screener" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-4" /> Kembali ke screener
+      </Link>
+
+      {/* Header */}
+      <section className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{stock.symbol}</h1>
+            <Link href={sectorHref(stock.sector)} title={`Lihat semua saham sektor ${stock.sector}`}>
+              <Badge variant="outline" className="hover:border-primary/50 hover:text-foreground">{stock.sector}</Badge>
+            </Link>
+            {tier && (
+              <Badge variant="default" title={tier.note}>
+                {tier.label}
+              </Badge>
+            )}
+            {isHsc(stock.symbol) && (
+              <Badge variant="warn">
+                <TermTooltip term="hsc" className="no-underline">HSC</TermTooltip>
+              </Badge>
+            )}
+            {suspension && (
+              <Badge
+                variant="down"
+                title={`${
+                  suspension.idleDays == null
+                    ? "Tidak ada transaksi dan harga tidak bergerak selama ≥ 1 bulan"
+                    : `Tidak ada transaksi selama ${suspension.idleDays} hari bursa`
+                }${suspension.lastTraded ? ` (transaksi terakhir ${formatDate(suspension.lastTraded)})` : ""}. Kemungkinan sedang disuspensi BEI — cek pengumuman resmi di idx.co.id.`}
+              >
+                Suspended
+              </Badge>
+            )}
+            <MarketStatus delayed={isLive} />
+          </div>
+          <p className="text-sm text-muted-foreground">{stock.name}</p>
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-3xl font-bold tabular-nums">{formatPrice(stock.price)}</span>
+            <span className={cn("text-base font-semibold tabular-nums", stock.changeValue > 0 ? "text-up" : stock.changeValue < 0 ? "text-down" : "text-muted-foreground")}>
+              {stock.changeValue > 0 ? "+" : ""}
+              {formatPrice(stock.changeValue)} ({formatPercent(stock.change)})
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Data per {formatDate(stock.lastDate)}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <WatchlistButton symbol={stock.symbol} />
+          <AddToPortfolioButton symbol={stock.symbol} price={stock.price} />
+        </div>
+      </section>
+
+      {/* Statistik harian */}
+      <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4 lg:grid-cols-8">
+        {[
+          ["Open", formatPrice(stock.open)],
+          ["High", formatPrice(stock.high)],
+          ["Low", formatPrice(stock.low)],
+          ["Prev", formatPrice(stock.prevClose)],
+          ["Volume", `${formatCompact(stock.volume / 100)} lot`],
+          ["Nilai", formatRupiah(stock.value, true)],
+          ["Frekuensi", formatCompact(stock.frequency)],
+          ["Kap. Pasar", formatRupiah(stock.marketCap, true)],
+        ].map(([k, v]) => (
+          <div key={k} className="bg-card px-3 py-2.5">
+            <p className="text-xs text-muted-foreground">{k}</p>
+            <p className="text-sm font-semibold tabular-nums">{v}</p>
+          </div>
+        ))}
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-3">
+        {/* Kolom kiri: chart + fundamental. Kolom kanan: sinyal, teknikal, kinerja, dividen.
+            Ditumpuk per kolom agar tinggi kolom kanan tidak membuat celah di bawah chart. */}
+        <div className="min-w-0 space-y-5 lg:col-span-2">
+          {/* Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <LineChart className="size-4 text-primary" /> Chart Harga
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <StockChartPanel symbol={stock.symbol} initialData={history} initialRange="1y" />
+            </CardContent>
+          </Card>
+
+          {/* Fundamental */}
+          <Card>
+            <CardHeader className="flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Gauge className="size-4 text-sky-500" /> Fundamental
+                </CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">Rasio valuasi & kinerja keuangan. Warna adalah patokan umum untuk pemula.</p>
+              </div>
+              {score != null && (
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Skor</p>
+                  <p className="text-2xl font-bold text-sky-600 tabular-nums dark:text-sky-400">{score}</p>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-x-6 sm:grid-cols-2">
+                <Ratio label="PER" term="per" value={stock.peRatio} fmt={(v) => `${formatNumber(v, 1)}x`} rate={(v) => (v <= 0 ? "bad" : v < 15 ? "good" : v < 25 ? "ok" : "bad")} />
+                <Ratio label="PBV" term="pbv" value={stock.pbv} fmt={(v) => `${formatNumber(v, 2)}x`} rate={(v) => (v <= 0 ? "bad" : v < 1.5 ? "good" : v < 3 ? "ok" : "bad")} />
+                <Ratio label="ROE" term="roe" value={stock.roe} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v >= 15 ? "good" : v >= 8 ? "ok" : "bad")} />
+                <Ratio label="DER" term="der" value={fundamentals?.der ?? null} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v < 50 ? "good" : v < 100 ? "ok" : "bad")} />
+                <Ratio label="Net margin" term="net-margin" value={fundamentals?.netMargin ?? null} fmt={(v) => `${formatNumber(v, 1)}%`} rate={(v) => (v >= 15 ? "good" : v >= 5 ? "ok" : "bad")} />
+                <Ratio label="Current ratio" term="current-ratio" value={fundamentals?.currentRatio ?? null} fmt={(v) => `${formatNumber(v, 2)}x`} rate={(v) => (v >= 1.5 ? "good" : v >= 1 ? "ok" : "bad")} />
+                <Ratio label="Pertumbuhan pendapatan" term="yoy" value={fundamentals?.revenueGrowth ?? null} fmt={(v) => formatPercent(v, 1)} rate={(v) => (v >= 10 ? "good" : v >= 0 ? "ok" : "bad")} />
+                <Ratio label="Pertumbuhan laba" term="yoy" value={fundamentals?.earningsGrowth ?? null} fmt={(v) => formatPercent(v, 1)} rate={(v) => (v >= 10 ? "good" : v >= 0 ? "ok" : "bad")} />
+                <Ratio label="Beta 1 tahun" term="beta" value={stock.beta} fmt={(v) => formatNumber(v, 2)} />
+                <Ratio label="Free float" term="free-float" value={stock.freeFloat} fmt={(v) => `${formatNumber(v, 1)}%`} />
+              </div>
+
+              {/* Harga wajar: Graham Number + PER & PBV emiten sejenis */}
+              <div className="mt-4 rounded-xl border bg-muted/40 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold"><TermTooltip term="harga-wajar">Estimasi Harga Wajar</TermTooltip></p>
+                    <p className="text-xs text-muted-foreground">
+                      EPS {valuation.graham ? formatNumber(valuation.graham.eps, 0) : "-"} · BVPS{" "}
+                      {valuation.graham ? formatNumber(valuation.graham.bvps, 0) : "-"}
+                      {valuation.peers && (
+                        <>
+                          {" "}· pembanding: {valuation.peers.level} {valuation.peers.group} ({valuation.peers.count} emiten)
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  {valuation.average != null && (
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Rata-rata</p>
+                      <p className="text-xl font-bold tabular-nums">{formatPrice(valuation.average)}</p>
+                      <Upside price={stock.price} fair={valuation.average} />
+                    </div>
+                  )}
+                </div>
+                {valuation.list.length ? (
+                  <ul className="mt-3 divide-y text-sm">
+                    {valuation.list.map((f) => (
+                      <li key={f.method} className="flex items-center justify-between gap-3 py-2">
+                        <div className="min-w-0">
+                          <p className="font-medium">{f.method}</p>
+                          <p className="text-xs text-muted-foreground">{f.detail}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold tabular-nums">{formatPrice(f.value)}</p>
+                          <Upside price={stock.price} fair={f.value} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Tidak dapat dihitung: butuh PER dan PBV positif (laba & ekuitas tidak boleh negatif).
+                  </p>
+                )}
+                <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+                  Harga sekarang {formatPrice(stock.price)}. PER/PBV sektor = median emiten sejenis. Graham Number cocok untuk
+                  laba yang stabil; kurang pas untuk saham bertumbuh tinggi, siklikal, atau bank. Bukan rekomendasi jual/beli.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Deteksi anomali oleh AI bila kredit tersedia; otomatis kembali ke versi aturan bila tidak. */}
+          {/* <Suspense fallback={<AnomalySkeleton symbol={stock.symbol} />}>
+            <AnomalyAsync stock={closing} fundamentals={fundamentals} ctx={anomalyCtx} rules={anomalyFallback} />
+          </Suspense> */}
+
+          <Suspense fallback={<BedahDataSkeleton symbol={stock.symbol} />}>
+            {/* AI memakai data penutupan harian (bukan harga intraday) agar cache per hari stabil */}
+            <BedahDataAsync stock={closing} fundamentals={fundamentals} ctx={bedahCtx} rules={bedahRules} />
+          </Suspense>
+        </div>
+
+        <div className="space-y-5">
+          <EntrySignalCard signal={signal} fits={fits} flag={flag} fomo={fomo} />
+
+          {/* Analisa teknikal */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Lightbulb className="size-4 text-warn" /> Analisa Teknikal Sederhana
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Dihitung dari data harian 1 tahun terakhir.</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {tech ? (
+                <>
+                  <dl className="grid grid-cols-2 gap-3 text-sm">
+                    <Metric label="SMA 20" value={formatPrice(tech.sma20)} />
+                    <Metric label="SMA 50" value={formatPrice(tech.sma50)} />
+                    <Metric label="RSI 14" value={formatNumber(tech.rsi, 1)} />
+                    <Metric label="MACD hist." value={formatNumber(tech.macdHist, 1)} />
+                  </dl>
+                  <ul className="space-y-2.5">
+                    {tech.tips.map((t) => (
+                      <li key={t.title} className={cn("rounded-lg border-l-4 bg-muted/50 p-3", toneBorder(t.tone))}>
+                        <p className="text-sm font-semibold">{t.title}</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{t.text}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Data historis belum cukup untuk menghitung indikator.</p>
+              )}
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Indikator teknikal hanya alat bantu, bukan rekomendasi. Selalu kombinasikan dengan analisa fundamental dan manajemen risiko.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Kinerja */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Kinerja Harga</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                {[
+                  ["1 Mg", stock.returns.week],
+                  ["1 Bln", stock.returns.month],
+                  ["3 Bln", stock.returns.threeMonth],
+                  ["6 Bln", stock.returns.sixMonth],
+                  ["YTD", stock.returns.ytd],
+                  ["1 Thn", stock.returns.year],
+                ].map(([k, v]) => (
+                  <div key={k as string}>
+                    <p className="text-xs text-muted-foreground">{k}</p>
+                    <ChangeText value={v as number | null} digits={1} className="font-semibold" />
+                  </div>
+                ))}
+              </div>
+              {range52 != null && (
+                <div>
+                  <p className="mb-1.5 text-xs text-muted-foreground">Rentang 52 minggu</p>
+                  <div className="relative h-2 rounded-full bg-gradient-to-r from-down/60 via-warn/60 to-up/60">
+                    <span
+                      className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-foreground"
+                      style={{ left: `${Math.min(Math.max(range52, 0), 100)}%` }}
+                      aria-hidden
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-xs tabular-nums text-muted-foreground">
+                    <span>{formatPrice(stock.low52)}</span>
+                    <span>{formatPrice(stock.high52)}</span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Dividen */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Coins className="size-4 text-warn" /> Dividen
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {fundamentals?.dividendYield != null ? (
+                <>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <Metric label="Yield" term="dividend-yield" value={`${formatNumber(fundamentals.dividendYield, 2)}%`} />
+                    <Metric label="Payout" term="payout-ratio" value={fundamentals.payoutRatio == null ? "-" : `${formatNumber(fundamentals.payoutRatio, 0)}%`} />
+                    <Metric label="DPS (TTM)" term="dps" value={formatNumber(fundamentals.dividendPerShare, 0)} />
+                  </div>
+                  {fundamentals.dividendHistory.length > 0 && (
+                    <ul className="divide-y text-sm">
+                      {fundamentals.dividendHistory.slice(0, 6).map((d) => (
+                        <li key={d.date} className="flex justify-between py-1.5">
+                          <span className="text-muted-foreground">{formatDate(d.date)}</span>
+                          <span className="font-medium tabular-nums">Rp{formatNumber(d.amount, d.amount % 1 ? 2 : 0)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Belum ada data dividen untuk saham ini.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Narasi AI (TokenKoding) bila kredit tersedia; otomatis kembali ke versi aturan bila tidak. */
+async function BedahDataAsync({
+  stock,
+  fundamentals,
+  ctx,
+  rules,
+}: {
+  stock: Stock;
+  fundamentals: Fundamentals | null;
+  ctx: BedahContext;
+  rules: BedahSection[];
+}) {
+  const result = await getBedahNarrative(stock, fundamentals, ctx, rules);
+  return <BedahDataCard symbol={stock.symbol} result={result} asOf={stock.lastDate} />;
+}
+
+/** Deteksi anomali oleh AI bila kredit tersedia; otomatis kembali ke versi aturan bila tidak. */
+async function AnomalyAsync({
+  stock,
+  fundamentals,
+  ctx,
+  rules,
+}: {
+  stock: Stock;
+  fundamentals: Fundamentals | null;
+  ctx: AnomalyContext;
+  rules: AnomalyReport;
+}) {
+  const result = await getAnomalyReport(stock, fundamentals, ctx, rules);
+  return <AnomalyCard symbol={stock.symbol} result={result} asOf={stock.lastDate} />;
+}
+
+function toneBorder(t: Signal) {
+  return t === "bullish" ? "border-up" : t === "bearish" ? "border-down" : "border-warn";
+}
+
+/** Diskon (hijau) bila harga di bawah harga wajar, premium (merah) bila di atas. */
+function Upside({ price, fair }: { price: number; fair: number }) {
+  const diff = (price / fair - 1) * 100;
+  return (
+    <p className={cn("text-xs font-medium tabular-nums", diff <= 0 ? "text-up" : "text-down")}>
+      {diff <= 0 ? `Diskon ${formatNumber(-diff, 1)}%` : `Premium ${formatNumber(diff, 1)}%`}
+    </p>
+  );
+}
+
+function Metric({ label, value, term }: { label: string; value: string; term?: TermId }) {
+  return (
+    <div>
+      <dt className="text-xs text-muted-foreground">{term ? <TermTooltip term={term}>{label}</TermTooltip> : label}</dt>
+      <dd className="font-semibold tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+function Ratio({
+  label,
+  term,
+  value,
+  fmt,
+  rate,
+}: {
+  label: string;
+  term: TermId;
+  value: number | null;
+  fmt: (v: number) => string;
+  rate?: (v: number) => "good" | "ok" | "bad";
+}) {
+  const r = value != null && rate ? rate(value) : null;
+  return (
+    <div className="flex items-center justify-between gap-3 border-b py-2.5 last:border-0 sm:[&:nth-last-child(2)]:border-0">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">
+          <TermTooltip term={term}>{label}</TermTooltip>
+        </p>
+        <p className="text-xs text-muted-foreground">{GLOSSARY[term].short}</p>
+      </div>
+      <span
+        className={cn(
+          "shrink-0 rounded-md px-2 py-0.5 text-sm font-semibold tabular-nums",
+          r === "good" && "bg-up-soft text-up",
+          r === "ok" && "bg-warn-soft text-warn",
+          r === "bad" && "bg-down-soft text-down",
+          !r && "text-foreground",
+        )}
+      >
+        {value == null ? "-" : fmt(value)}
+      </span>
+    </div>
+  );
+}

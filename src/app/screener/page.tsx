@@ -1,5 +1,0 @@
-import { ScreenerPage } from '@/presentation/features/screener/ScreenerPage';
-
-export default function Page() {
-  return <ScreenerPage />;
-}

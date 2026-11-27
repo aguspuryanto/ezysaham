@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EzySaham (Next.js)
 
-## Getting Started
+Website pendamping aplikasi mobile EzySaham: screener saham BEI, chart candlestick + indikator, portofolio, dan tips untuk pemula. Dibangun mengikuti `PLAN.txt`.
 
-First, run the development server:
+## Menjalankan
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
+npm run build && npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Salin `.env.example` ke `.env.local` untuk mengisi key Supabase (opsional).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Login (magic link) & portofolio di Supabase
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Tanpa env Supabase, website tetap berjalan dalam mode tamu (portofolio di localStorage, tombol Masuk disembunyikan).
 
-## Learn More
+1. Buat project di https://supabase.com, lalu isi `.env.local` (lihat `.env.example`):
+   `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (atau `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Restart `npm run dev`.
+2. **SQL Editor** → jalankan `supabase/migrations/0001_portfolio_holdings.sql`.
+3. **Authentication → URL Configuration**
+   - Site URL: `https://ezysaham.vercel.app` (domain produksi)
+   - Redirect URLs: `https://ezysaham.vercel.app/auth/callback` dan `http://localhost:3000/auth/callback`
+     (alamat yang tidak terdaftar ditolak dan diganti Site URL)
+4. **Authentication → Sign In / Providers → Email**: pastikan aktif (default).
+5. *(Disarankan)* **Authentication → Emails → Templates → Magic Link**, ganti link menjadi
+   `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email`
+   - `{{ .RedirectTo }}` mengikuti asal permintaan (localhost saat dev, domain produksi saat live), jadi satu template berlaku untuk keduanya.
+   - Format `token_hash` membuat link bisa dibuka di perangkat/browser lain (template bawaan memakai PKCE yang harus dibuka di browser yang sama).
+   - Jangan pakai `{{ .SiteURL }}` di sini: link akan selalu mengarah ke Site URL walau login diminta dari localhost.
+6. *(Produksi)* **Project Settings → Authentication → SMTP**: pasang SMTP sendiri (mis. Resend). SMTP bawaan Supabase dibatasi beberapa email per jam.
 
-To learn more about Next.js, take a look at the following resources:
+Alur: `/login` → email berisi link → `/auth/callback` memverifikasi → valid: redirect ke `/`, tidak valid/kedaluwarsa: kembali ke `/login` dengan pesan error.
+Setelah login pertama, holding yang tersimpan di localStorage ditawarkan untuk diimpor ke akun.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Membership Pro (DOKU Checkout)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Paket Pro bersifat sukarela: bayar sekali per periode (1 bulan / 1 tahun) lewat **DOKU Checkout**, tanpa auto-debit.
+Selama env di bawah belum lengkap, tombol bayar di `/harga` tetap nonaktif.
 
-## Deploy on Vercel
+1. **Supabase → SQL Editor** → jalankan `supabase/migrations/0002_memberships.sql` (tabel `memberships`, `membership_payments`, fungsi `activate_membership`).
+2. **Supabase → Project Settings → API Keys** → salin *secret key* ke `SUPABASE_SECRET_KEY` (server only).
+3. **DOKU Back Office** (mulai di sandbox: https://dashboard-sandbox.doku.com):
+   - Aktifkan produk **DOKU Checkout** dan metode pembayaran yang diinginkan (QRIS, VA, e-wallet, kartu).
+   - Salin **Client ID** → `DOKU_CLIENT_ID` dan **Secret Key** → `DOKU_SECRET_KEY`.
+   - Atur **Notification URL** → `https://ezysaham.vercel.app/api/webhooks/doku` (path harus persis `/api/webhooks/doku`).
+4. Isi env di `.env.local` dan **Vercel → Environment Variables** (`DOKU_ENV=sandbox` dulu), lalu redeploy.
+5. Uji: login → `/harga` → *Dukung dengan Pro* → bayar di https://sandbox.doku.com/integration/simulator/ →
+   kembali ke `/harga?status=return` → status "Pro aktif sampai …".
+6. Produksi: ganti ke Client ID/Secret Key produksi dan `DOKU_ENV=production`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Alur: `/api/checkout` (buat sesi DOKU, harga dari server) → halaman bayar DOKU →
+- HTTP Notification `/api/webhooks/doku`: verifikasi signature HMAC-SHA256 (Request-Target = path notifikasi, Digest = SHA-256 body) → `activate_membership`
+- Cadangan: saat user kembali, `/api/payments/sync` mengecek status ke API DOKU (`/orders/v1/status/{invoice}`)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`activate_membership` atomik & idempoten (aman bila notifikasi dikirim ulang) dan memvalidasi jumlah bayar.
+Invoice diberi prefix `EZS` agar notifikasi milik aplikasi lain di akun DOKU yang sama diabaikan.
+Harga & fitur paket: `src/lib/plans.ts`.
+
+## Struktur
+
+```
+src/app/(dashboard)/          page.tsx (Pasar), screener/, stock/[symbol]/, portfolio/, news/
+src/app/api/stocks/...        BFF untuk browser (stocks, history, fundamentals)
+src/lib/sources/              pasardana.ts, yahoo.ts (pengambil data dari sumber asli)
+src/components/               ui/, layout/, dashboard/, charts/, portfolio/
+src/lib/                      api.ts, indicators.ts, screener.ts, dividends.ts, types.ts, format.ts, articles.ts
+src/hooks/                    usePortfolio.ts (localStorage), useStockList.ts
+```
+
+## Catatan data
+
+- Data diambil langsung dari sumbernya: daftar saham dari Pasardana, history/indeks/kurs/fundamental dari Yahoo Finance (`src/lib/sources/`). Tidak bergantung pada ezysaham.vercel.app.
+- Cache: daftar saham 5 menit, history 10 menit, indeks 15 menit, fundamental 6 jam.
+- Dividend yield hanya ada di endpoint fundamentals, jadi **Top Dividen** dihitung dari 40 saham berkapitalisasi terbesar.
+- **Top Akumulasi** memakai heuristik: harga sideways (±5% sebulan, ±3% sepekan), transaksi ramai, dan harga ditutup dekat high harian.

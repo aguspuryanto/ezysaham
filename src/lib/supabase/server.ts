@@ -1,26 +1,23 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import "server-only";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { DB_SCHEMA, SUPABASE_KEY, SUPABASE_URL, isSupabaseConfigured } from "./config";
 
-export async function createClient() {
+/** Client Supabase untuk Route Handler / Server Component. null bila env belum diisi. */
+export async function getSupabaseServer() {
+  if (!isSupabaseConfigured) return null;
   const cookieStore = await cookies();
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
-          } catch {
-            // Called from a Server Component during render — the middleware refreshes
-            // the session cookie on the next request, so this can be safely ignored.
-          }
-        },
+  return createServerClient(SUPABASE_URL, SUPABASE_KEY, {
+    db: { schema: DB_SCHEMA },
+    cookies: {
+      getAll: () => cookieStore.getAll(),
+      setAll: (toSet) => {
+        try {
+          toSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+        } catch {
+          // Dipanggil dari Server Component (read-only) — aman diabaikan, proxy yang me-refresh session.
+        }
       },
-    }
-  );
+    },
+  });
 }
