@@ -100,7 +100,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams: Pro
         </div>
       </nav>
 
-      <div className="flex gap-3 rounded-xl border bg-card p-4">
+      {/* <div className="flex gap-3 rounded-xl border bg-card p-4">
         <Info className="mt-0.5 size-4 shrink-0 text-primary" />
         <div>
           <h2 className="font-semibold">{title}</h2>
@@ -113,7 +113,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams: Pro
             <Link href="/glosarium" className="font-medium text-primary hover:underline">Semua istilah</Link>
           </p>
         </div>
-      </div>
+      </div> */}
 
       {extra === "dividend" ? (
         <DividendFormat rows={rows} />

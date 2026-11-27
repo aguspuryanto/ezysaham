@@ -319,10 +319,10 @@ function classify(sections: AnomalySection[], s: Stock, f: Fundamentals | null, 
       reason:
         level === "LOW"
           ? "Risiko rendah, tetapi valuasi belum memberi diskon yang cukup atau laba sedang menyusut."
-          : `Ada ${flagged.length} sinyal yang perlu dipantau (risiko ${level}); belum cukup alasan untuk masuk maupun menghindari sepenuhnya.`,
+          : `Ada ${flagged.length} sinyal yang perlu dipantau (risiko ${level}); kondisinya belum cukup jelas ke arah positif maupun negatif.`,
       invalidation: [
-        "Naik ke BUY bila anomali utama teratasi dan harga turun di bawah estimasi harga wajar",
-        "Turun ke AVOID bila laba berbalik rugi atau likuiditas mengering",
+        "Menjadi Kondisi Positif bila anomali utama teratasi dan harga turun di bawah estimasi harga wajar",
+        "Menjadi Waspada Risiko bila laba berbalik rugi atau likuiditas mengering",
       ],
     };
   }

@@ -11,6 +11,8 @@ import { entrySignal } from "@/lib/entrySignal";
 import { EntrySignalCard } from "@/components/stock/EntrySignalCard";
 import { strategyFit } from "@/lib/strategyFit";
 import { phaseFlag } from "@/lib/phaseFlag";
+import { fomoDetector } from "@/lib/fomoDetector";
+import { detectSuspension } from "@/lib/suspension";
 import { Suspense } from "react";
 import { BedahDataCard, BedahDataSkeleton } from "@/components/stock/BedahDataCard";
 import { bedahContext, bedahData, type BedahContext, type BedahSection } from "@/lib/bedahData";
@@ -68,6 +70,8 @@ export default async function StockDetailPage({ params }: Props) {
   const signal = entrySignal(stock, fundamentals, valuation.median, tech);
   const fits = strategyFit(stock, fundamentals, tech, signal);
   const flag = phaseFlag(stock, fundamentals, history);
+  const fomo = fomoDetector(stock, history, signal);
+  const suspension = detectSuspension(stock, history);
   const bedahCtx = bedahContext(stock, all, history);
   const bedahRules = bedahData(stock, fundamentals, bedahCtx);
   const anomalyCtx: AnomalyContext = {
@@ -105,6 +109,18 @@ export default async function StockDetailPage({ params }: Props) {
             {isHsc(stock.symbol) && (
               <Badge variant="warn">
                 <TermTooltip term="hsc" className="no-underline">HSC</TermTooltip>
+              </Badge>
+            )}
+            {suspension && (
+              <Badge
+                variant="down"
+                title={`${
+                  suspension.idleDays == null
+                    ? "Tidak ada transaksi dan harga tidak bergerak selama ≥ 1 bulan"
+                    : `Tidak ada transaksi selama ${suspension.idleDays} hari bursa`
+                }${suspension.lastTraded ? ` (transaksi terakhir ${formatDate(suspension.lastTraded)})` : ""}. Kemungkinan sedang disuspensi BEI — cek pengumuman resmi di idx.co.id.`}
+              >
+                Suspended
               </Badge>
             )}
             <MarketStatus delayed={isLive} />
@@ -255,7 +271,7 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
 
         <div className="space-y-5">
-          <EntrySignalCard signal={signal} fits={fits} flag={flag} />
+          <EntrySignalCard signal={signal} fits={fits} flag={flag} fomo={fomo} />
 
           {/* Analisa teknikal */}
           <Card>

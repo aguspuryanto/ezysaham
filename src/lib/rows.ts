@@ -1,6 +1,7 @@
 import type { StockRow } from "@/components/dashboard/StockTable";
 import type { Stock } from "./types";
 import { isHsc } from "./hsc";
+import { isLikelySuspended } from "./suspension";
 
 export function toRow(s: Stock, extra?: number | null): StockRow {
   return {
@@ -18,6 +19,7 @@ export function toRow(s: Stock, extra?: number | null): StockRow {
     week: s.returns.week == null ? null : Math.round(s.returns.week * 10) / 10,
     month: s.returns.month == null ? null : Math.round(s.returns.month * 10) / 10,
     ...(isHsc(s.symbol) ? { hsc: true } : {}),
+    ...(isLikelySuspended(s) ? { suspended: true } : {}),
     ...(extra !== undefined ? { extra } : {}),
   };
 }

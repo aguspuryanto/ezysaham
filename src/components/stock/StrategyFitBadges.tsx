@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/misc";
-import { FIT_LABEL, type FitStatus, type StrategyFit } from "@/lib/strategyFit";
+import { fitLabel, type FitStatus, type StrategyFit } from "@/lib/strategyFit";
 
 const VARIANT: Record<FitStatus, "up" | "warn" | "down" | "default"> = {
   fit: "up",
@@ -43,12 +43,12 @@ export function StrategyFitBadges({ fits }: { fits: StrategyFit[] }) {
           <button
             type="button"
             aria-expanded={open === f.key}
-            aria-label={`${f.label} (${f.horizon}): ${FIT_LABEL[f.status]}`}
+            aria-label={`${f.label} (${f.horizon}): ${fitLabel(f.key, f.status)}`}
             onClick={() => setOpen((o) => (o === f.key ? null : f.key))}
             className="rounded-md focus-visible:outline-2"
           >
             <Badge variant={VARIANT[f.status]} className="cursor-help">
-              {f.label}: {FIT_LABEL[f.status]}
+              {f.label}: {fitLabel(f.key, f.status)}
             </Badge>
           </button>
           {open === f.key && (
@@ -64,7 +64,7 @@ export function StrategyFitBadges({ fits }: { fits: StrategyFit[] }) {
                   <li key={r}>{r}</li>
                 ))}
               </ul>
-              <p className="mt-2 text-[11px] text-muted-foreground/80">Penyaringan otomatis, bukan rekomendasi beli/jual.</p>
+              <p className="mt-2 text-[11px] text-muted-foreground/80">Penyaringan otomatis, bukan sinyal transaksi.</p>
             </div>
           )}
         </div>

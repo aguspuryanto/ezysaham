@@ -30,6 +30,8 @@ export interface StockRow {
   extra?: number | null;
   /** Masuk daftar High Shareholding Concentration (BEI) */
   hsc?: boolean;
+  /** Kemungkinan disuspensi BEI (dideteksi dari pola transaksi) */
+  suspended?: boolean;
 }
 
 type SortKey = "rank" | "symbol" | "price" | "change" | "value" | "marketCap" | "peRatio" | "roe" | "month" | "extra";
@@ -55,6 +57,7 @@ export function StockTable({
   const [sector, setSector] = useState("");
   const [hsc, setHsc] = useState<"" | "exclude" | "only">("");
   const [tier, setTier] = useState<"" | CapTierKey>("");
+  const [susp, setSusp] = useState<"" | "exclude" | "only">("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>(
     ranked ? { key: "rank", dir: 1 } : { key: "value", dir: -1 },
   );
@@ -62,6 +65,7 @@ export function StockTable({
 
   const sectors = useMemo(() => [...new Set(rows.map((r) => r.sector))].sort(), [rows]);
   const hasHsc = useMemo(() => rows.some((r) => r.hsc), [rows]);
+  const hasSusp = useMemo(() => rows.some((r) => r.suspended), [rows]);
   // Filter liner hanya berguna bila daftar memuat lebih dari satu golongan kapitalisasi
   const hasTiers = useMemo(() => new Set(rows.map((r) => capTier(r.marketCap)?.key ?? "")).size > 1, [rows]);
 
@@ -73,6 +77,8 @@ export function StockTable({
     if (hsc === "exclude") list = list.filter(({ r }) => !r.hsc);
     else if (hsc === "only") list = list.filter(({ r }) => r.hsc);
     if (tier) list = list.filter(({ r }) => capTier(r.marketCap)?.key === tier);
+    if (susp === "exclude") list = list.filter(({ r }) => !r.suspended);
+    else if (susp === "only") list = list.filter(({ r }) => r.suspended);
     if (sort.key !== "rank") {
       const k = sort.key;
       list = [...list].sort((a, b) => {
@@ -88,7 +94,7 @@ export function StockTable({
       list = [...list].reverse();
     }
     return list;
-  }, [rows, q, sector, hsc, tier, sort]);
+  }, [rows, q, sector, hsc, tier, susp, sort]);
 
   const toggleSort = (key: SortKey) => {
     setLimit(PAGE);
@@ -143,9 +149,9 @@ export function StockTable({
         <div
           className={cn(
             "grid gap-2 sm:flex",
-            // Jumlah kontrol di mobile: urutkan + filter yang tampil; 4 kontrol disusun 2×2
-            ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-2"][
-              (sectors.length > 1 ? 1 : 0) + (hasHsc ? 1 : 0) + (hasTiers ? 1 : 0)
+            // Jumlah kontrol di mobile: urutkan + filter yang tampil; 4 kontrol 2×2, 5 kontrol 3+2
+            ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-2", "grid-cols-3"][
+              (sectors.length > 1 ? 1 : 0) + (hasHsc ? 1 : 0) + (hasTiers ? 1 : 0) + (hasSusp ? 1 : 0)
             ],
           )}
         >
@@ -188,6 +194,23 @@ export function StockTable({
               <option value="first">First Liner</option>
               <option value="second">Second Liner</option>
               <option value="third">Third Liner</option>
+            </Select>
+          )}
+          {/* Filter suspensi hanya muncul bila daftar memuat saham yang terdeteksi suspended */}
+          {hasSusp && (
+            <Select
+              value={susp}
+              onChange={(e) => {
+                setSusp(e.target.value as typeof susp);
+                setLimit(PAGE);
+              }}
+              aria-label="Filter saham suspended"
+              title="Suspended: tidak ada transaksi & harga tidak bergerak ≥ 1 bulan (kemungkinan disuspensi BEI)"
+              className="sm:w-44"
+            >
+              <option value="">Semua (Suspend)</option>
+              <option value="exclude">Tanpa Suspended</option>
+              <option value="only">Hanya Suspended</option>
             </Select>
           )}
           {/* Pengurutan untuk mobile (desktop memakai header tabel) */}
@@ -250,6 +273,7 @@ export function StockTable({
                   <Link href={`/stock/${r.symbol}`} className="group block">
                     <span className="inline-flex items-center gap-1.5">
                       <span className="font-semibold group-hover:text-primary">{r.symbol}</span>
+                      {r.suspended && <SuspendedTag />}
                       {r.hsc && <HscTag />}
                     </span>
                     <span className="block max-w-56 truncate text-xs text-muted-foreground">{r.name}</span>
@@ -282,6 +306,7 @@ export function StockTable({
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1.5 font-semibold">
                     {r.symbol}
+                    {r.suspended && <SuspendedTag />}
                     {r.hsc && <HscTag />}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">{r.name}</p>
@@ -344,6 +369,17 @@ function TierLabel({ marketCap }: { marketCap: number }) {
 }
 
 /** Label HSC ringkas; berada di dalam Link baris sehingga memakai title, bukan TermTooltip (tombol). */
+function SuspendedTag() {
+  return (
+    <span
+      title="Tidak ada transaksi dan harga tidak bergerak selama ≥ 1 bulan. Kemungkinan sedang disuspensi BEI — cek pengumuman resmi di idx.co.id."
+      className="rounded bg-down-soft px-1 py-px text-[10px] leading-tight font-semibold text-down"
+    >
+      Suspended
+    </span>
+  );
+}
+
 function HscTag() {
   return (
     <span

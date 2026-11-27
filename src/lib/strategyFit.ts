@@ -22,12 +22,23 @@ export interface StrategyFit {
   reasons: string[];
 }
 
-export const FIT_LABEL: Record<FitStatus, string> = {
-  fit: "Cocok",
-  caution: "Waspada",
-  avoid: "Hindari",
-  unknown: "Data kurang",
+/** Label status (bahasa informatif, bukan instruksi transaksi — lihat docs/VERDICT_LABEL.md). */
+const FIT_LABEL: Record<FitStatus, string> = {
+  fit: "Kondisi Mendukung",
+  caution: "Perlu Konfirmasi",
+  avoid: "Risiko Tinggi",
+  unknown: "Data Belum Memadai",
 };
+
+/** Label khusus per strategi yang menimpa label umum. */
+const FIT_LABEL_OVERRIDE: Partial<Record<StrategyKey, Partial<Record<FitStatus, string>>>> = {
+  trading: { caution: "Risiko Meningkat" },
+  investasi: { fit: "Fundamental Positif" },
+};
+
+export function fitLabel(key: StrategyKey, status: FitStatus): string {
+  return FIT_LABEL_OVERRIDE[key]?.[status] ?? FIT_LABEL[status];
+}
 
 /** Nilai transaksi harian rata-rata (Rp) minimum. */
 const LIQ_MIN = 1e9;
@@ -104,7 +115,7 @@ function trading(stock: Stock, tech: TechnicalSummary | null): StrategyFit {
 function swing(stock: Stock, f: Fundamentals | null, tech: TechnicalSummary | null, signal: EntrySignal): StrategyFit {
   const base = { key: "swing" as const, label: "Swing", horizon: "5–15 hari" };
   const problems = seriousProblems(stock, f, signal);
-  if (problems.length) return { ...base, status: "avoid", reasons: [...problems, "Fundamental bermasalah serius — jangan swing walau teknikal bagus."] };
+  if (problems.length) return { ...base, status: "avoid", reasons: [...problems, "Fundamental bermasalah serius — risiko tetap tinggi walau teknikal terlihat bagus."] };
   if (!tech) return { ...base, status: "unknown", reasons: ["Fundamental aman, tapi riwayat harga kurang untuk analisis teknikal."] };
 
   const reasons = ["Tidak ada masalah fundamental serius."];
@@ -118,14 +129,14 @@ function swing(stock: Stock, f: Fundamentals | null, tech: TechnicalSummary | nu
   else if (tech.trend === "bearish") {
     const rebound = tech.rsi != null && tech.rsi <= 30;
     status = worst(status, "caution");
-    reasons.push(rebound ? "Tren turun, tapi RSI jenuh jual — tunggu konfirmasi pantulan." : "Tren turun — tunggu pembalikan.");
+    reasons.push(rebound ? "Tren turun, RSI jenuh jual — pantulan belum terkonfirmasi." : "Tren turun — belum ada tanda pembalikan.");
   } else {
     status = worst(status, tech.macdCross === "golden" ? "fit" : "caution");
-    reasons.push(tech.macdCross === "golden" ? "Sideways dengan MACD golden cross." : "Tren sideways — tunggu breakout.");
+    reasons.push(tech.macdCross === "golden" ? "Sideways dengan MACD golden cross." : "Tren sideways — breakout belum terjadi.");
   }
   if (tech.rsi != null && tech.rsi >= 70) {
     status = worst(status, "caution");
-    reasons.push(`RSI ${tech.rsi.toFixed(0)} — jenuh beli, tunggu pullback.`);
+    reasons.push(`RSI ${tech.rsi.toFixed(0)} — momentum mulai jenuh, risiko koreksi meningkat.`);
   }
   if (signal.quality < 60) {
     status = worst(status, "caution");
@@ -139,7 +150,7 @@ function investasi(stock: Stock, f: Fundamentals | null, signal: EntrySignal): S
   if (signal.checks.length < 2) return { ...base, status: "unknown", reasons: ["Data fundamental belum cukup untuk menilai kelayakan investasi."] };
 
   const problems = seriousProblems(stock, f, signal);
-  if (problems.length) return { ...base, status: "avoid", reasons: [...problems, "Hindari untuk jangka panjang sampai ada bukti pemulihan fundamental."] };
+  if (problems.length) return { ...base, status: "avoid", reasons: [...problems, "Risiko jangka panjang tinggi sampai ada bukti pemulihan fundamental."] };
 
   const reasons: string[] = [];
   let status: FitStatus;

@@ -42,7 +42,7 @@ function isShootingStar(c: Candle) {
 export function phaseFlag(stock: Stock, f: Fundamentals | null, candles: Candle[]): PhaseFlag {
   const empty = { green: [], red: [], greenCount: 0, redCount: 0 };
   if (candles.length < 60) {
-    return { ...empty, status: "unknown", action: "Riwayat harga kurang (< 60 hari bursa) untuk mendeteksi fase." };
+    return { ...empty, status: "unknown", action: "Riwayat harga kurang (< 60 hari bursa) untuk menghasilkan penilaian yang dapat diandalkan." };
   }
 
   const closes = candles.map((c) => c.close);
@@ -196,14 +196,14 @@ export function phaseFlag(stock: Stock, f: Fundamentals | null, candles: Candle[
   let action: string;
   if (redCount >= RED_MIN) {
     status = "fomo";
-    action = `Jangan kejar harga. Tunggu koreksi sehat mendekati MA20 (≈ ${formatPrice(sma20)}) sebelum mempertimbangkan masuk.`;
+    action = `Harga bergerak jauh dari area referensi. Risiko mengejar harga (FOMO) perlu diperhatikan — rata-rata 20 hari (MA20) di ≈ ${formatPrice(sma20)}.`;
   } else if (greenCount >= GREEN_MIN) {
     status = "accumulation";
-    const sl = Math.min(baseLo, sma50);
-    action = `Layak dipertimbangkan dengan risiko terukur: beli bertahap saat pullback ke MA20 (≈ ${formatPrice(sma20)}), stop loss di bawah ${formatPrice(sl)}.`;
+    const support = Math.min(baseLo, sma50);
+    action = `Harga di area konsolidasi dengan tanda akumulasi. Referensi MA20 ≈ ${formatPrice(sma20)}, area support ≈ ${formatPrice(support)}. Bukan sinyal transaksi — perhatikan konfirmasi harga dan risiko.`;
   } else {
     status = "neutral";
-    action = "Belum memenuhi kriteria akumulasi maupun FOMO — masukkan watchlist dan pantau volume & breakout.";
+    action = "Belum memenuhi kriteria pola akumulasi maupun FOMO. Pergerakan harga dan volume belum menunjukkan konfirmasi yang memadai.";
   }
 
   return { status, green, red, greenCount, redCount, action };

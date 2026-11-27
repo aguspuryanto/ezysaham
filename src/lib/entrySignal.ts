@@ -91,10 +91,10 @@ function qualityChecks(stock: Stock, f: Fundamentals | null): QualityCheck[] {
 function timingNotes(tech: TechnicalSummary | null): EntrySignal["timing"] {
   if (!tech) return [];
   const notes: EntrySignal["timing"] = [];
-  if (tech.trend === "bearish") notes.push({ tone: "bad", text: "Tren harga masih turun — cicil bertahap, jangan beli sekaligus." });
-  else if (tech.trend === "bullish") notes.push({ tone: "good", text: "Tren harga sedang naik — momentum mendukung entry." });
-  else notes.push({ tone: "neutral", text: "Harga bergerak sideways — cocok untuk antre beli di area bawah." });
-  if (tech.rsi != null && tech.rsi >= 70) notes.push({ tone: "bad", text: `RSI ${tech.rsi.toFixed(0)} (jenuh beli) — tunggu pullback sebelum menambah.` });
+  if (tech.trend === "bearish") notes.push({ tone: "bad", text: "Tren harga masih turun — belum ada tanda pembalikan, risiko penurunan lanjutan." });
+  else if (tech.trend === "bullish") notes.push({ tone: "good", text: "Tren harga sedang naik — momentum positif, tetap perhatikan risiko mengejar harga." });
+  else notes.push({ tone: "neutral", text: "Harga bergerak sideways — momentum belum kuat. Hindari mengambil keputusan hanya berdasarkan kenaikan harga." });
+  if (tech.rsi != null && tech.rsi >= 70) notes.push({ tone: "bad", text: `RSI ${tech.rsi.toFixed(0)} — momentum mulai jenuh, risiko koreksi meningkat.` });
   else if (tech.rsi != null && tech.rsi <= 30) notes.push({ tone: "good", text: `RSI ${tech.rsi.toFixed(0)} (jenuh jual) — berpeluang memantul.` });
   if (tech.macdCross === "golden") notes.push({ tone: "good", text: "MACD baru golden cross — tanda awal pembalikan naik." });
   else if (tech.macdCross === "death") notes.push({ tone: "bad", text: "MACD baru death cross — momentum melemah." });
@@ -121,8 +121,8 @@ export function entrySignal(
   if (!fairValue || !price) {
     return {
       verdict: "avoid",
-      title: "Tidak dapat dinilai",
-      summary: "Harga wajar tidak bisa dihitung karena laba atau ekuitas negatif. Saham seperti ini spekulatif untuk investor fundamental.",
+      title: "Belum dapat dievaluasi",
+      summary: "Harga wajar tidak bisa dihitung karena laba atau ekuitas negatif. Penilaian fundamental belum dapat diandalkan; risikonya spekulatif.",
       quality, checks, marginOfSafety: null, plan: null, timing,
     };
   }
@@ -151,41 +151,41 @@ export function entrySignal(
     return {
       ...base,
       verdict: "avoid",
-      title: mos > 0 ? "Murah, tapi fundamental lemah" : "Hindari",
+      title: mos > 0 ? "Valuasi diskon, fundamental lemah" : "Fundamental lemah",
       summary:
         mos > 0
           ? `Harga ${pct(mos)} di bawah harga wajar, namun kualitas bisnisnya rendah (skor ${quality}). Waspadai value trap — murah karena memang ada masalah.`
-          : `Kualitas bisnis rendah (skor ${quality}) dan harga tidak murah. Belum layak dibeli.`,
+          : `Kualitas bisnis rendah (skor ${quality}) dan valuasi tidak memberi diskon. Risiko fundamental perlu diperhatikan.`,
     };
   }
   if (mos >= MOS_BUY && quality >= 60) {
     return {
       ...base,
       verdict: "buy",
-      title: "Layak beli",
-      summary: `Fundamental bagus (skor ${quality}) dan harga ${pct(mos)} di bawah harga wajar — margin of safety lebar.`,
+      title: "Fundamental kuat, valuasi diskon",
+      summary: `Fundamental bagus (skor ${quality}) dan harga ${pct(mos)} di bawah harga wajar — margin of safety lebar. Tetap perhatikan konfirmasi harga dan risiko.`,
     };
   }
   if (mos >= MOS_ACCUMULATE) {
     return {
       ...base,
       verdict: "accumulate",
-      title: "Akumulasi bertahap",
-      summary: `Harga ${pct(mos)} di bawah harga wajar dengan fundamental ${quality >= 60 ? "bagus" : "cukup"} (skor ${quality}). Beli dicicil; tambah lebih banyak bila turun ke harga ideal.`,
+      title: "Valuasi diskon",
+      summary: `Harga ${pct(mos)} di bawah harga wajar dengan fundamental ${quality >= 60 ? "bagus" : "cukup"} (skor ${quality}). Diskon belum selebar area ideal ${idealPrice.toLocaleString("id-ID")}.`,
     };
   }
   if (mos >= -MOS_ACCUMULATE) {
     return {
       ...base,
       verdict: "hold",
-      title: "Harga wajar — tunggu",
-      summary: `Harga sudah dekat harga wajar (selisih ${pct(Math.abs(mos))}). Ruang naik terbatas; pasang antrean di area beli ${zoneHigh.toLocaleString("id-ID")} ke bawah.`,
+      title: "Valuasi wajar",
+      summary: `Harga sudah dekat harga wajar (selisih ${pct(Math.abs(mos))}). Ruang kenaikan terbatas; area diskon valuasi berada di ${zoneHigh.toLocaleString("id-ID")} ke bawah.`,
     };
   }
   return {
     ...base,
     verdict: "expensive",
-    title: "Mahal — tunggu koreksi",
-    summary: `Harga ${pct(-mos)} di atas harga wajar. Tunggu koreksi ke area beli ${zoneHigh.toLocaleString("id-ID")} ke bawah.`,
+    title: "Valuasi premium",
+    summary: `Harga ${pct(-mos)} di atas harga wajar. Risiko mengejar harga perlu diperhatikan; area diskon valuasi berada di ${zoneHigh.toLocaleString("id-ID")} ke bawah.`,
   };
 }

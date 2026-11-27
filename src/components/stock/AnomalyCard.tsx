@@ -21,11 +21,18 @@ const RISK: Record<RiskLevel, string> = {
   EXTREME: "bg-down text-white",
 };
 
-const ACTION: Record<ActionVerdict, { className: string; note: string }> = {
-  BUY: { className: "bg-up-soft text-up", note: "Data mendukung untuk dipertimbangkan" },
-  WATCH: { className: "bg-sky-500/10 text-sky-600 dark:text-sky-400", note: "Pantau dulu, tunggu kondisi berubah" },
-  AVOID: { className: "bg-down-soft text-down", note: "Risiko melebihi yang bisa diukur" },
+/**
+ * Nilai internal BUY/WATCH/AVOID tetap (dipakai AI & cache); yang tampil label informatif,
+ * bukan instruksi transaksi (docs/VERDICT_LABEL.md).
+ */
+const ACTION: Record<ActionVerdict, { label: string; className: string; note: string }> = {
+  BUY: { label: "Kondisi Positif", className: "bg-up-soft text-up", note: "Data fundamental & valuasi mendukung" },
+  WATCH: { label: "Perlu Konfirmasi", className: "bg-warn-soft text-warn", note: "Kondisi belum cukup jelas, perlu dipantau" },
+  AVOID: { label: "Waspada Risiko", className: "bg-down-soft text-down", note: "Risiko melebihi yang bisa diukur" },
 };
+
+/** Ganti sisa istilah BUY/WATCH/AVOID di teks alasan (mis. dari hasil AI yang sudah tersimpan). */
+const humanize = (text: string) => text.replace(/\b(BUY|WATCH|AVOID)\b/g, (v) => `"${ACTION[v as ActionVerdict].label}"`);
 
 /** Hasil "Fundamental Anomaly Detector": 8 bagian sesuai docs/ANOMALY_FUNDAMENTAL.md. */
 export function AnomalyCard({ symbol, result, asOf }: { symbol: string; result: AnomalyResult; asOf: string | null }) {
@@ -54,8 +61,10 @@ export function AnomalyCard({ symbol, result, asOf }: { symbol: string; result: 
             <span className={cn("mt-1 inline-block rounded-md px-2 py-0.5 text-sm font-bold", RISK[risk.level])}>{risk.level}</span>
           </div>
           <div className="bg-card p-3">
-            <p className="text-xs text-muted-foreground">8. Sikap</p>
-            <span className={cn("mt-1 inline-block rounded-md px-2 py-0.5 text-sm font-bold", ACTION[action.verdict].className)}>{action.verdict}</span>
+            <p className="text-xs text-muted-foreground">8. Status analisis</p>
+            <span className={cn("mt-1 inline-block rounded-md px-2 py-0.5 text-sm font-bold", ACTION[action.verdict].className)}>
+              {ACTION[action.verdict].label}
+            </span>
             <p className="mt-1 text-[11px] text-muted-foreground">{ACTION[action.verdict].note}</p>
           </div>
           <div className="bg-card p-3">
@@ -103,22 +112,22 @@ export function AnomalyCard({ symbol, result, asOf }: { symbol: string; result: 
 
         <section aria-labelledby="anomali-final" className="rounded-xl border bg-muted/40 p-4">
           <h3 id="anomali-final" className="text-sm font-semibold">
-            Risiko {risk.level} · {action.verdict}
+            Risiko {risk.level} · {ACTION[action.verdict].label}
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">Faktor utama: {risk.reasons.join("; ")}.</p>
-          <p className="mt-2 text-sm leading-relaxed">{action.reason}</p>
-          <p className="mt-3 text-xs font-semibold text-muted-foreground">Kondisi pembatalan</p>
+          <p className="mt-2 text-sm leading-relaxed">{humanize(action.reason)}</p>
+          <p className="mt-3 text-xs font-semibold text-muted-foreground">Status berubah bila</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">
             {action.invalidation.map((c) => (
-              <li key={c}>{c}</li>
+              <li key={c}>{humanize(c)}</li>
             ))}
           </ul>
         </section>
 
         <p className="border-t pt-3 text-[11px] leading-relaxed text-muted-foreground">
           {ai ? <>Dianalisis AI ({result.model}) dari data per {formatDate(asOf)}. AI bisa keliru, jadi cocokkan dengan angka di atas.</> : <>Disusun otomatis dari data per {formatDate(asOf)} dengan aturan tetap.</>}{" "}
-          Risiko tinggi tidak sama dengan sinyal jual. Sikap BUY/WATCH/AVOID adalah hasil penyaringan data, bukan nasihat investasi; keputusan dan risikonya
-          tetap di tangan Anda.
+          Risiko tinggi tidak sama dengan sinyal jual. Status analisis adalah hasil penyaringan data, bukan rekomendasi jual atau beli; keputusan dan
+          risikonya tetap di tangan Anda.
         </p>
       </CardContent>
     </Card>
