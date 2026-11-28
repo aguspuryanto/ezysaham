@@ -5,8 +5,10 @@ import { Skeleton } from "@/components/ui/misc";
 import { TermTooltip } from "@/components/ui/TermTooltip";
 import type { BedahSection, PointTone } from "@/lib/bedahData";
 import type { BedahResult } from "@/lib/bedahAi";
+import type { TermId } from "@/lib/glossary";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ShareActions } from "./ShareActions";
 
 const TONE: Record<PointTone, { icon: typeof Info; className: string; label: string }> = {
   danger: { icon: TriangleAlert, className: "text-down", label: "Risiko tinggi" },
@@ -16,10 +18,20 @@ const TONE: Record<PointTone, { icon: typeof Info; className: string; label: str
   good: { icon: CircleCheck, className: "text-up", label: "Tidak ada masalah" },
 };
 
+/** Versi teks polos untuk disalin / dibagikan ke media sosial. */
+function toPlainText(symbol: string, sections: BedahSection[], asOf: string | null) {
+  const body = sections
+    .map((sec, i) => [`${i + 1}. ${sec.title}`, ...sec.points.map((p) => `• ${p.lead ? `${p.lead}: ` : ""}${p.text}`)].join("\n"))
+    .join("\n\n");
+  return `Bedah Data ${symbol} — EzySaham\nData per ${formatDate(asOf)}\n\n${body}\n\nBahan belajar, bukan rekomendasi jual/beli.`;
+}
+
 /** Narasi edukatif (AI atau aturan): kontradiksi data, fundamental vs harga, dan sinyal risiko. */
 export function BedahDataCard({ symbol, result, asOf }: { symbol: string; result: BedahResult; asOf: string | null }) {
   const sections: BedahSection[] = result.sections;
   const ai = result.source === "ai";
+  // Istilah dari semua bagian digabung jadi satu baris di bawah kartu
+  const terms: TermId[] = [...new Set(sections.flatMap((s) => s.terms))];
   return (
     <Card>
       <CardHeader>
@@ -57,16 +69,14 @@ export function BedahDataCard({ symbol, result, asOf }: { symbol: string; result
                 );
               })}
             </ul>
-            {sec.terms.length > 0 && (
-              <p className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-7 text-xs text-muted-foreground">
-                <span>Pelajari:</span>
-                {sec.terms.map((id) => (
-                  <TermTooltip key={id} term={id} />
-                ))}
-              </p>
-            )}
           </section>
         ))}
+        <ShareActions
+          title={`Bedah Data ${symbol} — EzySaham`}
+          text={toPlainText(symbol, sections, asOf)}
+          teaser={`Bedah Data ${symbol} di EzySaham: data yang janggal, harga vs kinerja, dan sinyal risiko yang perlu diwaspadai.`}
+          path={`/stock/${symbol}`}
+        />
         <p className="border-t pt-3 text-[11px] leading-relaxed text-muted-foreground">
           {ai ? (
             <>
@@ -79,6 +89,14 @@ export function BedahDataCard({ symbol, result, asOf }: { symbol: string; result
           Ini bahan belajar, bukan rekomendasi jual/beli. Istilah lain ada di{" "}
           <Link href="/glosarium" className="font-medium text-primary hover:underline">glosarium</Link>.
         </p>
+        {terms.length > 0 && (
+          <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+            <span>Pelajari:</span>
+            {terms.map((id) => (
+              <TermTooltip key={id} term={id} />
+            ))}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
